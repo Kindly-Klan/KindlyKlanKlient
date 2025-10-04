@@ -51,7 +51,10 @@ jobs:
       
       - name: Get version from tauri.conf.json
         id: version
-        run: node -e "const fs = require('fs'); const content = fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'); const match = content.match(/"version":\s*"([^"]+)"/); console.log('version=' + match[1]);"s
+        uses: notiz-dev/github-action-json-property@release
+        with:
+          path: 'src-tauri/tauri.conf.json'
+          prop_path: 'version'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -70,7 +73,7 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
           uploadRelease: true
-          releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.version }}'
+          releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.prop }}'
           releaseBody: 'Automated release from commit ${{ github.sha }}'
           releaseDraft: false
           prerelease: false
