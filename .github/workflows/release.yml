@@ -72,7 +72,7 @@ jobs:
           projectPath: src-tauri
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
-          uploadRelease: true
+          tagName: v${{ steps.version.outputs.prop }}
           releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.prop }}'
           releaseBody: 'Automated release from commit ${{ github.sha }}'
           releaseDraft: false
