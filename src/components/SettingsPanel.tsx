@@ -17,7 +17,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleReload = () => {
     console.log('SettingsPanel: Reloading distribution');
     onReloadDistribution();
-    onClose();
+    onClose();  
   };
 
   if (!isOpen) return null;
@@ -40,7 +40,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="space-y-4">
-          {/* Distribution Info */}
+         
           <div className="bg-black/20 rounded-lg p-3 border border-white/10">
             <h3 className="text-sm font-medium text-white mb-2">Distribución</h3>
             <p className="text-xs text-gray-300 mb-1">
@@ -51,7 +51,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
           </div>
 
-          {/* Action Buttons */}
+            
           <div className="flex space-x-3 pt-4">
             <Button
               onClick={handleReload}

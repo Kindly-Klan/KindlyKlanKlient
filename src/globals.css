@@ -253,7 +253,6 @@ body {
   }
 }
 
-/* Loader overlay - capa superior */
 .blur-overlay {
   position: fixed;
   top: 0;
@@ -279,12 +278,11 @@ body {
   }
 }
 
-/* Marquee Text Animation */
 .marquee-container {
   position: relative;
   overflow: hidden;
   height: 2rem;
-  width: 10rem; /* Mismo ancho que "JUGAR AHORA" */
+  width: 10rem; 
   mask-image: linear-gradient(
     to right,
     rgba(0, 0, 0, 0),

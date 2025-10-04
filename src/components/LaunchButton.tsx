@@ -17,9 +17,8 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
   isJavaInstalling = false
 }) => {
   const [state, setState] = useState<LaunchState>('idle');
-  const [playTime, setPlayTime] = useState(0); // Tiempo en segundos
+  const [playTime, setPlayTime] = useState(0); 
 
-  // Timer para contar tiempo de juego
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
@@ -42,12 +41,10 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
     setState('launching');
     try {
       await onLaunch();
-      // Después de lanzar exitosamente, cambiar a estado playing
       setState('playing');
-      setPlayTime(0); // Resetear tiempo
+      setPlayTime(0); 
     } catch (error) {
       console.error('Error during launch:', error);
-      // Reset to idle state after error
       setState('idle');
       setPlayTime(0);
     }
@@ -67,7 +64,6 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 
   const formatTimeForMarquee = (seconds: number): string => {
     const timeStr = formatTime(seconds);
-    // Asegurar que tenga exactamente 10 caracteres (igual que "JUGAR AHORA")
     return timeStr.padEnd(10, ' ');
   };
 
@@ -117,7 +113,6 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
         disabled={disabled || state !== 'idle' || isJavaInstalling}
         className={`${getButtonClass()} ${className}`}
       >
-        {/* Progress ring animation for launching state */}
         {state === 'launching' && (
           <div className="absolute inset-0 rounded-full">
             <div
@@ -130,7 +125,6 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
           </div>
         )}
 
-        {/* Marquee text for playing state */}
         {state === 'playing' && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="marquee-container transition-all duration-500">
