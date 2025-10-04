@@ -20,11 +20,11 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Inicializar skinview3d
+    
     const skinViewer = new skinview3d.SkinViewer({
       canvas: canvasRef.current,
-      width: 192, // 48 * 4 (para que se vea bien en el tamaño w-48)
-      height: 256, // 64 * 4
+      width: 192, 
+      height: 256, 
       skin: skinUrl || undefined,
     });
     skinViewer.globalLight.intensity = 3;
@@ -43,7 +43,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     };
   }, []);
 
-  // Cargar textura cuando cambie skinUrl
+  
   useEffect(() => {
     if (!skinViewerRef.current || !skinUrl) return;
 

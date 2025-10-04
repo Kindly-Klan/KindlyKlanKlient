@@ -18,7 +18,7 @@ export const SkinPreview: React.FC<SkinPreviewProps> = ({
       const q = [`overlay=true`, modelParam, `v=${cacheBust}`].filter(Boolean).join('&');
       return `${base}?${q}`;
     }
-    // Si llega una URL, aplicar cache-bust y model si procede
+    
     const hasQuery = skinUrl.includes('?');
     const sep = hasQuery ? '&' : '?';
     const parts = [`overlay=true`, modelParam, `v=${cacheBust}`].filter(Boolean).join('&');
@@ -44,7 +44,7 @@ export const SkinPreview: React.FC<SkinPreviewProps> = ({
 
   return (
     <div className={`relative ${className}`}>
-      {/* Área de previsualización compacta */}
+        
       <div className="relative aspect-[3/4] bg-gradient-to-b from-gray-700 to-gray-900 rounded-lg overflow-hidden border border-gray-600">
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center">

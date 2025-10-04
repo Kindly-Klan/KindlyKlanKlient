@@ -9,9 +9,9 @@ import SettingsPanel from "@/components/SettingsPanel";
 import InstanceView from "@/components/InstanceView";
 import { SkinManager } from "@/components/skin/SkinManager";
 
-// Java version mapping for Minecraft versions
+
 const getRequiredJavaVersion = (minecraftVersion: string): string => {
-  const version = minecraftVersion.split('.')[1]; // Get minor version
+  const version = minecraftVersion.split('.')[1]; 
 
   if (parseInt(version) >= 21) return '21';
   if (parseInt(version) >= 20) return '17';
@@ -19,10 +19,10 @@ const getRequiredJavaVersion = (minecraftVersion: string): string => {
   if (parseInt(version) >= 17) return '16';
   if (parseInt(version) >= 8) return '8';
 
-  return '8'; // Default fallback
+  return '8'; 
 };
 
-// Check if Java version is installed
+
 const checkJavaInstalled = async (javaVersion: string): Promise<boolean> => {
   try {
     const result = await invoke<string>('check_java_version', { version: javaVersion });
@@ -33,7 +33,7 @@ const checkJavaInstalled = async (javaVersion: string): Promise<boolean> => {
   }
 };
 
-// Download and install Java if needed (no toasts, handled by overlay)
+
 const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> => {
   const javaVersion = getRequiredJavaVersion(minecraftVersion);
 
@@ -42,7 +42,7 @@ const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> =>
     return javaVersion;
   }
 
-  // Download and install Java (no toast, overlay handles feedback)
+
   try {
     await invoke<string>('download_java', { version: javaVersion });
     return javaVersion;
@@ -52,29 +52,23 @@ const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> =>
   }
 };
 
-// Launch instance with proper Java version
 const launchInstance = async (instance: any, addToast: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void, onComplete?: () => void): Promise<void> => {
   let javaVersion = '';
 
   try {
-    // Ensure Java is installed (this may take some time) - loader is managed in App.tsx
     javaVersion = await ensureJavaInstalled(instance.minecraft_version);
 
-    // Call completion callback (this will hide loader and reset text)
     if (onComplete) {
       onComplete();
     }
 
-    // Get Java path
     const javaPath = await invoke<string>('get_java_path', { version: javaVersion });
 
-    // Create instance directory structure
     await invoke<string>('create_instance_directory', {
       instanceId: instance.id,
       javaVersion: javaVersion
     });
 
-    // Launch Minecraft with proper Java
     await invoke<string>('launch_minecraft_with_java', {
       instanceId: instance.id,
       javaPath: javaPath,
@@ -89,13 +83,12 @@ const launchInstance = async (instance: any, addToast: (message: string, type?: 
       onComplete();
     }
 
-    // Show error toast for any error during launch process
     addToast(`Error lanzando ${instance.name}`, 'error');
     throw error;
   }
 };
 
-// Disable context menu globally
+
 if (typeof window !== 'undefined') {
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -103,12 +96,12 @@ if (typeof window !== 'undefined') {
   });
 
   document.addEventListener('keydown', (e) => {
-    // Disable F12, Ctrl+Shift+I, Ctrl+U, etc.
+
     if (
       e.key === 'F12' ||
       (e.ctrlKey && e.shiftKey && e.key === 'I') ||
       (e.ctrlKey && e.key === 'U') ||
-      (e.key === 'F5' && e.ctrlKey) // Ctrl+R
+      (e.key === 'F5' && e.ctrlKey) 
     ) {
       e.preventDefault();
       return false;
@@ -176,7 +169,7 @@ function App() {
   const [skinViewOpen, setSkinViewOpen] = useState(false);
   const initialized = useRef(false);
 
-  // Debug distributionLoaded changes
+
   useEffect(() => {
     console.log('distributionLoaded changed to:', distributionLoaded);
   }, [distributionLoaded]);
@@ -192,7 +185,6 @@ function App() {
     loadDistribution();
     checkExistingSession();
 
-    // Activar transición de login después de un pequeño delay (solo si no está visible)
     if (accounts.length === 0 && !isLoginVisible) {
       const timer = setTimeout(() => {
         setIsLoginVisible(true);
@@ -201,7 +193,6 @@ function App() {
     }
   }, [accounts.length, isLoginVisible]);
 
-  // Validar tokens periódicamente (cada 5 minutos)
   useEffect(() => {
     if (accounts.length === 0) return;
 
@@ -221,7 +212,7 @@ function App() {
         setAccounts(validAccounts);
         localStorage.setItem('kkk_accounts', JSON.stringify(validAccounts));
 
-        // Si la cuenta activa fue eliminada, establecer la primera válida como activa
+
         if (currentAccount && !validAccounts.find(acc => acc.id === currentAccount.id)) {
           if (validAccounts.length > 0) {
             setCurrentAccount(validAccounts[0]);
@@ -236,17 +227,14 @@ function App() {
         }
       }
     };
-
-    // Validar inmediatamente
     validateAllTokens();
-
-    // Configurar validación periódica
-    const interval = setInterval(validateAllTokens, 5 * 60 * 1000); // 5 minutos
+    const interval = setInterval(validateAllTokens, 5 * 60 * 1000); 
 
     return () => clearInterval(interval);
   }, [accounts, currentAccount]);
 
-  // Funciones para manejar toasts
+
+  /* TOASTS */
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 5000) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setToasts(prev => [...prev, { id, message, type, duration }]);
@@ -257,13 +245,11 @@ function App() {
   };
 
   const handleInstanceSelect = (instanceId: string) => {
-    // Cerrar vista de skins si está abierta y seleccionar la instancia
     if (skinViewOpen) setSkinViewOpen(false);
     setSelectedInstance(instanceId);
   };
 
   const handleAddAccount = async () => {
-    // Resetear estado para añadir nueva cuenta
     setCurrentAccount(null);
     setSelectedInstance(null);
     setSkinViewOpen(false);
@@ -275,20 +261,16 @@ function App() {
   };
 
   const handleSwitchAccount = (account: Account) => {
-    // Validar token antes de cambiar (async pero no esperamos)
     validateAccountToken(account).then(isValid => {
       if (!isValid) {
         addToast(`Token de ${account.user.username} ha expirado. Por favor, inicia sesión nuevamente.`, 'error');
-        // Eliminar cuenta con token inválido
         handleLogoutAccount(account.id);
         return;
       }
 
-      // Cambiar cuenta activa
       setCurrentAccount(account);
       localStorage.setItem('kkk_active_account', account.id);
 
-      // Actualizar el array de cuentas para marcar como activa
       const updatedAccounts = accounts.map(acc => ({
         ...acc,
         isActive: acc.id === account.id
@@ -305,7 +287,6 @@ function App() {
 
   const validateAccountToken = async (account: Account): Promise<boolean> => {
     try {
-      // Intentar hacer una llamada simple a la API de Mojang para validar el token
       await invoke<string>('get_minecraft_profile', { accessToken: account.user.access_token });
       return true;
     } catch (error) {
@@ -315,11 +296,9 @@ function App() {
   };
 
   const handleLogoutAccount = (accountId: string) => {
-    // Eliminar cuenta específica
     const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
 
     if (updatedAccounts.length === 0) {
-      // Si no quedan cuentas, volver a login
       setAccounts([]);
       setCurrentAccount(null);
       localStorage.removeItem('kkk_accounts');
@@ -327,19 +306,16 @@ function App() {
       setIsLoginVisible(true);
       addToast('Todas las cuentas cerradas. Vuelve a iniciar sesión.', 'info');
     } else {
-      // Si quedan cuentas, establecer la primera como activa
       const newActiveAccount = updatedAccounts[0];
       setCurrentAccount(newActiveAccount);
       localStorage.setItem('kkk_active_account', newActiveAccount.id);
 
-      // Actualizar el array de cuentas
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
 
-      addToast(`Cuenta cerrada. Cuenta activa: ${newActiveAccount.user.username}`, 'info');
+      addToast(`Sesión cerrada.`, 'info');
     }
 
-    // Resetear estado de la aplicación
     setSelectedInstance(null);
     setSkinViewOpen(false);
     setSettingsOpen(false);
@@ -394,7 +370,6 @@ function App() {
             setCurrentAccount(activeAccount);
           }
         } else if (accountsData.length > 0) {
-          // Si no hay cuenta activa pero hay cuentas guardadas, usar la primera
           setCurrentAccount(accountsData[0]);
           localStorage.setItem('kkk_active_account', accountsData[0].id);
         }
@@ -414,23 +389,19 @@ function App() {
     try {
       const userSession = await invoke<AuthSession>('start_microsoft_auth');
 
-      // Crear nueva cuenta
       const newAccount: Account = {
         id: `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         user: userSession,
         isActive: true
       };
 
-      // Añadir cuenta al array existente
       const updatedAccounts = [...accounts, newAccount];
 
-      // Si es la primera cuenta, establecerla como activa
       if (accounts.length === 0) {
         setCurrentAccount(newAccount);
         localStorage.setItem('kkk_active_account', newAccount.id);
       }
 
-      // Guardar todas las cuentas
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
       addToast('Autenticación exitosa.', 'success');
@@ -461,7 +432,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black flex relative overflow-hidden">
-      {/* Sidebar - Solo cuando hay cuenta activa */}
       {currentAccount && (
            <Sidebar
              instances={distribution?.instances || []}
@@ -474,9 +444,7 @@ function App() {
            />
       )}
 
-      {/* Main Content */}
       <div className={`flex-1 flex flex-col ${currentAccount ? 'ml-20' : ''}`}>
-        {/* Perfil/Logout arriba a la derecha solo si hay cuentas */}
         {accounts.length > 0 && (
           <div className="absolute top-4 right-4 z-50">
             <UserProfile
@@ -489,7 +457,6 @@ function App() {
           </div>
         )}
 
-             {/* Main Content Area */}
              <main className={`flex-1 relative transition-all duration-700 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
               {!currentAccount ? (
                 <div className={`flex items-center justify-center h-full transition-all duration-700 ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
@@ -559,7 +526,6 @@ function App() {
              </main>
       </div>
 
-      {/* Settings Panel */}
       <SettingsPanel
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -567,14 +533,12 @@ function App() {
         onReloadDistribution={loadDistribution}
       />
 
-      {/* Loader Overlay */}
       {showLoader && (
         <div className={`blur-overlay transition-all duration-500 ${isTransitioning ? 'opacity-0 scale-110' : 'opacity-100 scale-100'}`}>
           <Loader text={loaderText} />
         </div>
       )}
 
-      {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );

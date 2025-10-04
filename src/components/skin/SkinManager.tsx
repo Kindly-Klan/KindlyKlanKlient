@@ -6,7 +6,7 @@ import { SkinStorageService } from '@/services/skin/skinStorage';
 import { invoke } from '@tauri-apps/api/core';
 
 interface SkinManagerProps {
-  currentUser: any; // AuthSession (usuario actual de la cuenta activa)
+  currentUser: any;   
   onClose: () => void;
 }
 
@@ -23,8 +23,8 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const [uploadTimeout, setUploadTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Cargar skins al montar el componente
-  useEffect(() => {
+  
+  useEffect(() => {   
     const loadCurrentSkin = async () => {
       const allSkins = await SkinStorageService.getStoredSkins();
       setStoredSkins(allSkins);
@@ -33,19 +33,19 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         setCurrentSkin(activeSkin);
         setSkinModel(activeSkin.variant);
       }
-      // Cargar UUID del usuario para previsualización por defecto
+      
       if (currentUser) {
         setUuid(currentUser.uuid);
       }
     };
     loadCurrentSkin();
 
-    // Activar transición después de un pequeño delay para que se vea el efecto
+    
     const timer = setTimeout(() => setIsVisible(true), 50);
     return () => clearTimeout(timer);
   }, []);
 
-  // Cargar textura cuando cambie la skin activa o UUID
+  
   useEffect(() => {
     if (!uuid) {
       setCurrentTextureUrl('');
@@ -54,7 +54,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
 
     const loadTexture = async () => {
       try {
-        // Obtener información del perfil de Minecraft usando la API oficial
+        
         const savedSession = localStorage.getItem('kkk_session');
         if (!savedSession) {
           throw new Error('No session found');
@@ -70,7 +70,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         const profileData = await invoke<string>('get_minecraft_profile', { accessToken });
         const profile = JSON.parse(profileData);
 
-        // Extraer la URL de la textura de la skin
+        
         if (profile.skins && profile.skins.length > 0) {
           const skin = profile.skins[0];
           const textureUrl = skin.url;
@@ -82,7 +82,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         }
       } catch (error) {
         console.error('Error loading user texture from Mojang API:', error);
-        // Fallback a Crafatar si falla la API oficial
+        
         try {
           const textureUrl = `https://crafatar.com/skins/${uuid}`;
           setCurrentTextureUrl(textureUrl);
@@ -95,9 +95,9 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
     };
 
     loadTexture();
-  }, [uuid]); // Solo dependemos de uuid, no de currentSkin
+  }, [uuid]); 
 
-  // Cleanup timeout al desmontar
+  
   useEffect(() => {
     return () => {
       if (uploadTimeout) {
@@ -109,21 +109,21 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
   const handleSkinUpload = async (skinData: SkinData) => {
     setIsUploading(true);
     try {
-      // Guardar en almacenamiento local
+      
       await SkinStorageService.saveSkin(skinData);
 
-      // Establecer como activa
+      
       await SkinStorageService.setActiveSkin(skinData.id);
 
-      // Actualizar estado local
+
       setCurrentSkin({ ...skinData, isActive: true });
       setSkinModel(skinData.variant);
 
-      // Refrescar lista local de skins
+      
       const refreshed = await SkinStorageService.getStoredSkins();
       setStoredSkins(refreshed);
 
-      // Solo refrescar la preview de la skin activa (no todas las locales)
+      
       setTimeout(() => {
         if (currentSkin?.id === skinData.id) {
           setCurrentTextureUrl(prev => `${prev}?t=${Date.now()}`);
@@ -166,23 +166,23 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
   };
 
   const handleSelectSkin = async (skin: SkinData) => {
-    // Cancelar timeout anterior si existe
+    
     if (uploadTimeout) {
       clearTimeout(uploadTimeout);
     }
 
-    // Actualizar UI inmediatamente (visual feedback)
+    
     await SkinStorageService.setActiveSkin(skin.id);
     setCurrentSkin(skin);
     setSkinModel(skin.variant);
 
-    // Validar que tenemos fileData antes de intentar subir
+    
     if (!skin.fileData || skin.fileData.byteLength === 0) {
       console.warn('La skin seleccionada no tiene datos binarios almacenados (fileData). Re-súbela para poder activarla.');
       return;
     }
 
-    // Debounce: esperar 1 segundo antes de subir para evitar múltiples subidas
+    
     const timeout = setTimeout(async () => {
       try {
         setIsUploading(true);
@@ -195,7 +195,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
           return;
         }
 
-        // Verificar nuevamente que tenemos datos válidos
+        
         if (!skin.fileData || skin.fileData.byteLength === 0) {
           console.warn('Los datos de la skin se perdieron durante el debounce');
           return;
@@ -212,7 +212,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
           accessToken
         });
 
-        // Solo refrescar la preview de la skin activa tras subida exitosa
+        
         setTimeout(() => {
           if (currentSkin?.id === skin.id) {
             setCurrentTextureUrl(prev => `${prev}?t=${Date.now()}`);
@@ -252,7 +252,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
       if (accessToken) {
         let arrayBufferToUse: ArrayBuffer | null = currentSkin.fileData || null;
 
-        // Fallback: si no tenemos fileData, descargar la skin actual por UUID
+        
         if (!arrayBufferToUse && uuid) {
           try {
             const resp = await fetch(`https://crafatar.com/skins/${uuid}`);
@@ -265,20 +265,20 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         }
 
         if (arrayBufferToUse) {
-          // Crear archivo temporal con los datos de la skin actual
+          
           const tempFilePath = await invoke<string>('create_temp_file', {
             fileName: currentSkin.name || 'skin.png',
             fileData: arrayBufferToUse
           });
           
-          // Re-subir la skin con la nueva variante
+          
           await invoke('set_skin_variant', { 
             filePath: tempFilePath,
             variant: newModel === 'slim' ? 'slim' : 'classic', 
             accessToken 
           });
 
-          // Solo refrescar la preview de la skin activa tras cambio de variante
+
           setTimeout(() => {
             if (currentSkin?.id === updatedSkin.id) {
               setCurrentTextureUrl(prev => `${prev}?t=${Date.now()}`);
@@ -299,7 +299,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         }
       }
       
-      // Actualizar estado local
+      
       const updatedSkin = { ...currentSkin, variant: newModel };
       await SkinStorageService.saveSkin(updatedSkin);
       setCurrentSkin(updatedSkin);
@@ -311,7 +311,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
 
   return (
     <div className={`h-full bg-gradient-to-br from-gray-900 via-slate-900 to-black flex transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-      {/* Título */}
+      
       <div className={`absolute top-16 left-1/2 transform -translate-x-1/2 text-white/90 transition-all duration-700 ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
         <div className="flex items-center justify-center gap-4">
           <h1 className="text-6xl font-black tracking-wide text-center text-white drop-shadow-lg">
@@ -322,9 +322,8 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
           </div>
         </div>
       </div>
-      {/* Área de Drag & Drop y Previsualización (layout horizontal compacto) */}
+
       <div className={`flex-1 p-6 flex items-center justify-center gap-6 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-        {/* Área de Drag & Drop (izquierda) */}
         <div className="flex-shrink-0">
           <SkinUploader
             onUploadSuccess={handleSkinUpload}
@@ -333,7 +332,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
           />
         </div>
 
-      {/* Área de Previsualización (derecha) - Grid de skins */}
+      
       <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-4xl p-1 transition-all">
         {storedSkins.map((skin) => (
           <div key={skin.id} className="relative group flex items-center justify-center transition-all duration-300">
@@ -350,14 +349,14 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
                 className="w-48 h-64"
                 key={`${skin.id}-${skin.uploadedAt?.getTime() || Date.now()}`}
                 onTextureLoad={(textureUrl) => {
-                  // Solo actualizar currentTextureUrl si es la skin activa
+                  
                   if (currentSkin?.id === skin.id) {
                     setCurrentTextureUrl(textureUrl);
                   }
                 }}
               />
 
-              {/* Check activa */}
+              
               {currentSkin?.id === skin.id && (
                 <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg border border-white/20 z-20">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -366,7 +365,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
                 </div>
               )}
 
-              {/* Switch Slim/Normal solo en la skin activa */}
+              
               {currentSkin?.id === skin.id && (
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
                   <span className="text-xs text-gray-300">Slim</span>
@@ -384,7 +383,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
                 </div>
               )}
 
-              {/* Eliminar */}
+              
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleSkinDelete(skin.id); }}
@@ -399,7 +398,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
           </div>
         ))}
 
-        {/* Estado vacío */}
+          
         {storedSkins.length === 0 && (
           <div className="w-48 h-64 bg-gray-800/60 rounded-lg border-2 border-dashed border-gray-600 flex items-center justify-center text-gray-400">
             Sin skins guardadas

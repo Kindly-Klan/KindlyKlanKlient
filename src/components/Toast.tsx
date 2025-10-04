@@ -11,10 +11,10 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Animación de entrada
+    
     setTimeout(() => setIsVisible(true), 100);
 
-    // Auto-dismiss
+    
     const timer = setTimeout(() => {
       handleClose();
     }, duration);
@@ -24,7 +24,7 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
 
   const handleClose = () => {
     setIsVisible(false);
-    setTimeout(onClose, 300); // Esperar a que termine la animación de salida
+    setTimeout(onClose, 300); 
   };
 
   const getToastStyles = () => {

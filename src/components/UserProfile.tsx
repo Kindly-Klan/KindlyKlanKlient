@@ -32,7 +32,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
   onAddAccount
 }) => {
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, account: Account) => {
-    // Si falla la carga de la imagen externa, usar un avatar por defecto
+    
     e.currentTarget.src = `data:image/svg+xml;base64,${btoa(`
       <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <rect width="40" height="40" rx="8" fill="#4A90E2"/>
@@ -45,7 +45,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
 
   return (
     <div className="flex items-center space-x-2 bg-black/30 backdrop-blur-md rounded-full px-3 py-2 border border-white/10">
-      {/* Multiple Account Avatars */}
+      
       <div className="flex items-center space-x-1">
         {accounts.map((account) => (
           <div key={account.id} className="relative">
@@ -61,7 +61,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
                 onClick={() => onSwitchAccount(account)}
               />
             </Tooltip>
-            {/* Active indicator */}
+            
             {account.id === currentAccount?.id && (
               <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-400 rounded-full border border-black"></div>
             )}
@@ -69,7 +69,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
         ))}
       </div>
 
-      {/* Add Account Button */}
+      
       <Tooltip content="Añadir cuenta" side="bottom">
         <Button
           onClick={onAddAccount}
@@ -83,7 +83,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
         </Button>
       </Tooltip>
 
-      {/* Logout Button */}
+      
       <Tooltip content="Cerrar sesión" side="bottom">
         <Button
           onClick={() => currentAccount && onLogoutAccount(currentAccount.id)}

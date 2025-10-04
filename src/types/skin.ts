@@ -1,12 +1,11 @@
-// Tipos para el sistema de gestión de skins
 
 export interface SkinData {
   id: string;
   name: string;
-  file?: File; // Opcional porque se pierde al serializar
-  fileData?: ArrayBuffer; // Datos del archivo para re-subir
-  url: string; // URL de MineSkin
-  textureId: string; // ID de textura de MineSkin
+  file?: File; 
+  fileData?: ArrayBuffer; 
+  url: string; 
+  textureId: string; 
   variant: 'classic' | 'slim';
   uploadedAt: Date;
   isActive: boolean;
@@ -46,7 +45,7 @@ export interface SkinSelectorProps {
 export type SkinModel = 'classic' | 'slim';
 
 export interface MineSkinUploadRequest {
-  file: string; // Base64 encoded PNG
+  file: string; // Base64 
   variant?: SkinModel;
 }
 
