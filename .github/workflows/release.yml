@@ -28,6 +28,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get version from tauri.conf.json
+        id: version
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -65,28 +71,8 @@ jobs:
           projectPath: src-tauri
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
-
-  # Optional: Create a draft release when all builds are done
-  release:
-    needs: publish-tauri
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Get version from tauri.conf.json
-        id: version
-        run: |
-          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Release v${{ steps.version.outputs.version }}
-          body: "Automated release from commit ${GITHUB_SHA}"
-          draft: false
+          uploadRelease: true
+          releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.version }}'
+          releaseBody: 'Automated release from commit ${{ github.sha }}'
+          releaseDraft: false
           prerelease: false

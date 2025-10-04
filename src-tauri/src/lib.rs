@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::Write;
 use tauri::Url;
 
-// New structs for distribution system
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistributionManifest {
     pub distribution: DistributionInfo,
@@ -81,7 +81,7 @@ pub struct FileEntry {
     pub sha256: String,
     pub size: Option<u64>,
     pub required: Option<bool>,
-    pub target: Option<String>, // For configs, where to place the file
+    pub target: Option<String>, 
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,13 +135,6 @@ struct MinecraftAuthResponse {
     expires_in: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct MinecraftProfile {
-    id: String,
-    name: String,
-    skins: Option<Vec<HashMap<String, serde_json::Value>>>,
-    capes: Option<Vec<HashMap<String, serde_json::Value>>>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthSession {
