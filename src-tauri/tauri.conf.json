@@ -41,6 +41,14 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5d21xcTBBNHZhRkpVbWQwbzhZdTVYSXNtZWdGY2c1RXg2YjRqNUpWV0Juc0FBQkFBQUFBQUFBQUFBQUlBQUFBQURhQnhMMWV2bGk3TGZNdGcyU1BWUmJjemlqSlVJd1ZHUkVmU2JyUmM0NWduc1pjd0xyMVg3WUtZdElTWGY3SmlpbG5MQzlrdmhHbnFUTkVuS0pHNUlTVWkxUE1HUWF2ODdaUFVla0gwRWJqalZobXV4U2tUQWk0aGQ2Y0JvdWVpaElwNHNwNzYrR009Cg=="
     }
   }
 }

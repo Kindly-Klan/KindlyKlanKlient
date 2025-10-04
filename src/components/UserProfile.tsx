@@ -44,15 +44,15 @@ const UserProfile: React.FC<UserProfileProps> = ({
   };
 
   return (
-    <div className="flex items-center space-x-2 bg-black/30 backdrop-blur-md rounded-full px-3 py-2 border border-white/10">
+    <div className="flex items-center space-x-2 bg-black/30 backdrop-blur-md rounded-full px-3 py-2 border border-white/10 select-none">
       
       <div className="flex items-center space-x-1">
         {accounts.map((account) => (
           <div key={account.id} className="relative">
-            <Tooltip content={account.user.username} side="bottom">
+            <Tooltip content={account.user.username} side="top">
               <img
                 src={`https://crafatar.com/avatars/${account.user.uuid}?size=32&overlay=true`}
-                className={`w-6 h-6 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                className={`w-6 h-6 rounded-lg border-2 cursor-pointer transition-all duration-200 select-none ${
                   account.id === currentAccount?.id
                     ? 'border-blue-400 shadow-lg shadow-blue-400/50'
                     : 'border-white/20 hover:border-white/40'
@@ -70,12 +70,12 @@ const UserProfile: React.FC<UserProfileProps> = ({
       </div>
 
       
-      <Tooltip content="Añadir cuenta" side="bottom">
+      <Tooltip content="Añadir cuenta" side="top">
         <Button
           onClick={onAddAccount}
           size="sm"
           variant="ghost"
-          className="w-6 h-6 p-0 text-white/60 hover:text-white hover:bg-white/10 rounded-full"
+          className="w-6 h-6 p-0 text-white/60 hover:text-white hover:bg-white/10 rounded-full cursor-pointer select-none"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -84,12 +84,12 @@ const UserProfile: React.FC<UserProfileProps> = ({
       </Tooltip>
 
       
-      <Tooltip content="Cerrar sesión" side="bottom">
+      <Tooltip content="Cerrar sesión" side="top">
         <Button
           onClick={() => currentAccount && onLogoutAccount(currentAccount.id)}
           size="sm"
           variant="ghost"
-          className="w-6 h-6 p-0 text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-full"
+          className="w-6 h-6 p-0 text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-full cursor-pointer select-none"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

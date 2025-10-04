@@ -15,10 +15,10 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children, side = 'right' }) 
   };
 
   return (
-    <div className="relative group inline-block">
+    <div className="relative group select-none">
       {children}
       <div className={`pointer-events-none absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 ${sideClasses[side]}`}>
-        <div className="bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg border border-white/10">
+        <div className="bg-black/90 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap shadow-lg border border-white/20 backdrop-blur-sm">
           {content}
         </div>
       </div>

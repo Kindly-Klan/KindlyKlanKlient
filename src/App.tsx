@@ -257,7 +257,7 @@ function App() {
     setIsLoginVisible(true);
     localStorage.removeItem('kkk_active_account');
 
-    addToast('Añade una nueva cuenta desde la página de login', 'info');
+    addToast('Logéate para añadir una nueva cuenta', 'info');
   };
 
   const handleSwitchAccount = (account: Account) => {
@@ -465,14 +465,14 @@ function App() {
                       <img
                         src="/src/assets/kindlyklan.png"
                         alt="KindlyKlan"
-                        className="w-48 h-48 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                        className="w-48 h-48 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] select-none"
                       />
                     </div>
                     <div className={`transition-all duration-500 delay-400 ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 <Button
                         onClick={handleMicrosoftAuth}
                         disabled={isLoading}
-                        className="relative bg-black hover:bg-gray-900 text-white border-2 border-gray-600 hover:border-gray-400 rounded-2xl px-16 py-6 text-2xl font-semibold transition-all duration-300 shadow-2xl hover:shadow-white/20 group overflow-hidden min-w-[380px]"
+                        className="relative bg-black hover:bg-gray-900 text-white border-2 border-gray-600 hover:border-gray-400 rounded-2xl px-16 py-6 text-2xl font-semibold transition-all duration-300 shadow-2xl hover:shadow-white/20 group overflow-hidden min-w-[380px] cursor-pointer"
                       >
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                         <img src="/src/assets/icons/microsoft.svg" alt="Microsoft" className="w-8 h-8 mr-3" />
@@ -492,7 +492,7 @@ function App() {
             </div>
                ) : !selectedInstance ? (
                  <div className="flex items-center justify-center h-full">
-                   <div className="text-center group cursor-pointer transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
+                   <div className="text-center group transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
                      <img 
                        src="/src/assets/kindlyklan.png" 
                        alt="KindlyKlan" 

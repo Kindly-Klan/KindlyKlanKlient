@@ -69,8 +69,26 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 
   const getButtonContent = () => {
     switch (state) {
-      case 'launching':
-        return 'Lanzando...';
+      case 'launching': {
+        const timeText = formatTimeForMarquee(playTime);
+        return (
+          <div className="marquee-container">
+            <div className="marquee-text">
+              {timeText.split('').map((letter, index) => (
+                <span
+                  key={index}
+                  className="marquee-letter"
+                  style={{
+                    animationDelay: `${(2.5 / timeText.length) * (timeText.length - 1 - index) * -1}s`
+                  }}
+                >
+                  {letter === ' ' ? '\u00A0' : letter}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      }
       case 'playing': {
         const timeText = formatTimeForMarquee(playTime);
         return (
@@ -92,14 +110,14 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
         );
       }
       default:
-        return 'JUGAR AHORA';
+        return 'JUGAR';
     }
   };
 
   const getButtonClass = () => {
     const baseClass = "bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 hover:from-blue-700 hover:via-blue-800 hover:to-indigo-900 text-white font-bold text-xl px-16 py-8 rounded-full shadow-2xl transform transition-all duration-500 border-2 text-center relative overflow-hidden min-w-[16rem]";
 
-    if (state === 'playing') {
+    if (state === 'playing' || state === 'launching') {
       return `${baseClass} border-green-400/50 hover:border-green-300/70 bg-gradient-to-r from-green-600 via-green-700 to-emerald-800 hover:from-green-700 hover:via-green-800 hover:to-emerald-900`;
     }
 
@@ -113,19 +131,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
         disabled={disabled || state !== 'idle' || isJavaInstalling}
         className={`${getButtonClass()} ${className}`}
       >
-        {state === 'launching' && (
-          <div className="absolute inset-0 rounded-full">
-            <div
-              className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-400 animate-spin"
-              style={{
-                animation: 'spin 1s linear infinite',
-                borderTopColor: '#60a5fa'
-              }}
-            />
-          </div>
-        )}
-
-        {state === 'playing' && (
+        {(state === 'launching' || state === 'playing') && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="marquee-container transition-all duration-500">
               <div className="marquee-text">
@@ -146,7 +152,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
         )}
 
         <span className="relative z-10">
-          {state === 'playing' ? '' : getButtonContent()}
+          {state === 'launching' || state === 'playing' ? '' : getButtonContent()}
         </span>
       </Button>
     </div>

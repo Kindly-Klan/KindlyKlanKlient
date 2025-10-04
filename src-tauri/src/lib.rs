@@ -1623,10 +1623,53 @@ async fn create_temp_file(file_name: String, file_data: Vec<u8>) -> Result<Strin
     Ok(file_path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn check_for_updates(app_handle: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    match updater.check().await {
+        Ok(update) => {
+            if let Some(update) = update {
+                Ok(format!("Update available: {}", update.version))
+            } else {
+                Ok("No updates available".to_string())
+            }
+        }
+        Err(e) => Err(format!("Failed to check for updates: {}", e))
+    }
+}
+
+#[tauri::command]
+async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    match updater.check().await {
+        Ok(update) => {
+            if let Some(update) = update {
+                update.download_and_install(
+                    |chunk_length, content_length| {
+                        println!("Downloaded {} of {:?}", chunk_length, content_length);
+                    },
+                    || {
+                        println!("Download finished");
+                    }
+                ).await.map_err(|e| format!("Failed to download and install update: {}", e))?;
+                Ok("Update installed successfully".to_string())
+            } else {
+                Ok("No updates available to install".to_string())
+            }
+        }
+        Err(e) => Err(format!("Failed to check for updates: {}", e))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
+        .plugin(tauri_plugin_updater::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             get_versions,
@@ -1646,7 +1689,9 @@ pub fn run() {
             upload_skin_to_mojang,
             set_skin_variant,
             get_minecraft_profile,
-            create_temp_file
+            create_temp_file,
+            check_for_updates,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -77,3 +77,73 @@ jobs:
           releaseBody: 'Automated release from commit ${{ github.sha }}'
           releaseDraft: false
           prerelease: false
+
+      - name: Generate updater artifacts
+        run: |
+          cd src-tauri
+          pnpm tauri build --no-bundle
+          mkdir -p ../dist/updates
+          # Move updater artifacts to a common location
+          find target/release/bundle -name "*.sig" -o -name "*.tar.gz" | head -10 | xargs -I {} cp {} ../dist/updates/
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-artifacts-${{ matrix.platform }}
+          path: dist/updates/
+          retention-days: 30
+
+  create-latest-json:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from tauri.conf.json
+        id: version
+        uses: notiz-dev/github-action-json-property@release
+        with:
+          path: 'src-tauri/tauri.conf.json'
+          prop_path: 'version'
+
+      - name: Create latest.json
+        run: |
+          cat > latest.json << EOF
+          {
+            "version": "${{ steps.version.outputs.prop }}",
+            "notes": "Automated release from commit ${{ github.sha }}",
+            "pub_date": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+            "platforms": {
+              "linux-x86_64": {
+                "signature": "$(find artifacts -name "*.AppImage.tar.gz.sig" | head -1 | xargs cat)",
+                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$(find artifacts -name "*linux*.AppImage.tar.gz" | head -1 | xargs basename)"
+              },
+              "windows-x86_64": {
+                "signature": "$(find artifacts -name "*.msi.zip.sig" | head -1 | xargs cat)",
+                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$(find artifacts -name "*windows*.msi.zip" | head -1 | xargs basename)"
+              },
+              "darwin-x86_64": {
+                "signature": "$(find artifacts -name "*darwin-x86_64*.app.tar.gz.sig" | head -1 | xargs cat)",
+                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$(find artifacts -name "*darwin-x86_64*.app.tar.gz" | head -1 | xargs basename)"
+              },
+              "darwin-aarch64": {
+                "signature": "$(find artifacts -name "*darwin-aarch64*.app.tar.gz.sig" | head -1 | xargs cat)",
+                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$(find artifacts -name "*darwin-aarch64*.app.tar.gz" | head -1 | xargs basename)"
+              }
+            }
+          }
+          EOF
+
+      - name: Upload latest.json to release
+        run: |
+          gh release upload v${{ steps.version.outputs.prop }} latest.json --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

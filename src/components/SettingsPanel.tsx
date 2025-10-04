@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { UpdaterService, UpdateInfo } from '@/services/updater';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -14,11 +15,56 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   distributionUrl,
   onReloadDistribution
 }) => {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
+
   const handleReload = () => {
     console.log('SettingsPanel: Reloading distribution');
     onReloadDistribution();
-    onClose();  
+    onClose();
   };
+
+  const handleCheckUpdates = async () => {
+    setIsChecking(true);
+    try {
+      const info = await UpdaterService.checkForUpdates();
+      setUpdateInfo(info);
+    } catch (error) {
+      console.error('Error checking updates:', error);
+      setUpdateInfo({
+        version: '',
+        available: false,
+        message: 'Error al verificar actualizaciones'
+      });
+    }
+    setIsChecking(false);
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!updateInfo?.available) return;
+
+    setIsInstalling(true);
+    try {
+      const result = await UpdaterService.installUpdate();
+      if (result.success) {
+        alert('Actualización instalada correctamente. La aplicación se reiniciará.');
+        // La aplicación se reiniciará automáticamente después de la instalación
+      } else {
+        alert(`Error al instalar actualización: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error installing update:', error);
+      alert('Error al instalar la actualización');
+    }
+    setIsInstalling(false);
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      handleCheckUpdates();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -40,7 +86,48 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="space-y-4">
-         
+
+          <div className="bg-black/20 rounded-lg p-3 border border-white/10">
+            <h3 className="text-sm font-medium text-white mb-2">Actualizaciones</h3>
+            {updateInfo && (
+              <div className="mb-3">
+                {updateInfo.available ? (
+                  <div className="text-green-400 text-xs mb-2">
+                    ✓ Actualización disponible: v{updateInfo.version}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-xs mb-2">
+                    ✓ Está usando la versión más reciente
+                  </div>
+                )}
+                <p className="text-xs text-gray-300">
+                  {updateInfo.message}
+                </p>
+              </div>
+            )}
+            <div className="flex space-x-2">
+              <Button
+                onClick={handleCheckUpdates}
+                disabled={isChecking}
+                variant="outline"
+                size="sm"
+                className="text-xs border-white/20 text-white hover:bg-white/10 disabled:opacity-50"
+              >
+                {isChecking ? 'Verificando...' : 'Verificar'}
+              </Button>
+              {updateInfo?.available && (
+                <Button
+                  onClick={handleInstallUpdate}
+                  disabled={isInstalling}
+                  size="sm"
+                  className="text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                >
+                  {isInstalling ? 'Instalando...' : 'Instalar'}
+                </Button>
+              )}
+            </div>
+          </div>
+
           <div className="bg-black/20 rounded-lg p-3 border border-white/10">
             <h3 className="text-sm font-medium text-white mb-2">Distribución</h3>
             <p className="text-xs text-gray-300 mb-1">

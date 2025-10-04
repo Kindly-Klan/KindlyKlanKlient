@@ -3,7 +3,7 @@ import LaunchButton from './LaunchButton';
 
 
 import minecraftIcon from '@/assets/icons/minecraft.svg';
-import fabricIcon from '@/assets/icons/fabricmc.svg';
+import fabricmcIcon from '@/assets/icons/fabricmc.svg';
 import neoforgeIcon from '@/assets/icons/neoforge.svg';
 
 interface DistributionManifest {
@@ -107,7 +107,7 @@ const InstanceView: React.FC<InstanceViewProps> = ({
   }, [instance.background, distributionBaseUrl]);
 
   return (
-    <div className={`relative h-full w-full overflow-hidden transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+      <div className={`relative h-full w-full overflow-hidden transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
 
       <div className="absolute inset-0 z-0">
         {instance.background && !backgroundLoaded && !backgroundError && (
@@ -134,56 +134,58 @@ const InstanceView: React.FC<InstanceViewProps> = ({
 
       <div className="relative z-20 h-full flex flex-col">
 
-        <div className="flex-1 flex items-center justify-center p-8">
+        <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <div className="text-center max-w-2xl mx-auto">
 
-            <div className="mb-8">
+            <div className="mb-6">
               {instance.icon ? (
                 <img
                   src={`${distributionBaseUrl}/${instance.icon}`}
                   alt={instance.name}
-                  className="w-32 h-32 mx-auto rounded-2xl object-cover shadow-2xl border-4 border-white/20"
+                  className="w-40 h-40 mx-auto rounded-3xl object-cover shadow-2xl border-4 border-white/30 hover:border-white/50 transition-all duration-300"
                 />
               ) : (
-                <div className="w-32 h-32 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl border-4 border-white/20">
-                  <span className="text-white font-bold text-4xl">
+                <div className="w-40 h-40 mx-auto rounded-3xl bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700 flex items-center justify-center shadow-2xl border-4 border-white/30 hover:border-white/50 transition-all duration-300">
+                  <span className="text-white font-black text-5xl drop-shadow-lg">
                     {instance.name.charAt(0).toUpperCase()}
                   </span>
                 </div>
               )}
             </div>
 
-            <h1 className="text-5xl font-bold text-white mb-4 text-shadow-lg">
-              {instance.name}
-            </h1>
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <h1 className="text-6xl font-black tracking-wide text-center text-white drop-shadow-lg">
+                {instance.name}
+              </h1>
+            </div>
 
-            <p className="text-xl text-gray-200 mb-8 leading-relaxed">
+            <p className="text-lg text-gray-300 mb-8 leading-relaxed max-w-xl mx-auto bg-black/20 backdrop-blur-sm px-6 py-4 rounded-2xl border border-white/10">
               {instance.description}
             </p>
 
-            <div className="flex items-center justify-center space-x-6 text-gray-300 mb-8">
-              <span className="bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full border border-white/20 flex items-center space-x-2 shadow-lg">
-                <img src={minecraftIcon} alt="Minecraft" className="w-5 h-5 filter brightness-0 invert" />
-                <span className="text-white font-medium">{instance.minecraft_version}</span>
+            <div className="flex items-center justify-center space-x-4 text-gray-300 mb-8">
+              <span className="bg-gradient-to-r from-green-600/80 to-green-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-green-400/30 flex items-center space-x-2 shadow-lg">
+                <img src={minecraftIcon} alt="Minecraft" className="w-4 h-4 filter brightness-0 invert" />
+                <span className="text-white font-semibold text-sm">{instance.minecraft_version}</span>
               </span>
-              <span className="bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full border border-white/20 shadow-lg">
-                <span className="text-white font-medium">v{instance.version}</span>
+              <span className="bg-gradient-to-r from-blue-600/80 to-blue-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-400/30 shadow-lg">
+                <span className="text-white font-semibold text-sm">v{instance.version}</span>
               </span>
               {instance.mod_loader && (
-                <span className="bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full border border-white/20 flex items-center space-x-2 shadow-lg">
+                <span className="bg-gradient-to-r from-purple-600/80 to-purple-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-400/30 flex items-center space-x-2 shadow-lg">
                   <img
-                    src={instance.mod_loader.type === 'fabric' ? fabricIcon : neoforgeIcon}
+                    src={instance.mod_loader.type === 'fabric' ? fabricmcIcon : neoforgeIcon}
                     alt={instance.mod_loader.type}
-                    className="w-5 h-5"
+                    className="w-4 h-4"
                   />
-                  <span className="text-white font-medium">{instance.mod_loader.version}</span>
+                  <span className="text-white font-semibold text-sm">{instance.mod_loader.version}</span>
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        <div className="flex justify-center pb-12">
+        <div className={`flex justify-center pb-12 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           <LaunchButton
             onLaunch={() => onLaunch(instance)}
             className="text-center"
