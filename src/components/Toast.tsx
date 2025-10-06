@@ -11,14 +11,8 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    
     setTimeout(() => setIsVisible(true), 100);
-
-    
-    const timer = setTimeout(() => {
-      handleClose();
-    }, duration);
-
+    const timer = setTimeout(() => { handleClose(); }, duration);
     return () => clearTimeout(timer);
   }, [duration]);
 

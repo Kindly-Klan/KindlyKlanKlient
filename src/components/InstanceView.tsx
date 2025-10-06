@@ -49,7 +49,7 @@ const InstanceView: React.FC<InstanceViewProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const instance = distribution.instances.find(inst => inst.id === instanceId);
 
-  // Trigger animation when instance changes
+  // Animate on instance change
   useEffect(() => {
     if (instanceId) {
       setIsVisible(false);

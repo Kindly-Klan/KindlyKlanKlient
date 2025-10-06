@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/Loader";
@@ -7,7 +8,15 @@ import Sidebar from "@/components/Sidebar";
 import UserProfile from "@/components/UserProfile";
 import SettingsPanel from "@/components/SettingsPanel";
 import InstanceView from "@/components/InstanceView";
+import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
+type AssetDownloadProgress = {
+  current: number;
+  total: number;
+  percentage: number;
+  current_file: string;
+  status: string;
+};
 
 
 const getRequiredJavaVersion = (minecraftVersion: string): string => {
@@ -52,7 +61,14 @@ const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> =>
   }
 };
 
-const launchInstance = async (instance: any, addToast: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void, onComplete?: () => void): Promise<void> => {
+const launchInstance = async (
+  instance: any,
+  currentAccount: Account | null,
+  addToast: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void,
+  onComplete?: () => void,
+  setIsDownloadingAssets?: (downloading: boolean) => void,
+  setDownloadProgress?: Dispatch<SetStateAction<AssetDownloadProgress | null>>
+): Promise<void> => {
   let javaVersion = '';
 
   try {
@@ -69,18 +85,65 @@ const launchInstance = async (instance: any, addToast: (message: string, type?: 
       javaVersion: javaVersion
     });
 
+    // Descargar assets si no están descargados
+    if (setIsDownloadingAssets && setDownloadProgress) {
+      setIsDownloadingAssets(true);
+      setDownloadProgress(null);
+
+      try {
+        // Simulación ligera de progreso inicial
+        setDownloadProgress({ current: 0, total: 100, percentage: 0, current_file: 'Starting...', status: 'Preparing' } as any);
+
+        const progressTimer = setInterval(() => {
+          setDownloadProgress((prev: AssetDownloadProgress | null) => {
+            if (!prev) return prev;
+            const next = Math.min(50, (prev.percentage || 0) + 1);
+            return { ...prev, percentage: next, current: next, total: 100, status: 'Processing' };
+          });
+        }, 500);
+
+        await invoke<string>('download_instance_assets', {
+          appHandle: undefined,
+          instanceId: instance.id,
+          distributionUrl: 'http://files.kindlyklan.com:26500/dist'
+        });
+
+        clearInterval(progressTimer);
+        setDownloadProgress({ current: 100, total: 100, percentage: 100, current_file: 'Completed', status: 'Done' } as any);
+
+        addToast('Assets descargados correctamente', 'success');
+
+      } catch (error) {
+        console.error('Error downloading assets:', error);
+        addToast('Error descargando assets de la instancia', 'error');
+        throw error;
+      }
+    }
+
+    // Lanzar Minecraft con autenticación
     await invoke<string>('launch_minecraft_with_java', {
+      appHandle: undefined,
       instanceId: instance.id,
       javaPath: javaPath,
       minecraftVersion: instance.minecraft_version,
-      javaVersion: javaVersion
+      javaVersion: javaVersion,
+      accessToken: currentAccount?.user.access_token || ''
     });
 
+    if (setIsDownloadingAssets) setIsDownloadingAssets(false);
+    if (setDownloadProgress) setDownloadProgress(null);
     addToast(`Instancia "${instance.name}" lanzada correctamente`, 'success');
   } catch (error) {
     console.error('Error launching instance:', error);
     if (onComplete) {
       onComplete();
+    }
+
+    if (setIsDownloadingAssets) {
+      setIsDownloadingAssets(false);
+    }
+    if (setDownloadProgress) {
+      setDownloadProgress(null);
     }
 
     addToast(`Error lanzando ${instance.name}`, 'error');
@@ -167,20 +230,17 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [distributionLoaded, setDistributionLoaded] = useState(false);
   const [skinViewOpen, setSkinViewOpen] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<AssetDownloadProgress | null>(null);
+  const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const initialized = useRef(false);
 
 
-  useEffect(() => {
-    console.log('distributionLoaded changed to:', distributionLoaded);
-  }, [distributionLoaded]);
+  // Track distribution loaded state if needed
+  useEffect(() => {}, [distributionLoaded]);
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
   useEffect(() => {
-    if (initialized.current) {
-      console.log('App useEffect triggered but already initialized');
-      return;
-    }
-    console.log('App useEffect triggered - initializing');
+    if (initialized.current) return;
     initialized.current = true;
     loadDistribution();
     checkExistingSession();
@@ -334,23 +394,15 @@ function App() {
 
 
   const loadDistribution = async () => {
-    console.log('loadDistribution called, distributionLoaded:', distributionLoaded);
-    if (distributionLoaded) {
-      console.log('Distribution already loaded, skipping');
-      return; 
-    }
-
-    console.log('Loading distribution from:', DISTRIBUTION_URL);
+    if (distributionLoaded) return; 
     try {
       const manifest = await invoke<DistributionManifest>('load_distribution_manifest', {
         url: DISTRIBUTION_URL
       });
       setDistribution(manifest);
       setDistributionLoaded(true);
-      console.log('Distribution loaded successfully:', manifest.distribution.name);
       addToast(`¡Instancias cargadas correctamente!`, 'success');
     } catch (error) {
-      console.error('Error loading distribution:', error);
       addToast('Error al cargar la distribución', 'error');
     }
   };
@@ -506,18 +558,25 @@ function App() {
                      instanceId={selectedInstance}
                      distribution={distribution}
                      distributionBaseUrl={distribution.distribution.base_url}
-                     isJavaInstalling={showLoader}
+                     isJavaInstalling={showLoader || isDownloadingAssets}
                      onLaunch={async (instance) => {
-                       setLoaderText("Descargando Java...");
+                       if (isDownloadingAssets) {
+                         setLoaderText("Descargando assets de instancia...");
+                       } else {
+                         setLoaderText("Descargando Java...");
+                       }
                        setShowLoader(true);
 
                        await launchInstance(
                          instance,
+                         currentAccount,
                          addToast,
                          () => {
                            setShowLoader(false);
                            setLoaderText("Iniciando sesión...");
-                         }
+                         },
+                         setIsDownloadingAssets,
+                         setDownloadProgress
                        );
                      }}
                    />
@@ -536,6 +595,16 @@ function App() {
       {showLoader && (
         <div className={`blur-overlay transition-all duration-500 ${isTransitioning ? 'opacity-0 scale-110' : 'opacity-100 scale-100'}`}>
           <Loader text={loaderText} />
+        </div>
+      )}
+
+      {downloadProgress && (
+        <div className="fixed bottom-4 right-4 z-[10000] space-y-2">
+          <DownloadProgressToast
+            message="Descargando assets de instancia"
+            percentage={downloadProgress.percentage}
+            onClose={() => setDownloadProgress(null)}
+          />
         </div>
       )}
 

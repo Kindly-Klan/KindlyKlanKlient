@@ -1,10 +1,9 @@
 import { SkinData } from '@/types/skin';
 import { invoke } from '@tauri-apps/api/core';
 
+// Mojang skin API service
 export class MojangSkinApiService {
-  /**
-   * Sube una imagen de skin directamente a la API de Mojang
-   */
+  // Upload skin directly to Mojang API
   static async uploadSkin(file: File, variant: 'classic' | 'slim' = 'classic'): Promise<SkinData> {
     try {
       const validation = this.validateSkinFile(file);
@@ -12,12 +11,12 @@ export class MojangSkinApiService {
         throw new Error(validation.error);
       }
 
-      console.log('Subiendo skin a Mojang API...', { variant, fileSize: file.size });
+      console.log('Uploading skin to Mojang API...', { variant, fileSize: file.size });
 
       const authSession = await this.getAuthSession();
 
       if (!authSession?.access_token) {
-        throw new Error('Usuario no autenticado. Inicia sesión para cambiar tu skin.');
+        throw new Error('User not authenticated. Please log in to change your skin.');
       }
 
       const tempFilePath = await this.createTempFile(file);
@@ -34,24 +33,22 @@ export class MojangSkinApiService {
         id: `skin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: file.name,
         file,
-        url: '', 
-        textureId: '', 
+        url: '',
+        textureId: '',
         variant,
         uploadedAt: new Date(),
-        isActive: true 
+        isActive: true
       };
 
       return skinData;
 
     } catch (error) {
       console.error('Error uploading skin to Mojang:', error);
-      throw new Error(`Error al subir skin: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      throw new Error(`Failed to upload skin: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Obtiene la sesión de autenticación actual
-   */
+  // Get current authentication session
   private static async getAuthSession(): Promise<any> {
     try {
       const savedSession = localStorage.getItem('kkk_session');
@@ -65,9 +62,7 @@ export class MojangSkinApiService {
     }
   }
 
-  /**
-   * Crea un archivo temporal en el sistema de archivos para que el backend pueda leerlo
-   */
+  // Create temporary file for backend to read
   private static async createTempFile(_file: File): Promise<string> {
     try {
       const tempFileName = `skin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.png`;
@@ -79,20 +74,18 @@ export class MojangSkinApiService {
       return tempPath;
     } catch (error) {
       console.error('Error creating temporary file:', error);
-      throw new Error('Error creando archivo temporal');
+      throw new Error('Failed to create temporary file');
     }
   }
 
-  /**
-   * Valida que el archivo sea una imagen PNG válida de 64x64 píxeles
-   */
+  // Validate skin file (PNG, <24KB)
   static validateSkinFile(file: File): { valid: boolean; error?: string } {
     if (file.type !== 'image/png') {
-      return { valid: false, error: 'El archivo debe ser una imagen PNG' };
+      return { valid: false, error: 'File must be a PNG image' };
     }
 
     if (file.size > 24 * 1024) {
-      return { valid: false, error: 'La imagen debe ser menor de 24KB' };
+      return { valid: false, error: 'Image must be smaller than 24KB' };
     }
 
     return { valid: true };

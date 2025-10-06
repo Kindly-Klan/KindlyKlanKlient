@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { UpdaterService, UpdateInfo } from '@/services/updater';
+import { invoke } from '@tauri-apps/api/core';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const [debugResult, setDebugResult] = useState<string | null>(null);
+  const [isTestingUrl, setIsTestingUrl] = useState(false);
 
   const handleReload = () => {
     console.log('SettingsPanel: Reloading distribution');
@@ -58,6 +61,23 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       alert('Error al instalar la actualización');
     }
     setIsInstalling(false);
+  };
+
+  const handleTestManifestUrl = async () => {
+    setIsTestingUrl(true);
+    setDebugResult(null);
+
+    try {
+      const result = await invoke<string>('test_manifest_url', {
+        distributionUrl: distributionUrl,
+        instanceId: 'thanatophobia2'
+      });
+      setDebugResult(result);
+    } catch (error) {
+      setDebugResult(`Error: ${error}`);
+    } finally {
+      setIsTestingUrl(false);
+    }
   };
 
   useEffect(() => {
@@ -124,6 +144,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 >
                   {isInstalling ? 'Instalando...' : 'Instalar'}
                 </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-black/20 rounded-lg p-3 border border-white/10">
+            <h3 className="text-sm font-medium text-white mb-2">Debugging</h3>
+            <div className="space-y-2">
+              <Button
+                onClick={handleTestManifestUrl}
+                disabled={isTestingUrl}
+                variant="outline"
+                size="sm"
+                className="text-xs border-white/20 text-white hover:bg-white/10 disabled:opacity-50 w-full"
+              >
+                {isTestingUrl ? 'Probando...' : 'Probar URL del Manifest'}
+              </Button>
+
+              {debugResult && (
+                <div className="bg-black/40 rounded p-2 border border-white/10">
+                  <p className="text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                    {debugResult}
+                  </p>
+                </div>
               )}
             </div>
           </div>
