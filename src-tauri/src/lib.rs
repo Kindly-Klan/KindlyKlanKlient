@@ -1122,7 +1122,6 @@ async fn download_java(version: String) -> Result<String, String> {
     use std::fs::File;
     use std::io::Write;
     use std::path::Path;
-    use std::process::Command;
 
     let kindly_dir = std::env::var("USERPROFILE")
         .map(|p| Path::new(&p).join(".kindlyklanklient"))
@@ -1180,43 +1179,27 @@ async fn download_java(version: String) -> Result<String, String> {
         let _ = std::fs::remove_dir_all(&java_dir);
     }
 
-    // Extract archive using appropriate tool for the platform
-    if cfg!(target_os = "windows") {
-        let seven_zip_result = Command::new("7z")
-            .args(&["x", &temp_file.to_string_lossy(), &format!("-o{}", runtime_dir.display()), "-y"])
-            .output();
-
-        match seven_zip_result {
-            Ok(output) => {
-                if output.status.success() {
-                    // 7-Zip extraction succeeded
-                } else {
-                    let error = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("7-Zip extraction failed: {}", error));
-                }
-            },
-            Err(_) => {
-                // Use PowerShell to extract zip on Windows
-                let output = Command::new("powershell")
-                    .args(&["-Command", &format!("Expand-Archive -Path '{}' -DestinationPath '{}' -Force", temp_file.display(), runtime_dir.display())])
-                    .output()
-                    .map_err(|e| format!("Failed to extract Java archive: {}", e))?;
-
-                if !output.status.success() {
-                    return Err(format!("PowerShell extraction failed: {}", String::from_utf8_lossy(&output.stderr)));
-                }
+    // Extract archive natively without spawning console windows
+    if temp_file.extension().map_or(false, |e| e == "zip") {
+        // Windows ZIP
+        let reader = std::fs::File::open(&temp_file).map_err(|e| format!("Open zip failed: {}", e))?;
+        let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("Read zip failed: {}", e))?;
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| format!("Zip index failed: {}", e))?;
+            let outpath = runtime_dir.join(file.mangled_name());
+            if file.name().ends_with('/') {
+                std::fs::create_dir_all(&outpath).map_err(|e| format!("Create dir failed: {}", e))?;
+            } else {
+                if let Some(p) = outpath.parent() { std::fs::create_dir_all(p).map_err(|e| format!("Create parent failed: {}", e))?; }
+                let mut outfile = std::fs::File::create(&outpath).map_err(|e| format!("Create file failed: {}", e))?;
+                std::io::copy(&mut file, &mut outfile).map_err(|e| format!("Write file failed: {}", e))?;
             }
         }
     } else {
-        // Use tar for Unix systems
-        let output = Command::new("tar")
-            .args(&["-xzf", &temp_file.to_string_lossy(), "-C", &runtime_dir.to_string_lossy()])
-            .output()
-            .map_err(|e| format!("Failed to extract Java archive: {}", e))?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Extraction failed: {}", error));
+        // tar.gz (Unix) – intentar extraer con la crate `zip` no aplica; para simplificar, devolver error claro
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err("Unsupported archive format on this OS without external tools".to_string());
         }
     }
 
@@ -1610,6 +1593,7 @@ async fn download_all_assets(
     let client_checksums = checksums.clone();
 
     use futures_util::{stream, StreamExt};
+    let parallel = (num_cpus::get().saturating_sub(1)).max(4);
     stream::iter(all_assets.into_iter())
         .map(|asset| {
             let progress = progress.clone();
@@ -1674,7 +1658,7 @@ async fn download_all_assets(
                 Ok::<(), String>(())
             }
         })
-        .buffer_unordered(8)
+        .buffer_unordered(parallel)
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -2055,7 +2039,7 @@ async fn ensure_minecraft_client_present(instance_dir: &Path, mc_version: &str) 
 }
 
 // Download assets (asset index + objects) to instance_dir/assets
-async fn ensure_assets_present(instance_dir: &Path, mc_version: &str) -> Result<String, String> {
+async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: &Path, mc_version: &str) -> Result<String, String> {
     let version_dir = instance_dir.join("versions").join(mc_version);
     let json_path = version_dir.join(format!("{}.json", mc_version));
     if !json_path.exists() {
@@ -2088,7 +2072,7 @@ async fn ensure_assets_present(instance_dir: &Path, mc_version: &str) -> Result<
 
     let objects_dir = assets_dir.join("objects");
     tokio::fs::create_dir_all(&objects_dir).await.map_err(|e| e.to_string())?;
-    let mut _downloaded = 0usize;
+    let mut downloaded = 0usize;
     // Download in chunks to avoid overwhelming the server
     let mut pending: Vec<(String, String)> = Vec::new();
     for (_name, obj) in aidx.objects {
@@ -2101,9 +2085,21 @@ async fn ensure_assets_present(instance_dir: &Path, mc_version: &str) -> Result<
         }
     }
 
-    const CHUNK: usize = 50;
+    let total = pending.len();
+    let _ = app_handle.emit(
+        "asset-download-progress",
+        serde_json::json!({
+            "current": 0u64,
+            "total": total as u64,
+            "percentage": if total == 0 { 100.0 } else { 0.0 },
+            "current_file": "",
+            "status": "Mojang"
+        })
+    );
+
+    let parallel = (num_cpus::get().saturating_sub(1)).max(8);
     let client = reqwest::Client::builder().user_agent("KindlyKlanKlient/1.0").timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-    for chunk in pending.chunks(CHUNK) {
+    for chunk in pending.chunks(parallel) {
         let mut tasks = Vec::new();
         for (prefix, hash) in chunk.iter() {
             let url = format!("https://resources.download.minecraft.net/{}/{}", prefix, hash);
@@ -2122,10 +2118,32 @@ async fn ensure_assets_present(instance_dir: &Path, mc_version: &str) -> Result<
             }));
         }
         for t in tasks {
-            if let Ok(res) = t.await { res.map_err(|e| e.to_string())?; _downloaded += 1; }
+            if let Ok(res) = t.await { res.map_err(|e| e.to_string())?; downloaded += 1; }
+            let cur = downloaded as u64;
+            let _ = app_handle.emit(
+                "asset-download-progress",
+                serde_json::json!({
+                    "current": cur,
+                    "total": total as u64,
+                    "percentage": if total == 0 { 100.0 } else { ((cur as f32 / total as f32) * 100.0).min(100.0) },
+                    "current_file": "",
+                    "status": "Mojang"
+                })
+            );
         }
     }
     
+    let _ = app_handle.emit(
+        "asset-download-progress",
+        serde_json::json!({
+            "current": total as u64,
+            "total": total as u64,
+            "percentage": 100.0,
+            "current_file": "",
+            "status": "MojangCompleted"
+        })
+    );
+
     Ok(ai.id)
 }
 
@@ -2474,7 +2492,7 @@ async fn launch_minecraft_with_auth(
     let jvm_args = build_minecraft_jvm_args(access_token)?;
 
     // Ensure assets exist and get asset index ID
-    let asset_index_id = ensure_assets_present(&instance_dir, minecraft_version).await?;
+    let asset_index_id = ensure_assets_present(app_handle, &instance_dir, minecraft_version).await?;
 
     // Get Minecraft profile for username/uuid
     let profile_json = get_minecraft_profile(access_token.to_string()).await?;

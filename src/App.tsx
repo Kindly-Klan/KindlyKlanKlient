@@ -594,17 +594,15 @@ function App() {
         </div>
       )}
 
-      {downloadProgress && (
-        <div className="fixed bottom-4 right-4 z-[10000] space-y-2">
+      <ToastContainer toasts={toasts} onRemove={removeToast}>
+        {downloadProgress && (
           <DownloadProgressToast
-            message="Descargando assets de instancia"
+            message={downloadProgress.status === 'Completed' ? 'Assets descargados' : 'Descargando assets de instancia'}
             percentage={downloadProgress.percentage}
             onClose={() => setDownloadProgress(null)}
           />
-        </div>
-      )}
-
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+        )}
+      </ToastContainer>
     </div>
   );
 }
