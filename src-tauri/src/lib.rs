@@ -11,6 +11,8 @@ use reqwest;
 use std::fs::File;
 use std::io::Write;
 use tauri::{Url, Emitter};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1506,7 +1508,7 @@ async fn download_instance_assets(
     let instance_manifest = load_instance_manifest(&distribution_url, &instance_id).await?;
     let checksums = load_checksums(&distribution_url, &instance_id).await?;
 
-    download_all_assets(&instance_manifest, &checksums, &instance_dir, &distribution_url).await?;
+    download_all_assets(&app_handle, &instance_manifest, &checksums, &instance_dir, &distribution_url).await?;
 
     if let Some(mod_loader) = &instance_manifest.instance.mod_loader {
         install_mod_loader(&instance_manifest.instance.minecraft_version, mod_loader, &instance_dir).await?;
@@ -1573,6 +1575,7 @@ async fn load_checksums(distribution_url: &str, instance_id: &str) -> Result<Has
 
 // Download all instance assets with smart skip logic
 async fn download_all_assets(
+    app_handle: &tauri::AppHandle,
     manifest: &InstanceManifest,
     checksums: &HashMap<String, String>,
     instance_dir: &Path,
@@ -1601,50 +1604,92 @@ async fn download_all_assets(
         }
     }
 
-    for asset in all_assets.iter() {
-        let file_path = get_local_file_path(&instance_dir, &asset.path)?;
+    let total = all_assets.len() as u64;
+    let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let client_app = app_handle.clone();
+    let client_checksums = checksums.clone();
 
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent).await
-                .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
-        }
+    use futures_util::{stream, StreamExt};
+    stream::iter(all_assets.into_iter())
+        .map(|asset| {
+            let progress = progress.clone();
+            let client_app = client_app.clone();
+            let instance_dir = instance_dir.to_path_buf();
+            let client_checksums = client_checksums.clone();
+            async move {
+                // Emit starting file
+                let _ = client_app.emit(
+                    "asset-download-progress",
+                    serde_json::json!({
+                        "current": progress.load(std::sync::atomic::Ordering::Relaxed),
+                        "total": total,
+                        "percentage": ((progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / total as f32) * 100.0).min(100.0),
+                        "current_file": asset.name,
+                        "status": "Downloading"
+                    })
+                );
 
-        // Smart skip logic: MD5 -> size -> SHA256
-        if file_path.exists() {
-            let mut should_skip = false;
-
-            if let Some(expected_md5) = &asset.md5 {
-                if verify_file_md5(&file_path, expected_md5).is_ok() {
-                    should_skip = true;
+                let file_path = get_local_file_path(&instance_dir, &asset.path)?;
+                if let Some(parent) = file_path.parent() {
+                    tokio::fs::create_dir_all(parent).await
+                        .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
                 }
-            } else if let Some(expected_size) = asset.size {
-                if let Ok(meta) = std::fs::metadata(&file_path) {
-                    if meta.len() == expected_size {
-                        should_skip = true;
+
+                // Smart skip logic: MD5 -> size -> SHA256
+                let mut should_skip = false;
+                if file_path.exists() {
+                    if let Some(expected_md5) = &asset.md5 {
+                        if verify_file_md5(&file_path, expected_md5).is_ok() {
+                            should_skip = true;
+                        }
+                    } else if let Some(expected_size) = asset.size {
+                        if let Ok(meta) = std::fs::metadata(&file_path) {
+                            if meta.len() == expected_size { should_skip = true; }
+                        }
+                    } else if let Some(expected) = client_checksums.get(&asset.path) {
+                        if verify_file_checksum(&file_path, expected).is_ok() {
+                            should_skip = true;
+                        }
                     }
                 }
-            } else if let Some(expected) = checksums.get(&asset.path) {
-                if verify_file_checksum(&file_path, expected).is_ok() {
-                    should_skip = true;
+
+                if !should_skip {
+                    download_file_with_retry(&asset.url, &file_path).await?;
+                    if let Some(checksum) = client_checksums.get(&asset.path) {
+                        let _ = verify_file_checksum(&file_path, checksum);
+                    }
                 }
-            }
 
-            if should_skip {
-                continue;
+                let cur = progress.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let _ = client_app.emit(
+                    "asset-download-progress",
+                    serde_json::json!({
+                        "current": cur,
+                        "total": total,
+                        "percentage": ((cur as f32 / total as f32) * 100.0).min(100.0),
+                        "current_file": asset.name,
+                        "status": "Done"
+                    })
+                );
+                Ok::<(), String>(())
             }
-        }
+        })
+        .buffer_unordered(8)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
 
-        // Download file
-        download_file_with_retry(&asset.url, &file_path).await?;
-
-        // Verify checksum if available
-        if let Some(checksum) = checksums.get(&asset.path) {
-            if let Err(e) = verify_file_checksum(&file_path, checksum) {
-                println!("⚠️  Checksum verification failed for {}: {}", asset.name, e);
-                println!("   Continuing anyway - checksums may be outdated");
-            }
-        }
-    }
+    let _ = app_handle.emit(
+        "asset-download-progress",
+        serde_json::json!({
+            "current": total,
+            "total": total,
+            "percentage": 100.0,
+            "current_file": "",
+            "status": "Completed"
+        })
+    );
 
     Ok(())
 }
@@ -2116,7 +2161,13 @@ async fn run_fabric_installer(installer_path: &Path, instance_dir: &Path, minecr
     let java_path = find_java_executable().await?;
 
     // Run Fabric installer
-    let output = Command::new(&java_path)
+    let mut cmd = Command::new(&java_path);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd
         .args(&[
             "-jar",
             &installer_path.to_string_lossy(),
@@ -2291,7 +2342,13 @@ async fn run_neoforge_installer(installer_path: &Path, instance_dir: &Path, _min
     let java_path = find_java_executable().await?;
 
     // Run NeoForge installer
-    let output = Command::new(&java_path)
+    let mut cmd = Command::new(&java_path);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd
         .args(&[
             "-jar",
             &installer_path.to_string_lossy(),
@@ -2441,7 +2498,13 @@ async fn launch_minecraft_with_auth(
 
     // Execute Minecraft
     let main_class = select_main_class(&instance_dir);
-    let mut child = Command::new(java_path)
+    let mut command = Command::new(java_path);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command
         .args(&jvm_args)
         .arg("-cp")
         .arg(&classpath)

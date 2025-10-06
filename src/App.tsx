@@ -93,16 +93,11 @@ const launchInstance = async (
       setDownloadProgress(null);
 
       try {
-        // Simulación ligera de progreso inicial
-        setDownloadProgress({ current: 0, total: 100, percentage: 0, current_file: 'Starting...', status: 'Preparing' } as any);
-
-        const progressTimer = setInterval(() => {
-          setDownloadProgress((prev: AssetDownloadProgress | null) => {
-            if (!prev) return prev;
-            const next = Math.min(50, (prev.percentage || 0) + 1);
-            return { ...prev, percentage: next, current: next, total: 100, status: 'Processing' };
-          });
-        }, 500);
+        // Escuchar progreso real emitido desde backend
+        const unlisten = await (await import('@tauri-apps/api/event')).listen('asset-download-progress', (e: any) => {
+          const data = e.payload as AssetDownloadProgress;
+          setDownloadProgress(data);
+        });
 
         await invoke<string>('download_instance_assets', {
           appHandle: undefined,
@@ -110,8 +105,7 @@ const launchInstance = async (
           distributionUrl: 'http://files.kindlyklan.com:26500/dist'
         });
 
-        clearInterval(progressTimer);
-        setDownloadProgress({ current: 100, total: 100, percentage: 100, current_file: 'Completed', status: 'Done' } as any);
+        unlisten();
 
         addToast('Assets descargados correctamente', 'success');
 
