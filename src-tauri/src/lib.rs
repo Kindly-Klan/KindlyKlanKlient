@@ -1663,18 +1663,6 @@ async fn download_all_assets(
         .await
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?;
-
-    let _ = app_handle.emit(
-        "asset-download-progress",
-        serde_json::json!({
-            "current": total,
-            "total": total,
-            "percentage": 100.0,
-            "current_file": "",
-            "status": "Completed"
-        })
-    );
-
     Ok(())
 }
 
@@ -2106,14 +2094,17 @@ async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: &Pat
             let obj_path = objects_dir.join(prefix).join(hash);
             let client_clone = client.clone();
             tasks.push(tokio::spawn(async move {
-                let resp = client_clone.get(&url).send().await.map_err(|e| e.to_string())?;
+                let resp = client_clone.get(&url).header("User-Agent", "KindlyKlanKlient/1.0").send().await.map_err(|e| e.to_string())?;
                 if !resp.status().is_success() { return Err(format!("Asset HTTP {} for {}", resp.status(), url)); }
-                let mut file = tokio::fs::File::create(&obj_path).await.map_err(|e| e.to_string())?;
+                let tmp = obj_path.with_extension("kk.tmp");
+                let mut file = tokio::fs::File::create(&tmp).await.map_err(|e| e.to_string())?;
                 let mut stream = resp.bytes_stream();
                 use futures_util::TryStreamExt;
                 while let Some(data) = stream.try_next().await.map_err(|e| e.to_string())? { tokio::io::AsyncWriteExt::write_all(&mut file, &data).await.map_err(|e| e.to_string())?; }
                 tokio::io::AsyncWriteExt::flush(&mut file).await.map_err(|e| e.to_string())?;
                 file.sync_all().await.map_err(|e| e.to_string())?;
+                drop(file);
+                tokio::fs::rename(&tmp, &obj_path).await.map_err(|e| e.to_string())?;
                 Ok::<(), String>(())
             }));
         }
@@ -2133,16 +2124,7 @@ async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: &Pat
         }
     }
     
-    let _ = app_handle.emit(
-        "asset-download-progress",
-        serde_json::json!({
-            "current": total as u64,
-            "total": total as u64,
-            "percentage": 100.0,
-            "current_file": "",
-            "status": "MojangCompleted"
-        })
-    );
+    let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "all" }));
 
     Ok(ai.id)
 }
