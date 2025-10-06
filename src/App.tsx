@@ -10,6 +10,8 @@ import SettingsPanel from "@/components/SettingsPanel";
 import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
+import kindlyklanLogo from "@/assets/kindlyklan.png";
+import microsoftIcon from "@/assets/icons/microsoft.svg";
 type AssetDownloadProgress = {
   current: number;
   total: number;
@@ -515,7 +517,7 @@ function App() {
                   <div className="text-center group">
                     <div className={`mb-8 transition-all duration-500 delay-200 ${isLoginVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
                       <img
-                        src="/src/assets/kindlyklan.png"
+                        src={kindlyklanLogo}
                         alt="KindlyKlan"
                         className="w-48 h-48 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] select-none"
                       />
@@ -527,7 +529,7 @@ function App() {
                         className="relative bg-black hover:bg-gray-900 text-white border-2 border-gray-600 hover:border-gray-400 rounded-2xl px-16 py-6 text-2xl font-semibold transition-all duration-300 shadow-2xl hover:shadow-white/20 group overflow-hidden min-w-[380px] cursor-pointer"
                       >
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <img src="/src/assets/icons/microsoft.svg" alt="Microsoft" className="w-8 h-8 mr-3" />
+                        <img src={microsoftIcon} alt="Microsoft" className="w-8 h-8 mr-3" />
                         Iniciar Sesión
                 </Button>
               </div>
@@ -546,7 +548,7 @@ function App() {
                  <div className="flex items-center justify-center h-full">
                    <div className="text-center group transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
                      <img 
-                       src="/src/assets/kindlyklan.png" 
+                       src={kindlyklanLogo} 
                        alt="KindlyKlan" 
                        className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
                      />
