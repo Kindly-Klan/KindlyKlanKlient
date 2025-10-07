@@ -396,3 +396,23 @@ body {
     transform: rotate(360deg) translateX(42px) rotate(-360deg);
   }
 }
+
+/* Progress bar shimmer */
+.progress-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.progress-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -40%;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  animation: kk-shimmer 1.4s infinite;
+}
+@keyframes kk-shimmer {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}

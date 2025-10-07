@@ -1487,15 +1487,60 @@ async fn download_instance_assets(
     instance_id: String,
     distribution_url: String
 ) -> Result<String, String> {
+    let _ = app_handle.emit(
+        "asset-download-progress",
+        serde_json::json!({
+            "current": 0u64,
+            "total": 100u64,
+            "percentage": 0.0,
+            "current_file": "",
+            "status": "Initializing"
+        })
+    );
+
     let instance_dir = create_instance_directory_safe(&instance_id, &app_handle).await?;
     let instance_manifest = load_instance_manifest(&distribution_url, &instance_id).await?;
     let checksums = load_checksums(&distribution_url, &instance_id).await?;
 
-    download_all_assets(&app_handle, &instance_manifest, &checksums, &instance_dir, &distribution_url).await?;
+    ensure_minecraft_client_present(&instance_dir, &instance_manifest.instance.minecraft_version).await?;
+
+    let instance_files_total = count_instance_files(&instance_manifest) as u64;
+    let mojang_pending_total = count_mojang_assets_pending(&instance_dir, &instance_manifest.instance.minecraft_version).await? as u64;
+    let combined_total = instance_files_total + mojang_pending_total;
+    let combined_current = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    let _ = app_handle.emit(
+        "asset-download-progress",
+        serde_json::json!({
+            "current": 0u64,
+            "total": combined_total,
+            "percentage": if combined_total==0 { 100.0 } else { 0.0 },
+            "current_file": "",
+            "status": "Preparing"
+        })
+    );
+
+    download_all_assets(
+        &app_handle,
+        &instance_manifest,
+        &checksums,
+        &instance_dir,
+        &distribution_url,
+        Some((combined_current.clone(), combined_total))
+    ).await?;
 
     if let Some(mod_loader) = &instance_manifest.instance.mod_loader {
         install_mod_loader(&instance_manifest.instance.minecraft_version, mod_loader, &instance_dir).await?;
     }
+
+    let _asset_index_id = ensure_assets_present_with_progress(
+        &app_handle,
+        &instance_dir,
+        &instance_manifest.instance.minecraft_version,
+        Some((combined_current.clone(), combined_total))
+    ).await?;
+
+    let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "all" }));
 
     Ok("All assets and mod loader installed successfully".to_string())
 }
@@ -1562,7 +1607,8 @@ async fn download_all_assets(
     manifest: &InstanceManifest,
     checksums: &HashMap<String, String>,
     instance_dir: &Path,
-    distribution_url: &str
+    distribution_url: &str,
+    combined: Option<(std::sync::Arc<std::sync::atomic::AtomicU64>, u64)>
 ) -> Result<(), String> {
     let mut all_assets = Vec::new();
 
@@ -1587,8 +1633,8 @@ async fn download_all_assets(
         }
     }
 
-    let total = all_assets.len() as u64;
-    let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let total = if let Some((_, t)) = &combined { *t } else { all_assets.len() as u64 };
+    let progress = if let Some((p, _)) = &combined { p.clone() } else { std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)) };
     let client_app = app_handle.clone();
     let client_checksums = checksums.clone();
 
@@ -1609,7 +1655,7 @@ async fn download_all_assets(
                         "total": total,
                         "percentage": ((progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / total as f32) * 100.0).min(100.0),
                         "current_file": asset.name,
-                        "status": "Downloading"
+                        "status": "Instance"
                     })
                 );
 
@@ -1642,6 +1688,19 @@ async fn download_all_assets(
                     if let Some(checksum) = client_checksums.get(&asset.path) {
                         let _ = verify_file_checksum(&file_path, checksum);
                     }
+                } else {
+                    let cur = progress.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    let _ = client_app.emit(
+                        "asset-download-progress",
+                        serde_json::json!({
+                            "current": cur,
+                            "total": total,
+                            "percentage": ((cur as f32 / total as f32) * 100.0).min(100.0),
+                            "current_file": asset.name,
+                            "status": "Instance"
+                        })
+                    );
+                    return Ok(())
                 }
 
                 let cur = progress.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -1652,7 +1711,7 @@ async fn download_all_assets(
                         "total": total,
                         "percentage": ((cur as f32 / total as f32) * 100.0).min(100.0),
                         "current_file": asset.name,
-                        "status": "Done"
+                        "status": "Instance"
                     })
                 );
                 Ok::<(), String>(())
@@ -1760,7 +1819,6 @@ async fn download_file(url: &str, file_path: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create temp file {}: {}", tmp_path.display(), e))?;
 
-    let mut total_written: u64 = 0;
     while let Some(chunk) = response
         .chunk()
         .await
@@ -1770,7 +1828,6 @@ async fn download_file(url: &str, file_path: &Path) -> Result<(), String> {
             .write_all(&chunk)
             .await
             .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
-        total_written += chunk.len() as u64;
     }
 
     tmp_file
@@ -1797,7 +1854,7 @@ async fn download_file_with_retry(url: &str, file_path: &Path) -> Result<(), Str
     for attempt in 1..=MAX_RETRIES {
         match download_file(url, file_path).await {
             Ok(_) => return Ok(()),
-            Err(e) => {
+            Err(_e) => {
                 if attempt < MAX_RETRIES {
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 }
@@ -2060,8 +2117,6 @@ async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: &Pat
 
     let objects_dir = assets_dir.join("objects");
     tokio::fs::create_dir_all(&objects_dir).await.map_err(|e| e.to_string())?;
-    let mut downloaded = 0usize;
-    // Download in chunks to avoid overwhelming the server
     let mut pending: Vec<(String, String)> = Vec::new();
     for (_name, obj) in aidx.objects {
         let prefix = obj.hash[0..2].to_string();
@@ -2073,58 +2128,190 @@ async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: &Pat
         }
     }
 
-    let total = pending.len();
-    let _ = app_handle.emit(
-        "asset-download-progress",
-        serde_json::json!({
-            "current": 0u64,
-            "total": total as u64,
-            "percentage": if total == 0 { 100.0 } else { 0.0 },
-            "current_file": "",
-            "status": "Mojang"
-        })
+    if pending.is_empty() {
+        return Ok(ai.id);
+    }
+
+    let parallel = num_cpus::get().saturating_mul(8).max(50);
+    let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let total_count = pending.len() as u64;
+    
+    let client = std::sync::Arc::new(
+        reqwest::Client::builder()
+            .user_agent("KindlyKlanKlient/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(parallel)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .build()
+            .map_err(|e| e.to_string())?
     );
 
-    let parallel = (num_cpus::get().saturating_sub(1)).max(8);
-    let client = reqwest::Client::builder().user_agent("KindlyKlanKlient/1.0").timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-    for chunk in pending.chunks(parallel) {
-        let mut tasks = Vec::new();
-        for (prefix, hash) in chunk.iter() {
+    use futures_util::stream::{self, StreamExt};
+    
+    let results: Vec<Result<(), String>> = stream::iter(pending.into_iter().map(|(prefix, hash)| {
+        let client = client.clone();
+        let objects_dir = objects_dir.clone();
+        let progress = progress.clone();
+        let app_handle = app_handle.clone();
+        
+        async move {
             let url = format!("https://resources.download.minecraft.net/{}/{}", prefix, hash);
-            let obj_path = objects_dir.join(prefix).join(hash);
-            let client_clone = client.clone();
-            tasks.push(tokio::spawn(async move {
-                let resp = client_clone.get(&url).header("User-Agent", "KindlyKlanKlient/1.0").send().await.map_err(|e| e.to_string())?;
-                if !resp.status().is_success() { return Err(format!("Asset HTTP {} for {}", resp.status(), url)); }
-                let tmp = obj_path.with_extension("kk.tmp");
-                let mut file = tokio::fs::File::create(&tmp).await.map_err(|e| e.to_string())?;
-                let mut stream = resp.bytes_stream();
-                use futures_util::TryStreamExt;
-                while let Some(data) = stream.try_next().await.map_err(|e| e.to_string())? { tokio::io::AsyncWriteExt::write_all(&mut file, &data).await.map_err(|e| e.to_string())?; }
-                tokio::io::AsyncWriteExt::flush(&mut file).await.map_err(|e| e.to_string())?;
-                file.sync_all().await.map_err(|e| e.to_string())?;
-                drop(file);
-                tokio::fs::rename(&tmp, &obj_path).await.map_err(|e| e.to_string())?;
-                Ok::<(), String>(())
-            }));
-        }
-        for t in tasks {
-            if let Ok(res) = t.await { res.map_err(|e| e.to_string())?; downloaded += 1; }
-            let cur = downloaded as u64;
+            let obj_path = objects_dir.join(&prefix).join(&hash);
+            
+            let resp = client.get(&url).send().await.map_err(|e| format!("Request failed: {}", e))?;
+            if !resp.status().is_success() {
+                return Err(format!("Asset HTTP {} for {}", resp.status(), url));
+            }
+            
+            let tmp = obj_path.with_extension("kk.tmp");
+            let bytes = resp.bytes().await.map_err(|e| format!("Download failed: {}", e))?;
+            tokio::fs::write(&tmp, &bytes).await.map_err(|e| format!("Write failed: {}", e))?;
+            tokio::fs::rename(&tmp, &obj_path).await.map_err(|e| format!("Rename failed: {}", e))?;
+
+            let cur = progress.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             let _ = app_handle.emit(
                 "asset-download-progress",
                 serde_json::json!({
                     "current": cur,
-                    "total": total as u64,
-                    "percentage": if total == 0 { 100.0 } else { ((cur as f32 / total as f32) * 100.0).min(100.0) },
+                    "total": total_count,
+                    "percentage": ((cur as f32 / total_count as f32) * 100.0).min(100.0),
                     "current_file": "",
                     "status": "Mojang"
                 })
             );
+            
+            Ok(())
+        }
+    }))
+    .buffer_unordered(parallel)
+    .collect()
+    .await;
+
+    // Check for errors
+    for result in results {
+        if let Err(e) = result {
+            eprintln!("Warning: Mojang asset download error: {}", e);
         }
     }
     
-    let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "all" }));
+    let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "mojang" }));
+
+    Ok(ai.id)
+}
+
+// Same as ensure_assets_present pero sumando al contador combinado
+async fn ensure_assets_present_with_progress(
+    app_handle: &tauri::AppHandle,
+    instance_dir: &Path,
+    mc_version: &str,
+    combined: Option<(std::sync::Arc<std::sync::atomic::AtomicU64>, u64)>
+) -> Result<String, String> {
+    let version_dir = instance_dir.join("versions").join(mc_version);
+    let json_path = version_dir.join(format!("{}.json", mc_version));
+    if !json_path.exists() {
+        return Err(format!("Version json not found: {}", json_path.display()));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AssetIndexRef { id: String, url: String }
+    #[derive(serde::Deserialize)]
+    struct VJson { #[serde(rename="assetIndex")] asset_index: Option<AssetIndexRef> }
+    let vtext = tokio::fs::read_to_string(&json_path).await.map_err(|e| e.to_string())?;
+    let vj: VJson = serde_json::from_str(&vtext).map_err(|e| e.to_string())?;
+    let Some(ai) = vj.asset_index else { return Err("assetIndex missing in version json".to_string()); };
+
+    let assets_dir = instance_dir.join("assets");
+    let indexes_dir = assets_dir.join("indexes");
+    tokio::fs::create_dir_all(&indexes_dir).await.map_err(|e| e.to_string())?;
+    let index_path = indexes_dir.join(format!("{}.json", ai.id));
+    if !index_path.exists() { download_file_with_retry(&ai.url, &index_path).await?; }
+
+    let index_text = tokio::fs::read_to_string(&index_path).await.map_err(|e| e.to_string())?;
+    #[derive(serde::Deserialize)]
+    struct AssetObject { hash: String }
+    #[derive(serde::Deserialize)]
+    struct AssetIndex { objects: std::collections::HashMap<String, AssetObject> }
+    let aidx: AssetIndex = serde_json::from_str(&index_text).map_err(|e| e.to_string())?;
+
+    let objects_dir = assets_dir.join("objects");
+    tokio::fs::create_dir_all(&objects_dir).await.map_err(|e| e.to_string())?;
+    let mut pending: Vec<(String, String)> = Vec::new();
+    for (_name, obj) in aidx.objects {
+        let prefix = obj.hash[0..2].to_string();
+        let obj_dir = objects_dir.join(&prefix);
+        tokio::fs::create_dir_all(&obj_dir).await.map_err(|e| e.to_string())?;
+        let obj_path = obj_dir.join(&obj.hash);
+        if !obj_path.exists() { pending.push((prefix, obj.hash)); }
+    }
+
+    if pending.is_empty() {
+        return Ok(ai.id);
+    }
+
+    let (progress, total) = if let Some((p, t)) = combined { 
+        (p, t) 
+    } else { 
+        (std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)), pending.len() as u64) 
+    };
+
+    let parallel = num_cpus::get().saturating_mul(8).max(50);
+    let client = std::sync::Arc::new(
+        reqwest::Client::builder()
+            .user_agent("KindlyKlanKlient/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(parallel)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .build()
+            .map_err(|e| e.to_string())?
+    );
+
+    use futures_util::stream::{self, StreamExt};
+    
+    let results: Vec<Result<(), String>> = stream::iter(pending.into_iter().map(|(prefix, hash)| {
+        let client = client.clone();
+        let objects_dir = objects_dir.clone();
+        let progress = progress.clone();
+        let app_handle = app_handle.clone();
+        
+        async move {
+            let url = format!("https://resources.download.minecraft.net/{}/{}", prefix, hash);
+            let obj_path = objects_dir.join(&prefix).join(&hash);
+            
+            let resp = client.get(&url).send().await.map_err(|e| format!("Request failed: {}", e))?;
+            if !resp.status().is_success() {
+                return Err(format!("Asset HTTP {} for {}", resp.status(), url));
+            }
+            
+            let tmp = obj_path.with_extension("kk.tmp");
+            let bytes = resp.bytes().await.map_err(|e| format!("Download failed: {}", e))?;
+            tokio::fs::write(&tmp, &bytes).await.map_err(|e| format!("Write failed: {}", e))?;
+            tokio::fs::rename(&tmp, &obj_path).await.map_err(|e| format!("Rename failed: {}", e))?;
+
+            let cur = progress.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            let _ = app_handle.emit(
+                "asset-download-progress",
+                serde_json::json!({
+                    "current": cur,
+                    "total": total,
+                    "percentage": ((cur as f32 / total as f32) * 100.0).min(100.0),
+                    "current_file": "",
+                    "status": "Mojang"
+                })
+            );
+            
+            Ok(())
+        }
+    }))
+    .buffer_unordered(parallel)
+    .collect()
+    .await;
+
+    // Check for errors
+    for result in results {
+        if let Err(e) = result {
+            eprintln!("Warning: Mojang asset download error: {}", e);
+        }
+    }
 
     Ok(ai.id)
 }
@@ -2422,6 +2609,50 @@ fn build_distribution_url(distribution_url: &str) -> String {
     }
 }
 
+// Count total instance files in manifest (mods + configs + packs)
+fn count_instance_files(manifest: &InstanceManifest) -> usize {
+    let mut n = manifest.files.mods.len() + manifest.files.configs.len();
+    if let Some(rp) = &manifest.files.resourcepacks { n += rp.len(); }
+    if let Some(sp) = &manifest.files.shaderpacks { n += sp.len(); }
+    n
+}
+
+// Count pending Mojang asset objects (not present locally)
+async fn count_mojang_assets_pending(instance_dir: &Path, mc_version: &str) -> Result<usize, String> {
+    let version_dir = instance_dir.join("versions").join(mc_version);
+    let json_path = version_dir.join(format!("{}.json", mc_version));
+    if !json_path.exists() { return Ok(0); }
+    #[derive(serde::Deserialize)]
+    struct AssetIndexRef { id: String, url: String }
+    #[derive(serde::Deserialize)]
+    struct VJson { #[serde(rename="assetIndex")] asset_index: Option<AssetIndexRef> }
+    let vtext = tokio::fs::read_to_string(&json_path).await.map_err(|e| e.to_string())?;
+    let vj: VJson = serde_json::from_str(&vtext).map_err(|e| e.to_string())?;
+    let Some(ai) = vj.asset_index else { return Ok(0); };
+    let assets_dir = instance_dir.join("assets");
+    let indexes_dir = assets_dir.join("indexes");
+    tokio::fs::create_dir_all(&indexes_dir).await.map_err(|e| e.to_string())?;
+    let index_path = indexes_dir.join(format!("{}.json", ai.id));
+    if !index_path.exists() {
+        download_file_with_retry(&ai.url, &index_path).await?;
+    }
+    let index_text = tokio::fs::read_to_string(&index_path).await.map_err(|e| e.to_string())?;
+    #[derive(serde::Deserialize)]
+    struct AssetObject { hash: String }
+    #[derive(serde::Deserialize)]
+    struct AssetIndex { objects: std::collections::HashMap<String, AssetObject> }
+    let aidx: AssetIndex = serde_json::from_str(&index_text).map_err(|e| e.to_string())?;
+    let objects_dir = assets_dir.join("objects");
+    tokio::fs::create_dir_all(&objects_dir).await.map_err(|e| e.to_string())?;
+    let mut pending = 0usize;
+    for (_name, obj) in aidx.objects {
+        let prefix = &obj.hash[0..2];
+        let obj_path = objects_dir.join(prefix).join(&obj.hash);
+        if !obj_path.exists() { pending += 1; }
+    }
+    Ok(pending)
+}
+
 // Launch Minecraft with Java and authentication
 #[tauri::command]
 async fn launch_minecraft_with_java(
@@ -2473,7 +2704,7 @@ async fn launch_minecraft_with_auth(
     // Build JVM arguments
     let jvm_args = build_minecraft_jvm_args(access_token)?;
 
-    // Ensure assets exist and get asset index ID
+    // Assets ya preparados en fase previa. Asegura asset index ID pero sin re-emitir progreso independiente
     let asset_index_id = ensure_assets_present(app_handle, &instance_dir, minecraft_version).await?;
 
     // Get Minecraft profile for username/uuid

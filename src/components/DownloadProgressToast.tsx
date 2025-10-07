@@ -38,7 +38,7 @@ const DownloadProgressToast: React.FC<DownloadProgressToastProps> = ({
         )}
       </div>
       <div className="w-full h-2 bg-blue-500/20 rounded-full overflow-hidden mt-3">
-        <div className="h-2 bg-blue-300 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }} />
+        <div className="h-2 bg-blue-300 rounded-full transition-all duration-300 progress-shimmer" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   );
