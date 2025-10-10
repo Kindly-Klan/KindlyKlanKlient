@@ -119,7 +119,6 @@ const launchInstance = async (
       }
     }
 
-    // Lanzar Minecraft con autenticación
     await invoke<string>('launch_minecraft_with_java', {
       appHandle: undefined,
       instanceId: instance.id,
@@ -233,14 +232,20 @@ function App() {
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const initialized = useRef(false);
 
-
-  // Track distribution loaded state if needed
   useEffect(() => {}, [distributionLoaded]);
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    const hideInitialLoader = () => {
+      const loaderElement = document.querySelector('.initial-loader') as HTMLElement;
+      if (loaderElement) {
+        loaderElement.classList.add('hidden');
+      }
+    };
+    setTimeout(hideInitialLoader, 100);
+
     loadDistribution();
     checkExistingSession();
 

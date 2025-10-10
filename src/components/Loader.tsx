@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-type LoaderVariant = 'text' | 'orbital';
+type LoaderVariant = 'text' | 'orbital' | 'simple';
 
 interface LoaderProps {
   text?: string;
@@ -13,6 +13,14 @@ const Loader: React.FC<LoaderProps> = ({
   variant = 'text',
   showReloadAfter = 30
 }) => {
+  if (variant === 'simple') {
+    return (
+      <div className="flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   if (variant === 'orbital') {
     const [showReload, setShowReload] = useState(false);
 

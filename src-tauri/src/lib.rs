@@ -670,8 +670,8 @@ async fn start_microsoft_auth() -> Result<AuthSession, String> {
 <body>
     <div class="container">
         <h1>Kindly Klan Klient</h1>
-        <div class="success">Authentication successful</div>
-        <div class="instructions">You can close this tab and return to the application</div>
+        <div class="success">Inicio de sesión exitoso</div>
+        <div class="instructions">Puedes cerrar esta pestaña y volver al Kliente.</div>
     </div>
 </body>
 </html>
