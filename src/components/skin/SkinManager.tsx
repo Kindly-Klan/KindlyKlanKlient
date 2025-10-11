@@ -310,7 +310,23 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
   };
 
   return (
-    <div className={`h-full bg-gradient-to-br from-gray-900 via-slate-900 to-black flex transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+    <div className="relative h-full w-full overflow-hidden">
+      
+      {/* Background */}
+      <div className="absolute inset-0 z-0">
+        <div
+          className="w-full h-full"
+          style={{
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+          }}
+        />
+      </div>
+
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/40 z-10" />
+
+      {/* Content */}
+      <div className="relative z-20 h-full flex flex-col">
       
       <div className={`absolute top-16 left-1/2 transform -translate-x-1/2 text-white/90 transition-all duration-700 ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
         <div className="flex items-center justify-center gap-4">
@@ -323,7 +339,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
         </div>
       </div>
 
-      <div className={`flex-1 p-6 flex items-center justify-center gap-6 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+        <div className={`flex-1 p-6 flex items-center justify-center gap-6 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
         <div className="flex-shrink-0">
           <SkinUploader
             onUploadSuccess={handleSkinUpload}
@@ -404,9 +420,9 @@ export const SkinManager: React.FC<SkinManagerProps> = ({
             Sin skins guardadas
           </div>
         )}
+        </div>
+        </div>
       </div>
-      </div>
-
     </div>
   );
 };

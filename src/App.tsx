@@ -6,7 +6,7 @@ import Loader from "@/components/Loader";
 import ToastContainer from "@/components/ToastContainer";
 import Sidebar from "@/components/Sidebar";
 import UserProfile from "@/components/UserProfile";
-import SettingsPanel from "@/components/SettingsPanel";
+import SettingsView from "@/components/SettingsView";
 import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
@@ -119,13 +119,18 @@ const launchInstance = async (
       }
     }
 
+    // Load saved RAM configuration
+    const [minRam, maxRam] = await invoke<[number, number]>('load_ram_config');
+    
     await invoke<string>('launch_minecraft_with_java', {
       appHandle: undefined,
       instanceId: instance.id,
       javaPath: javaPath,
       minecraftVersion: instance.minecraft_version,
       javaVersion: javaVersion,
-      accessToken: currentAccount?.user.access_token || ''
+      accessToken: currentAccount?.user.access_token || '',
+      minRamGb: minRam,
+      maxRamGb: maxRam
     });
 
     if (setIsDownloadingAssets) setIsDownloadingAssets(false);
@@ -229,10 +234,20 @@ function App() {
   const [distributionLoaded, setDistributionLoaded] = useState(false);
   const [skinViewOpen, setSkinViewOpen] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<AssetDownloadProgress | null>(null);
+  const [logoVisible, setLogoVisible] = useState(false);
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const initialized = useRef(false);
 
   useEffect(() => {}, [distributionLoaded]);
+  
+  useEffect(() => {
+    if (!selectedInstance && !settingsOpen && !skinViewOpen && currentAccount) {
+      setLogoVisible(false);
+      const timer = setTimeout(() => setLogoVisible(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedInstance, settingsOpen, skinViewOpen, currentAccount]);
+  
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
   useEffect(() => {
@@ -309,7 +324,8 @@ function App() {
   };
 
   const handleInstanceSelect = (instanceId: string) => {
-    if (skinViewOpen) setSkinViewOpen(false);
+    setSkinViewOpen(false);
+    setSettingsOpen(false);
     setSelectedInstance(instanceId);
   };
 
@@ -386,12 +402,23 @@ function App() {
   };
 
   const handleSettingsToggle = () => {
-    setSettingsOpen(!settingsOpen);
+    if (!settingsOpen) {
+      setSkinViewOpen(false);
+      setSelectedInstance(null);
+      setSettingsOpen(true);
+    } else {
+      setSettingsOpen(false);
+      setSelectedInstance(null);
+    }
   };
 
   const handleSkinToggle = () => {
-    setSkinViewOpen(!skinViewOpen);
     if (!skinViewOpen) {
+      setSettingsOpen(false);
+      setSelectedInstance(null);
+      setSkinViewOpen(true);
+    } else {
+      setSkinViewOpen(false);
       setSelectedInstance(null);
     }
   };
@@ -542,20 +569,43 @@ function App() {
                    currentUser={currentAccount?.user}
                    onClose={() => setSkinViewOpen(false)}
                  />
+               ) : settingsOpen ? (
+                 <SettingsView
+                   onClose={() => setSettingsOpen(false)}
+                 />
                ) : !distribution ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader text="Cargando distribución..." variant="orbital" showReloadAfter={30} />
             </div>
                ) : !selectedInstance ? (
-                 <div className="flex items-center justify-center h-full">
-                   <div className="text-center group transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
-                     <img 
-                       src={kindlyklanLogo} 
-                       alt="KindlyKlan" 
-                       className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                 <div className="relative h-full w-full overflow-hidden">
+                   
+                   {/* Background */}
+                   <div className="absolute inset-0 z-0">
+                     <div
+                       className="w-full h-full"
+                       style={{
+                         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+                       }}
                      />
-          </div>
-          </div>
+                   </div>
+
+                   {/* Overlay */}
+                   <div className="absolute inset-0 bg-black/40 z-10" />
+
+                   {/* Content */}
+                   <div className="relative z-20 h-full flex flex-col">
+                     <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-700 delay-200 ${logoVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
+                       <div className="text-center group transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
+                         <img 
+                           src={kindlyklanLogo} 
+                           alt="KindlyKlan" 
+                           className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
                ) : (
                  <div className="h-full">
                    <InstanceView
@@ -589,12 +639,6 @@ function App() {
              </main>
       </div>
 
-      <SettingsPanel
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        distributionUrl={DISTRIBUTION_URL}
-        onReloadDistribution={loadDistribution}
-      />
 
       {showLoader && (
         <div className={`blur-overlay transition-all duration-500 ${isTransitioning ? 'opacity-0 scale-110' : 'opacity-100 scale-100'}`}>

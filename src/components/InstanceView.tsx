@@ -74,58 +74,19 @@ const InstanceView: React.FC<InstanceViewProps> = ({
   }
 
 
-  const backgroundStyle = instance.background
-    ? {
-        backgroundImage: `url(${distributionBaseUrl}/${instance.background})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      }
-    : {
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-      };
-
-
-  const [backgroundLoaded, setBackgroundLoaded] = React.useState(false);
-  const [backgroundError, setBackgroundError] = React.useState(false);
-
-  React.useEffect(() => {
-    if (instance.background) {
-      const img = new Image();
-      img.onload = () => {
-        setBackgroundLoaded(true);
-        setBackgroundError(false);
-      };
-      img.onerror = () => {
-        setBackgroundError(true);
-        setBackgroundLoaded(false);
-      };
-      img.src = `${distributionBaseUrl}/${instance.background}`;
-    } else {
-      setBackgroundLoaded(true);
-    }
-  }, [instance.background, distributionBaseUrl]);
+  // Usar siempre el fondo universal para consistencia
+  const backgroundStyle = {
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+  };
 
   return (
-      <div className={`relative h-full w-full overflow-hidden transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
+    <div className="relative h-full w-full overflow-hidden">
 
       <div className="absolute inset-0 z-0">
-        {instance.background && !backgroundLoaded && !backgroundError && (
-          <div className="w-full h-full bg-gray-900 animate-pulse" />
-        )}
-        {backgroundError ? (
-          <div
-            className="w-full h-full"
-            style={{
-              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-            }}
-          />
-        ) : (
-          <div
-            className="w-full h-full"
-            style={backgroundStyle}
-          />
-        )}
+        <div
+          className="w-full h-full"
+          style={backgroundStyle}
+        />
       </div>
 
 
@@ -134,7 +95,7 @@ const InstanceView: React.FC<InstanceViewProps> = ({
 
       <div className="relative z-20 h-full flex flex-col">
 
-        <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
           <div className="text-center max-w-2xl mx-auto">
 
             <div className="mb-6">
@@ -185,7 +146,7 @@ const InstanceView: React.FC<InstanceViewProps> = ({
           </div>
         </div>
 
-        <div className={`flex justify-center pb-12 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <div className={`flex justify-center pb-12 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
           <LaunchButton
             onLaunch={() => onLaunch(instance)}
             className="text-center"

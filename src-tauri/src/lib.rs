@@ -2653,6 +2653,134 @@ async fn count_mojang_assets_pending(instance_dir: &Path, mc_version: &str) -> R
     Ok(pending)
 }
 
+// Get system RAM in GB
+#[tauri::command]
+fn get_system_ram() -> Result<u32, String> {
+    Ok(get_system_ram_gb())
+}
+
+// Save RAM configuration
+#[tauri::command]
+async fn save_ram_config(min_ram: f64, max_ram: f64) -> Result<(), String> {
+    use std::fs;
+    
+    let config_dir = dirs::config_dir()
+        .ok_or("Could not find config directory")?
+        .join("KindlyKlanKlient");
+    
+    // Create config directory if it doesn't exist
+    fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    
+    let config_file = config_dir.join("ram_config.json");
+    let config = serde_json::json!({
+        "min_ram": min_ram,
+        "max_ram": max_ram,
+        "last_updated": chrono::Utc::now().to_rfc3339()
+    });
+    
+    fs::write(&config_file, serde_json::to_string_pretty(&config).unwrap())
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+    
+    Ok(())
+}
+
+// Load RAM configuration
+#[tauri::command]
+async fn load_ram_config() -> Result<(f64, f64), String> {
+    use std::fs;
+    
+    let config_dir = dirs::config_dir()
+        .ok_or("Could not find config directory")?
+        .join("KindlyKlanKlient");
+    
+    let config_file = config_dir.join("ram_config.json");
+    
+    if !config_file.exists() {
+        // Return default values if config doesn't exist
+        return Ok((2.0, 4.0));
+    }
+    
+    let config_content = fs::read_to_string(&config_file)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    
+    let config: serde_json::Value = serde_json::from_str(&config_content)
+        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+    
+    let min_ram = config["min_ram"].as_f64().unwrap_or(2.0);
+    let max_ram = config["max_ram"].as_f64().unwrap_or(4.0);
+    
+    Ok((min_ram, max_ram))
+}
+
+// Save advanced configuration
+#[tauri::command]
+async fn save_advanced_config(
+    jvm_args: String,
+    garbage_collector: String,
+    window_width: u32,
+    window_height: u32
+) -> Result<(), String> {
+    use std::fs;
+    
+    let config_dir = dirs::config_dir()
+        .ok_or("Could not find config directory")?
+        .join("KindlyKlanKlient");
+    
+    // Create config directory if it doesn't exist
+    fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    
+    let config_file = config_dir.join("advanced_config.json");
+    let config = serde_json::json!({
+        "jvm_args": jvm_args,
+        "garbage_collector": garbage_collector,
+        "window_width": window_width,
+        "window_height": window_height,
+        "last_updated": chrono::Utc::now().to_rfc3339()
+    });
+    
+    fs::write(&config_file, serde_json::to_string_pretty(&config).unwrap())
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+    
+    Ok(())
+}
+
+// Load advanced configuration
+#[tauri::command]
+async fn load_advanced_config() -> Result<(String, String, u32, u32), String> {
+    use std::fs;
+    
+    let config_dir = dirs::config_dir()
+        .ok_or("Could not find config directory")?
+        .join("KindlyKlanKlient");
+    
+    let config_file = config_dir.join("advanced_config.json");
+    
+    if !config_file.exists() {
+        // Return default values if config doesn't exist
+        return Ok((
+            String::new(), // jvm_args
+            "G1".to_string(), // garbage_collector
+            1280, // window_width
+            720   // window_height
+        ));
+    }
+    
+    let config_content = fs::read_to_string(&config_file)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    
+    let config: serde_json::Value = serde_json::from_str(&config_content)
+        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+    
+    let jvm_args = config["jvm_args"].as_str().unwrap_or("").to_string();
+    let garbage_collector = config["garbage_collector"].as_str().unwrap_or("G1").to_string();
+    let window_width = config["window_width"].as_u64().unwrap_or(1280) as u32;
+    let window_height = config["window_height"].as_u64().unwrap_or(720) as u32;
+    
+    Ok((jvm_args, garbage_collector, window_width, window_height))
+}
+
 // Launch Minecraft with Java and authentication
 #[tauri::command]
 async fn launch_minecraft_with_java(
@@ -2661,14 +2789,16 @@ async fn launch_minecraft_with_java(
     java_path: String,
     minecraft_version: String,
     _java_version: String,
-    access_token: String
+    access_token: String,
+    min_ram_gb: Option<f64>,
+    max_ram_gb: Option<f64>
 ) -> Result<String, String> {
     let instance_dir = get_instance_directory(&instance_id);
     if !instance_dir.exists() {
         return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
     }
 
-    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &access_token).await
+    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &access_token, min_ram_gb, max_ram_gb).await
 }
 
 // Launch Minecraft with authentication and proper classpath
@@ -2677,7 +2807,9 @@ async fn launch_minecraft_with_auth(
     instance_id: &str,
     minecraft_version: &str,
     java_path: &str,
-    access_token: &str
+    access_token: &str,
+    min_ram_gb: Option<f64>,
+    max_ram_gb: Option<f64>
 ) -> Result<String, String> {
     let instance_dir = get_instance_directory(instance_id);
 
@@ -2701,8 +2833,16 @@ async fn launch_minecraft_with_auth(
         if !has_lwjgl { ensure_minecraft_client_present(&instance_dir, minecraft_version).await?; }
     }
 
-    // Build JVM arguments
-    let jvm_args = build_minecraft_jvm_args(access_token)?;
+    // Build JVM arguments with RAM parameters
+    let min_ram = min_ram_gb.unwrap_or(2.0);
+    let max_ram = max_ram_gb.unwrap_or(4.0);
+    
+    // Load advanced configuration for JVM args and window settings
+    let (jvm_args_config, gc_config, window_width, window_height) = load_advanced_config().await.unwrap_or((
+        String::new(), "G1".to_string(), 1280, 720
+    ));
+    
+    let jvm_args = build_minecraft_jvm_args(access_token, min_ram, max_ram, &gc_config, &jvm_args_config)?;
 
     // Assets ya preparados en fase previa. Asegura asset index ID pero sin re-emitir progreso independiente
     let asset_index_id = ensure_assets_present(app_handle, &instance_dir, minecraft_version).await?;
@@ -2715,7 +2855,7 @@ async fn launch_minecraft_with_auth(
 
     // Build Minecraft arguments
     let assets_dir = instance_dir.join("assets");
-    let mc_args = vec![
+    let mut mc_args = vec![
         "--username".to_string(), username.to_string(),
         "--uuid".to_string(), uuid.to_string(),
         "--accessToken".to_string(), access_token.to_string(),
@@ -2726,6 +2866,12 @@ async fn launch_minecraft_with_auth(
         "--userType".to_string(), "msa".to_string(),
         "--versionType".to_string(), "release".to_string(),
     ];
+
+    // Add window resolution arguments 
+    mc_args.push("--width".to_string());
+    mc_args.push(window_width.to_string());
+    mc_args.push("--height".to_string());
+    mc_args.push(window_height.to_string());
 
     // Execute Minecraft
     let main_class = select_main_class(&instance_dir);
@@ -2804,17 +2950,83 @@ fn select_main_class(instance_dir: &Path) -> &'static str {
     "net.minecraft.client.Main"
 }
 
+// Get system RAM in GB using sysinfo (cross-platform)
+fn get_system_ram_gb() -> u32 {
+    use sysinfo::System;
+    
+    let mut system = System::new_all();
+    system.refresh_memory();
+    
+    let total_memory_bytes = system.total_memory();
+    let total_memory_gb = (total_memory_bytes / (1024 * 1024 * 1024)) as u32;
+    
+    println!("System RAM detected: {} GB ({} bytes)", total_memory_gb, total_memory_bytes);
+    
+    // Ensure minimum of 4GB for safety
+    std::cmp::max(total_memory_gb, 4)
+}
+
 // Build JVM arguments for Minecraft launch
-fn build_minecraft_jvm_args(access_token: &str) -> Result<Vec<String>, String> {
+fn build_minecraft_jvm_args(
+    access_token: &str, 
+    min_ram_gb: f64, 
+    max_ram_gb: f64,
+    garbage_collector: &str,
+    additional_jvm_args: &str
+) -> Result<Vec<String>, String> {
     let mut args = vec![
-        "-Xmx2G".to_string(),
+        format!("-Xmx{}G", max_ram_gb as u32),
+        format!("-Xms{}G", min_ram_gb as u32),
         "-XX:+UnlockExperimentalVMOptions".to_string(),
-        "-XX:+UseG1GC".to_string(),
-        "-XX:G1NewSizePercent=20".to_string(),
-        "-XX:G1ReservePercent=20".to_string(),
-        "-XX:MaxGCPauseMillis=50".to_string(),
-        "-XX:G1HeapRegionSize=32M".to_string(),
     ];
+
+    // Add garbage collector specific arguments
+    match garbage_collector {
+        "G1" => {
+            args.extend(vec![
+                "-XX:+UseG1GC".to_string(),
+                "-XX:G1NewSizePercent=20".to_string(),
+                "-XX:G1ReservePercent=20".to_string(),
+                "-XX:MaxGCPauseMillis=50".to_string(),
+                "-XX:G1HeapRegionSize=32M".to_string(),
+            ]);
+        },
+        "ZGC" => {
+            args.extend(vec![
+                "-XX:+UseZGC".to_string(),
+                "-XX:+UnlockExperimentalVMOptions".to_string(),
+            ]);
+        },
+        "Parallel" => {
+            args.extend(vec![
+                "-XX:+UseParallelGC".to_string(),
+                "-XX:ParallelGCThreads=4".to_string(),
+            ]);
+        },
+        _ => {
+            // Default to G1
+            args.extend(vec![
+                "-XX:+UseG1GC".to_string(),
+                "-XX:G1NewSizePercent=20".to_string(),
+                "-XX:G1ReservePercent=20".to_string(),
+                "-XX:MaxGCPauseMillis=50".to_string(),
+                "-XX:G1HeapRegionSize=32M".to_string(),
+            ]);
+        }
+    }
+
+    // Note: Window mode (fullscreen/borderless) is handled by Minecraft's internal settings
+    // No special JVM arguments are needed for window mode configuration
+
+    // Add additional JVM arguments if provided
+    if !additional_jvm_args.trim().is_empty() {
+        let additional_args: Vec<&str> = additional_jvm_args.split_whitespace().collect();
+        for arg in additional_args {
+            if !arg.is_empty() {
+                args.push(arg.to_string());
+            }
+        }
+    }
 
     // Add authentication properties
     args.push(format!("-Dminecraft.api.auth.host=https://api.minecraftservices.com"));
@@ -2868,6 +3080,11 @@ pub fn run() {
             get_minecraft_profile,
             create_temp_file,
             check_for_updates,
+            get_system_ram,
+            save_ram_config,
+            load_ram_config,
+            save_advanced_config,
+            load_advanced_config,
             install_update,
             download_instance_assets,
             test_manifest_url
