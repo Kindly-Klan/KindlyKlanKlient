@@ -14,6 +14,8 @@ use tauri::{Url, Emitter};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+mod logging;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistributionManifest {
@@ -1680,10 +1682,10 @@ fn get_supabase_config() -> (String, String) {
     
     // Log configuration status (without exposing keys)
     if url == "https://your-project.supabase.co" || key == "your-anon-key" {
-        println!("⚠️  Supabase not configured - using fallback values");
-        println!("   Configure SUPABASE_URL and SUPABASE_ANON_KEY environment variables");
+        log::warn!("⚠️  Supabase not configured - using fallback values");
+        log::warn!("   Configure SUPABASE_URL and SUPABASE_ANON_KEY environment variables");
     } else {
-        println!("✅ Supabase configured successfully");
+        log::info!("✅ Supabase configured successfully");
     }
     
     (url, key)
@@ -1692,11 +1694,13 @@ fn get_supabase_config() -> (String, String) {
 // Check whitelist access for a username
 #[tauri::command]
 async fn check_whitelist_access(username: String) -> Result<AccessCheck, String> {
+    log::info!("🔍 Checking whitelist access for user: {}", username);
+    
     let (supabase_url, supabase_key) = get_supabase_config();
     
     // If Supabase is not configured, allow access by default (for development)
     if supabase_url == "https://your-project.supabase.co" || supabase_key == "your-anon-key" {
-        println!("⚠️  Whitelist disabled - allowing access for user: {}", username);
+        log::warn!("⚠️  Whitelist disabled - allowing access for user: {}", username);
         return Ok(AccessCheck {
             has_access: true,
             allowed_instances: Vec::new(),
@@ -1709,10 +1713,13 @@ async fn check_whitelist_access(username: String) -> Result<AccessCheck, String>
         let cache = WHITELIST_CACHE.lock().unwrap();
         if let Some((cached_result, timestamp)) = cache.get(&username) {
             if is_cache_valid(*timestamp) {
+                log::info!("✅ Using cached whitelist result for user: {}", username);
                 return Ok(cached_result.clone());
             }
         }
     }
+    
+    log::info!("🌐 Querying Supabase for user: {}", username);
     
     // Query Supabase API
     let client = reqwest::Client::new();
@@ -1738,6 +1745,7 @@ async fn check_whitelist_access(username: String) -> Result<AccessCheck, String>
 
     let result = if entries.is_empty() {
         // User not in whitelist
+        log::warn!("❌ User not found in whitelist: {}", username);
         AccessCheck {
             has_access: false,
             allowed_instances: Vec::new(),
@@ -1745,6 +1753,9 @@ async fn check_whitelist_access(username: String) -> Result<AccessCheck, String>
         }
     } else {
         let entry = &entries[0];
+        log::info!("✅ User found in whitelist: {}", username);
+        log::info!("   Global access: {}", entry.global_access);
+        log::info!("   Allowed instances: {:?}", entry.allowed_instances);
         AccessCheck {
             has_access: true,
             allowed_instances: entry.allowed_instances.clone().unwrap_or_default(),
@@ -1799,6 +1810,30 @@ async fn clear_whitelist_cache() -> Result<String, String> {
 async fn open_url(url: String) -> Result<String, String> {
     open::that(&url).map_err(|e| format!("Failed to open URL: {}", e))?;
     Ok("URL opened successfully".to_string())
+}
+
+// Debug environment variables (for troubleshooting)
+#[tauri::command]
+async fn debug_env_vars() -> Result<String, String> {
+    let (url, key) = get_supabase_config();
+    let result = format!(
+        "Environment Variables Debug:\n\
+        SUPABASE_URL: {}\n\
+        SUPABASE_ANON_KEY: {}\n\
+        URL contains supabase.co: {}\n\
+        Key length: {}\n\
+        Is production build: {}\n\
+        Current working directory: {:?}",
+        url,
+        if key.len() > 20 { "SET (length > 20)" } else { "NOT SET or too short" },
+        url.contains("supabase.co"),
+        key.len(),
+        !cfg!(debug_assertions),
+        std::env::current_dir().unwrap_or_default()
+    );
+    
+    log::info!("🔍 Environment debug info:\n{}", result);
+    Ok(result)
 }
 
 // Test manifest URL accessibility
@@ -3406,6 +3441,13 @@ pub fn run() {
     // Load environment variables from .env file
     dotenv::dotenv().ok();
     
+    // Initialize logging system
+    if let Err(e) = logging::init_logging() {
+        eprintln!("Error initializing logging: {}", e);
+    }
+    
+    log::info!("Starting KindlyKlanKlient...");
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_updater::Builder::default().build())
@@ -3443,6 +3485,7 @@ pub fn run() {
             get_accessible_instances,
             clear_whitelist_cache,
             open_url,
+            debug_env_vars,
             download_instance_assets,
             test_manifest_url
         ])
