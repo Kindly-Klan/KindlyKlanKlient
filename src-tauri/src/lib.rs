@@ -1673,12 +1673,13 @@ fn is_cache_valid(timestamp: u64) -> bool {
     get_current_timestamp() - timestamp < 300
 }
 
-// Get Supabase configuration (fallback to hardcoded values if env vars not available)
+// Get Supabase configuration (uses compile-time embedded values)
 fn get_supabase_config() -> (String, String) {
+    // First try runtime environment (for development)
     let url = std::env::var("SUPABASE_URL")
-        .unwrap_or_else(|_| "https://your-project.supabase.co".to_string());
+        .unwrap_or_else(|_| env!("SUPABASE_URL").to_string());
     let key = std::env::var("SUPABASE_ANON_KEY")
-        .unwrap_or_else(|_| "your-anon-key".to_string());
+        .unwrap_or_else(|_| env!("SUPABASE_ANON_KEY").to_string());
     
     // Log configuration status (without exposing keys)
     if url == "https://your-project.supabase.co" || key == "your-anon-key" {
@@ -1812,18 +1813,28 @@ async fn open_url(url: String) -> Result<String, String> {
     Ok("URL opened successfully".to_string())
 }
 
-// Debug environment variables (for troubleshooting)
 #[tauri::command]
 async fn debug_env_vars() -> Result<String, String> {
     let (url, key) = get_supabase_config();
+    let runtime_url = std::env::var("SUPABASE_URL").unwrap_or_else(|_| "NOT SET".to_string());
+    let runtime_key = std::env::var("SUPABASE_ANON_KEY").unwrap_or_else(|_| "NOT SET".to_string());
+    
     let result = format!(
         "Environment Variables Debug:\n\
-        SUPABASE_URL: {}\n\
-        SUPABASE_ANON_KEY: {}\n\
+        Runtime SUPABASE_URL: {}\n\
+        Runtime SUPABASE_ANON_KEY: {}\n\
+        Compile-time SUPABASE_URL: {}\n\
+        Compile-time SUPABASE_ANON_KEY: {}\n\
+        Final URL: {}\n\
+        Final Key: {}\n\
         URL contains supabase.co: {}\n\
         Key length: {}\n\
         Is production build: {}\n\
         Current working directory: {:?}",
+        runtime_url,
+        if runtime_key.len() > 20 { "SET (length > 20)" } else { "NOT SET or too short" },
+        env!("SUPABASE_URL"),
+        if env!("SUPABASE_ANON_KEY").len() > 20 { "SET (length > 20)" } else { "NOT SET or too short" },
         url,
         if key.len() > 20 { "SET (length > 20)" } else { "NOT SET or too short" },
         url.contains("supabase.co"),
