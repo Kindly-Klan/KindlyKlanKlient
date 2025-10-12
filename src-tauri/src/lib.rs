@@ -63,6 +63,29 @@ pub struct InstanceAsset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateState {
+    pub last_check: String,
+    pub available_version: Option<String>,
+    pub current_version: String,
+    pub downloaded: bool,
+    pub download_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhitelistEntry {
+    pub minecraft_username: String,
+    pub global_access: bool,
+    pub allowed_instances: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessCheck {
+    pub has_access: bool,
+    pub allowed_instances: Vec<String>,
+    pub global_access: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetDownloadProgress {
     pub current: u64,
     pub total: u64,
@@ -1416,15 +1439,36 @@ async fn check_for_updates(app_handle: tauri::AppHandle) -> Result<String, Strin
     use tauri_plugin_updater::UpdaterExt;
 
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    
+    // Load current state
+    let mut state = load_update_state().await;
+    state.last_check = chrono::Utc::now().to_rfc3339();
+    
     match updater.check().await {
         Ok(update) => {
             if let Some(update) = update {
+                // Update state with available version
+                state.available_version = Some(update.version.clone());
+                state.downloaded = false;
+                state.download_ready = false;
+                save_update_state(&state).await?;
+                
                 Ok(format!("Update available: {}", update.version))
             } else {
+                // No updates available
+                state.available_version = None;
+                state.downloaded = false;
+                state.download_ready = false;
+                save_update_state(&state).await?;
+                
                 Ok("No updates available".to_string())
             }
         }
-        Err(e) => Err(format!("Failed to check for updates: {}", e))
+        Err(e) => {
+            // Save state even on error
+            save_update_state(&state).await?;
+            Err(format!("Failed to check for updates: {}", e))
+        }
     }
 }
 
@@ -1433,25 +1477,328 @@ async fn check_for_updates(app_handle: tauri::AppHandle) -> Result<String, Strin
 async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
 
+    // Check if we have a downloaded update ready
+    let state = load_update_state().await;
+    if !state.download_ready {
+        return Ok("No update ready to install. Please download the update first.".to_string());
+    }
+
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
     match updater.check().await {
         Ok(update) => {
             if let Some(update) = update {
+                // Emit install start event
+                app_handle.emit("update-install-start", ()).unwrap_or_default();
+                
                 update.download_and_install(
                     |chunk_length, content_length| {
-                        println!("Downloaded {} of {:?}", chunk_length, content_length);
+                        println!("Installing update: {} of {:?}", chunk_length, content_length);
                     },
                     || {
-                        println!("Download finished");
+                        println!("Install finished");
+                        // Emit install complete event
+                        app_handle.emit("update-install-complete", ()).unwrap_or_default();
                     }
-                ).await.map_err(|e| format!("Failed to download and install update: {}", e))?;
-                Ok("Update installed successfully".to_string())
+                ).await.map_err(|e| format!("Failed to install update: {}", e))?;
+                
+                // Clear update state after successful install
+                let mut new_state = state;
+                new_state.downloaded = false;
+                new_state.download_ready = false;
+                new_state.available_version = None;
+                save_update_state(&new_state).await?;
+                
+                Ok("Update installed successfully. The application will restart.".to_string())
             } else {
                 Ok("No updates available to install".to_string())
             }
         }
         Err(e) => Err(format!("Failed to check for updates: {}", e))
     }
+}
+
+// Helper function to get update state file path
+fn get_update_state_path() -> PathBuf {
+    let kindly_dir = std::env::var("USERPROFILE")
+        .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
+        .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
+    
+    kindly_dir.join("update_state.json")
+}
+
+// Helper function to get current version from GitHub
+async fn get_current_version_from_github() -> String {
+    // Try to get current version from GitHub releases
+    match reqwest::get("https://api.github.com/repos/Kindly-Klan/KindlyKlanKlient/releases/latest").await {
+        Ok(response) => {
+            if response.status().is_success() {
+                if let Ok(json) = response.json::<serde_json::Value>().await {
+                    if let Some(tag_name) = json.get("tag_name").and_then(|v| v.as_str()) {
+                        // Remove 'v' prefix if present
+                        return tag_name.trim_start_matches('v').to_string();
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // Fallback to local version if GitHub is unreachable
+        }
+    }
+    
+    // Fallback to local version
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+// Helper function to load update state
+async fn load_update_state() -> UpdateState {
+    let state_path = get_update_state_path();
+    
+    if let Ok(content) = fs::read_to_string(&state_path).await {
+        if let Ok(mut state) = serde_json::from_str::<UpdateState>(&content) {
+            // Update current version from GitHub
+            state.current_version = get_current_version_from_github().await;
+            return state;
+        }
+    }
+    
+    // Return default state if file doesn't exist or is invalid
+    UpdateState {
+        last_check: "1970-01-01T00:00:00Z".to_string(),
+        available_version: None,
+        current_version: get_current_version_from_github().await,
+        downloaded: false,
+        download_ready: false,
+    }
+}
+
+// Helper function to save update state
+async fn save_update_state(state: &UpdateState) -> Result<(), String> {
+    let state_path = get_update_state_path();
+    
+    // Ensure directory exists
+    if let Some(parent) = state_path.parent() {
+        fs::create_dir_all(parent).await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    let content = serde_json::to_string_pretty(state)
+        .map_err(|e| format!("Failed to serialize state: {}", e))?;
+    
+    fs::write(&state_path, content).await
+        .map_err(|e| format!("Failed to write state file: {}", e))?;
+    
+    Ok(())
+}
+
+// Get current update state
+#[tauri::command]
+async fn get_update_state() -> Result<UpdateState, String> {
+    Ok(load_update_state().await)
+}
+
+// Save update state
+#[tauri::command]
+async fn save_update_state_command(state: UpdateState) -> Result<String, String> {
+    save_update_state(&state).await?;
+    Ok("Update state saved successfully".to_string())
+}
+
+// Download update silently (without installing)
+#[tauri::command]
+async fn download_update_silent(app_handle: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    
+    let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    
+    match updater.check().await {
+        Ok(update) => {
+            if let Some(update) = update {
+                // Emit download start event
+                app_handle.emit("update-download-start", ()).unwrap_or_default();
+                
+                // Download the update
+                update.download_and_install(
+                    |chunk_length, content_length| {
+                        let progress = if let Some(total) = content_length {
+                            (chunk_length as f64 / total as f64 * 100.0) as u32
+                        } else {
+                            0
+                        };
+                        
+                        // Emit progress event
+                        app_handle.emit("update-download-progress", progress).unwrap_or_default();
+                    },
+                    || {
+                        // Emit download complete event
+                        app_handle.emit("update-download-complete", ()).unwrap_or_default();
+                    }
+                ).await.map_err(|e| format!("Failed to download update: {}", e))?;
+                
+                // Update state
+                let mut state = load_update_state().await;
+                state.downloaded = true;
+                state.download_ready = true;
+                state.available_version = Some(update.version.clone());
+                save_update_state(&state).await?;
+                
+                Ok(format!("Update {} downloaded successfully", update.version))
+            } else {
+                Ok("No updates available to download".to_string())
+            }
+        }
+        Err(e) => Err(format!("Failed to check for updates: {}", e))
+    }
+}
+
+// Whitelist functions
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::LazyLock;
+
+// Cache for whitelist entries (5 minutes TTL)
+static WHITELIST_CACHE: LazyLock<Mutex<HashMap<String, (AccessCheck, u64)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// Get current timestamp
+fn get_current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+// Check if cache entry is still valid (5 minutes = 300 seconds)
+fn is_cache_valid(timestamp: u64) -> bool {
+    get_current_timestamp() - timestamp < 300
+}
+
+// Get Supabase configuration (fallback to hardcoded values if env vars not available)
+fn get_supabase_config() -> (String, String) {
+    let url = std::env::var("SUPABASE_URL")
+        .unwrap_or_else(|_| "https://your-project.supabase.co".to_string());
+    let key = std::env::var("SUPABASE_ANON_KEY")
+        .unwrap_or_else(|_| "your-anon-key".to_string());
+    
+    // Log configuration status (without exposing keys)
+    if url == "https://your-project.supabase.co" || key == "your-anon-key" {
+        println!("⚠️  Supabase not configured - using fallback values");
+        println!("   Configure SUPABASE_URL and SUPABASE_ANON_KEY environment variables");
+    } else {
+        println!("✅ Supabase configured successfully");
+    }
+    
+    (url, key)
+}
+
+// Check whitelist access for a username
+#[tauri::command]
+async fn check_whitelist_access(username: String) -> Result<AccessCheck, String> {
+    let (supabase_url, supabase_key) = get_supabase_config();
+    
+    // If Supabase is not configured, allow access by default (for development)
+    if supabase_url == "https://your-project.supabase.co" || supabase_key == "your-anon-key" {
+        println!("⚠️  Whitelist disabled - allowing access for user: {}", username);
+        return Ok(AccessCheck {
+            has_access: true,
+            allowed_instances: Vec::new(),
+            global_access: true,
+        });
+    }
+
+    // Check cache first
+    {
+        let cache = WHITELIST_CACHE.lock().unwrap();
+        if let Some((cached_result, timestamp)) = cache.get(&username) {
+            if is_cache_valid(*timestamp) {
+                return Ok(cached_result.clone());
+            }
+        }
+    }
+    
+    // Query Supabase API
+    let client = reqwest::Client::new();
+    let url = format!("{}/rest/v1/whitelist?minecraft_username=eq.{}", supabase_url, username);
+    
+    let response = client
+        .get(&url)
+        .header("apikey", &supabase_key)
+        .header("Authorization", &format!("Bearer {}", supabase_key))
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to query whitelist: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Whitelist API error: {}", response.status()));
+    }
+
+    let entries: Vec<WhitelistEntry> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse whitelist response: {}", e))?;
+
+    let result = if entries.is_empty() {
+        // User not in whitelist
+        AccessCheck {
+            has_access: false,
+            allowed_instances: Vec::new(),
+            global_access: false,
+        }
+    } else {
+        let entry = &entries[0];
+        AccessCheck {
+            has_access: true,
+            allowed_instances: entry.allowed_instances.clone().unwrap_or_default(),
+            global_access: entry.global_access,
+        }
+    };
+
+    // Cache the result
+    {
+        let mut cache = WHITELIST_CACHE.lock().unwrap();
+        cache.insert(username, (result.clone(), get_current_timestamp()));
+    }
+
+    Ok(result)
+}
+
+// Get accessible instances for a user
+#[tauri::command]
+async fn get_accessible_instances(
+    username: String,
+    all_instances: Vec<String>
+) -> Result<Vec<String>, String> {
+    let access_check = check_whitelist_access(username).await?;
+    
+    if !access_check.has_access {
+        return Ok(Vec::new());
+    }
+
+    if access_check.global_access {
+        // User has access to all instances
+        Ok(all_instances)
+    } else {
+        // User has access only to specific instances
+        let accessible: Vec<String> = all_instances
+            .into_iter()
+            .filter(|instance| access_check.allowed_instances.contains(instance))
+            .collect();
+        Ok(accessible)
+    }
+}
+
+// Clear whitelist cache
+#[tauri::command]
+async fn clear_whitelist_cache() -> Result<String, String> {
+    let mut cache = WHITELIST_CACHE.lock().unwrap();
+    cache.clear();
+    Ok("Whitelist cache cleared".to_string())
+}
+
+// Open URL in default browser
+#[tauri::command]
+async fn open_url(url: String) -> Result<String, String> {
+    open::that(&url).map_err(|e| format!("Failed to open URL: {}", e))?;
+    Ok("URL opened successfully".to_string())
 }
 
 // Test manifest URL accessibility
@@ -3056,6 +3403,9 @@ fn build_minecraft_args(_instance_id: &str, minecraft_version: &str) -> Result<V
 // Main Tauri application entry point
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_updater::Builder::default().build())
@@ -3086,6 +3436,13 @@ pub fn run() {
             save_advanced_config,
             load_advanced_config,
             install_update,
+            get_update_state,
+            save_update_state_command,
+            download_update_silent,
+            check_whitelist_access,
+            get_accessible_instances,
+            clear_whitelist_cache,
+            open_url,
             download_instance_assets,
             test_manifest_url
         ])

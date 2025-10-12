@@ -10,6 +10,9 @@ import SettingsView from "@/components/SettingsView";
 import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
+import { UpdaterService } from "@/services/updater";
+import { WhitelistService } from "@/services/whitelist";
+import NoAccessScreen from "@/components/NoAccessScreen";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
 type AssetDownloadProgress = {
@@ -236,6 +239,9 @@ function App() {
   const [downloadProgress, setDownloadProgress] = useState<AssetDownloadProgress | null>(null);
   const [logoVisible, setLogoVisible] = useState(false);
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [showNoAccessScreen, setShowNoAccessScreen] = useState(false);
+  const [filteredInstances, setFilteredInstances] = useState<any[]>([]);
   const initialized = useRef(false);
 
   useEffect(() => {}, [distributionLoaded]);
@@ -250,6 +256,34 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
+  // Check for updates on startup
+  const checkForUpdatesOnStartup = async () => {
+    try {
+      // Check if we should check for updates (every 6 hours)
+      const shouldCheck = await UpdaterService.shouldCheckForUpdates();
+      if (!shouldCheck) return;
+
+      // Check if there's already a downloaded update ready
+      const state = await UpdaterService.getUpdateState();
+      if (state.download_ready) {
+        setUpdateDialogOpen(true);
+        return;
+      }
+
+      // Check for new updates in background
+      const result = await UpdaterService.checkForUpdates();
+      if (result.available) {
+        // Download the update silently
+        await UpdaterService.downloadUpdateSilent();
+        
+        // Show toast notification
+        addToast('Actualización descargada. Puedes instalarla desde Configuración.', 'info', 5000);
+      }
+    } catch (error) {
+      console.error('Error checking for updates on startup:', error);
+    }
+  };
+
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -262,7 +296,12 @@ function App() {
     setTimeout(hideInitialLoader, 100);
 
     loadDistribution();
-    checkExistingSession();
+    checkExistingSession().catch(console.error);
+    
+    // Check for updates after a short delay to not interfere with startup
+    setTimeout(() => {
+      checkForUpdatesOnStartup();
+    }, 2000);
 
     if (accounts.length === 0 && !isLoginVisible) {
       const timer = setTimeout(() => {
@@ -432,13 +471,36 @@ function App() {
       });
       setDistribution(manifest);
       setDistributionLoaded(true);
+      
+      // Filtrar instancias según permisos del usuario actual
+      if (currentAccount) {
+        const accessibleInstances = await WhitelistService.getAccessibleInstances(
+          currentAccount.user.username,
+          manifest.instances
+        );
+        setFilteredInstances(accessibleInstances);
+      } else {
+        // Si no hay usuario logueado, mostrar todas las instancias
+        setFilteredInstances(manifest.instances);
+      }
+      
       addToast(`¡Instancias cargadas correctamente!`, 'success');
     } catch (error) {
       addToast('Error al cargar la distribución', 'error');
     }
   };
 
-  const checkExistingSession = () => {
+  const handleLogout = () => {
+    setAccounts([]);
+    setCurrentAccount(null);
+    setShowNoAccessScreen(false);
+    setIsLoginVisible(true);
+    localStorage.removeItem('kkk_accounts');
+    localStorage.removeItem('kkk_active_account');
+    addToast('Sesión cerrada correctamente', 'info');
+  };
+
+  const checkExistingSession = async () => {
     const savedAccounts = localStorage.getItem('kkk_accounts');
     const activeAccountId = localStorage.getItem('kkk_active_account');
 
@@ -447,14 +509,37 @@ function App() {
         const accountsData = JSON.parse(savedAccounts);
         setAccounts(accountsData);
 
+        let activeAccount = null;
         if (activeAccountId) {
-          const activeAccount = accountsData.find((acc: Account) => acc.id === activeAccountId);
-          if (activeAccount) {
-            setCurrentAccount(activeAccount);
-          }
+          activeAccount = accountsData.find((acc: Account) => acc.id === activeAccountId);
         } else if (accountsData.length > 0) {
-          setCurrentAccount(accountsData[0]);
+          activeAccount = accountsData[0];
           localStorage.setItem('kkk_active_account', accountsData[0].id);
+        }
+
+        if (activeAccount) {
+          // Verificar whitelist para la sesión existente
+          try {
+            const accessCheck = await WhitelistService.checkAccess(activeAccount.user.username);
+            
+            if (!accessCheck.has_access) {
+              // Usuario sin acceso - limpiar sesión y mostrar pantalla de acceso denegado
+              setAccounts([]);
+              setCurrentAccount(null);
+              setShowNoAccessScreen(true);
+              localStorage.removeItem('kkk_accounts');
+              localStorage.removeItem('kkk_active_account');
+              return;
+            }
+
+            // Usuario con acceso - establecer cuenta activa
+            setCurrentAccount(activeAccount);
+          } catch (whitelistError) {
+            console.error('Error checking whitelist for existing session:', whitelistError);
+            // En caso de error, permitir acceso pero mostrar advertencia
+            setCurrentAccount(activeAccount);
+            addToast('Advertencia: No se pudo verificar el acceso. Contacta a un administrador si hay problemas.', 'info');
+          }
         }
       } catch (error) {
         console.error('Error parsing saved accounts:', error);
@@ -487,18 +572,39 @@ function App() {
 
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
-      addToast('Autenticación exitosa.', 'success');
-      setIsTransitioning(true);
+      
+      // Verificar whitelist después de autenticación exitosa
+      setLoaderText("Verificando acceso...");
+      try {
+        const accessCheck = await WhitelistService.checkAccess(userSession.username);
+        
+        if (!accessCheck.has_access) {
+          setShowNoAccessScreen(true);
+          setIsLoading(false);
+          setShowLoader(false);
+          return;
+        }
 
-      setTimeout(() => {
-        setIsLoading(false);
-        setShowLoader(false);
-        setLoaderText("Iniciando sesión...");
+        // Si tiene acceso, continuar con el flujo normal
+        addToast('Autenticación exitosa.', 'success');
+        setIsTransitioning(true);
 
         setTimeout(() => {
-          setIsTransitioning(false);
-        }, 500);
-      }, 1000);
+          setIsLoading(false);
+          setShowLoader(false);
+          setLoaderText("Iniciando sesión...");
+
+          setTimeout(() => {
+            setIsTransitioning(false);
+          }, 500);
+        }, 1000);
+        
+      } catch (whitelistError) {
+        console.error('Whitelist check error:', whitelistError);
+        addToast('Error verificando acceso. Inténtalo de nuevo.', 'error');
+        setIsLoading(false);
+        setShowLoader(false);
+      }
       
     } catch (error) {
       console.error('Microsoft auth error:', error);
@@ -515,33 +621,41 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black flex relative overflow-hidden">
-      {currentAccount && (
-           <Sidebar
-             instances={distribution?.instances || []}
-             selectedInstance={selectedInstance}
-             onInstanceSelect={handleInstanceSelect}
-             handleSettingsToggle={handleSettingsToggle}
-             handleSkinToggle={handleSkinToggle}
-             distributionBaseUrl={distribution?.distribution.base_url || ''}
-             currentUser={currentAccount.user}
-           />
-      )}
+      {/* No Access Screen - Full screen overlay */}
+      {showNoAccessScreen ? (
+        <NoAccessScreen 
+          onLogout={handleLogout}
+          username={currentAccount?.user.username}
+        />
+      ) : (
+        <>
+          {currentAccount && (
+               <Sidebar
+                 instances={filteredInstances.length > 0 ? filteredInstances : (distribution?.instances || [])}
+                 selectedInstance={selectedInstance}
+                 onInstanceSelect={handleInstanceSelect}
+                 handleSettingsToggle={handleSettingsToggle}
+                 handleSkinToggle={handleSkinToggle}
+                 distributionBaseUrl={distribution?.distribution.base_url || ''}
+                 currentUser={currentAccount.user}
+               />
+          )}
 
-      <div className={`flex-1 flex flex-col ${currentAccount ? 'ml-20' : ''}`}>
-        {accounts.length > 0 && (
-          <div className="absolute top-4 right-4 z-50">
-            <UserProfile
-              accounts={accounts}
-              currentAccount={currentAccount}
-              onSwitchAccount={handleSwitchAccount}
-              onLogoutAccount={handleLogoutAccount}
-              onAddAccount={handleAddAccount}
-            />
-          </div>
-        )}
+          <div className={`flex-1 flex flex-col ${currentAccount ? 'ml-20' : ''}`}>
+            {accounts.length > 0 && (
+              <div className="absolute top-4 right-4 z-50">
+                <UserProfile
+                  accounts={accounts}
+                  currentAccount={currentAccount}
+                  onSwitchAccount={handleSwitchAccount}
+                  onLogoutAccount={handleLogoutAccount}
+                  onAddAccount={handleAddAccount}
+                />
+              </div>
+            )}
 
-             <main className={`flex-1 relative transition-all duration-700 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-              {!currentAccount ? (
+                 <main className={`flex-1 relative transition-all duration-700 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+                  {!currentAccount ? (
                 <div className={`flex items-center justify-center h-full transition-all duration-700 ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
                   <div className="text-center group">
                     <div className={`mb-8 transition-all duration-500 delay-200 ${isLoginVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
@@ -655,6 +769,56 @@ function App() {
           />
         )}
       </ToastContainer>
+
+      {/* Update Dialog */}
+      {updateDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-2">Actualización Lista</h3>
+              <p className="text-white/80 mb-6">
+                Hay una actualización descargada y lista para instalar. ¿Quieres instalarla ahora?
+              </p>
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={async () => {
+                    setUpdateDialogOpen(false);
+                    try {
+                      const result = await UpdaterService.installUpdate();
+                      if (result.success) {
+                        addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
+                      } else {
+                        addToast('Error al instalar la actualización', 'error');
+                      }
+                    } catch (error) {
+                      addToast('Error al instalar la actualización', 'error');
+                    }
+                  }}
+                  className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Instalar Ahora
+                </button>
+                
+                <button
+                  onClick={() => setUpdateDialogOpen(false)}
+                  className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Más Tarde
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
     </div>
   );
 }
