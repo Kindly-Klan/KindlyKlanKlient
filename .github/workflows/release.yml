@@ -116,10 +116,15 @@ jobs:
       - name: Get release assets JSON
         id: assets
         run: |
-          TAG=v${{ github.ref_name || steps.version.outputs.prop }}
-          if [[ -z "$TAG" ]]; then TAG=$(jq -r .version src-tauri/tauri.conf.json); TAG=v$TAG; fi
+          set -e
+          TAG=v${{ steps.version.outputs.prop }}
           echo "Using tag: $TAG"
-          gh release view "$TAG" --json assets -q '.assets[] | {name: .name, url: .url}' > assets.json
+          if ! gh release view "$TAG" --json assets -q '.assets[] | {name: .name, url: .url}' > assets.json; then
+            echo "Release $TAG not found, falling back to latest release..."
+            LATEST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+            echo "Latest tag: $LATEST_TAG"
+            gh release view "$LATEST_TAG" --json assets -q '.assets[] | {name: .name, url: .url}' > assets.json
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
