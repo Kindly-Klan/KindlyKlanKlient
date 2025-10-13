@@ -532,10 +532,18 @@ function App() {
 
   const checkExistingSession = async () => {
     try {
+      // Limpiar sesiones expiradas primero
+      await SessionService.cleanupExpiredSessions();
+
       // Primero intentar cargar sesión activa desde la base de datos
       const activeSession = await SessionService.getActiveSession();
 
       if (activeSession) {
+        console.log('Found active session for user:', activeSession.username);
+        console.log('Session expires at:', new Date(activeSession.expires_at * 1000));
+        console.log('Current time:', new Date());
+        console.log('Is expired:', SessionService.isSessionExpired(activeSession));
+
         // Verificar si la sesión no ha expirado
         if (SessionService.isSessionExpired(activeSession)) {
           console.log('Session expired, removing...');
@@ -618,13 +626,18 @@ function App() {
       };
 
       // Guardar sesión en la base de datos
+      const expiresAt = userSession.expires_at || (Date.now() / 1000) + 3600;
+      console.log('Saving session for user:', userSession.username);
+      console.log('Expires at:', new Date(expiresAt * 1000));
+
       try {
         await SessionService.saveSession(
           userSession.username,
           userSession.access_token,
           null, // refresh_token (no disponible en Microsoft auth)
-          userSession.expires_at || (Date.now() / 1000) + 3600 // 1 hora por defecto si no especificado
+          expiresAt
         );
+        console.log('Session saved successfully');
       } catch (sessionError) {
         console.error('Error saving session to database:', sessionError);
         // Continuar con el flujo aunque falle la persistencia

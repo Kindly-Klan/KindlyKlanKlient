@@ -1962,6 +1962,35 @@ async fn cleanup_expired_sessions(app_handle: tauri::AppHandle) -> Result<usize,
     Ok(cleaned)
 }
 
+// Debug session database
+#[tauri::command]
+async fn debug_sessions(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let db_path = session_manager.db_path.clone();
+    let sessions = session_manager.get_all_sessions()
+        .map_err(|e| format!("Failed to get sessions: {}", e))?;
+
+    let result = format!(
+        "Session Database Debug:\n\
+        Database path: {:?}\n\
+        Total sessions: {}\n\
+        Sessions:\n{}",
+        db_path,
+        sessions.len(),
+        sessions.iter().map(|s| format!(
+            "  - {}: expires_at={}, is_expired={}",
+            s.username,
+            s.expires_at,
+            s.is_expired()
+        )).collect::<Vec<_>>().join("\n")
+    );
+
+    log::info!("🔍 Session debug info:\n{}", result);
+    Ok(result)
+}
+
 // Test manifest URL accessibility
 #[tauri::command]
 async fn test_manifest_url(
@@ -3621,6 +3650,7 @@ pub fn run() {
             delete_session,
             clear_all_sessions,
             cleanup_expired_sessions,
+            debug_sessions,
             download_instance_assets,
             test_manifest_url
         ])

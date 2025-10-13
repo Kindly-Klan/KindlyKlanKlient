@@ -43,7 +43,7 @@ impl Session {
 }
 
 pub struct SessionManager {
-    db_path: PathBuf,
+    pub db_path: PathBuf,
 }
 
 impl SessionManager {

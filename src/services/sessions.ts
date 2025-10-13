@@ -5,9 +5,9 @@ export interface Session {
   username: string;
   access_token: string;
   refresh_token: string | null;
-  expires_at: number;
-  created_at: number;
-  updated_at: number;
+  expires_at: number; // Unix timestamp in seconds
+  created_at: number; // Unix timestamp in seconds
+  updated_at: number; // Unix timestamp in seconds
 }
 
 export class SessionService {
@@ -47,6 +47,10 @@ export class SessionService {
 
   static async cleanupExpiredSessions(): Promise<number> {
     return await invoke<number>('cleanup_expired_sessions');
+  }
+
+  static async debugSessions(): Promise<string> {
+    return await invoke<string>('debug_sessions');
   }
 
   static isSessionExpired(session: Session): boolean {

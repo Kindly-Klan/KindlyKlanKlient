@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { UpdaterService } from '@/services/updater';
+import { SessionService } from '@/services/sessions';
 import type { UpdateState, UpdateProgress } from '@/types/updater';
 
 interface SettingsViewProps {
@@ -608,6 +609,49 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                 </div>
               </div>
             </div>
+           </div>
+         </div>
+
+         {/* Debug Section */}
+         <div className="max-w-4xl mx-auto">
+           <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
+
+             {/* Section Header */}
+             <div className="flex items-center gap-3 mb-6">
+               <div className="w-8 h-8 flex items-center justify-center">
+                 <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                 </svg>
+               </div>
+               <h2 className="text-2xl font-bold text-white">Debug</h2>
+             </div>
+
+             <div className="space-y-6">
+               {/* Session Debug */}
+               <div>
+                 <div className="flex items-center justify-between mb-3">
+                   <label className="text-white/80 font-medium">Información de Sesiones</label>
+                   <button
+                     onClick={async () => {
+                       try {
+                         const debugInfo = await SessionService.debugSessions();
+                         console.log('Session debug info:', debugInfo);
+                         alert(debugInfo);
+                       } catch (error) {
+                         console.error('Error getting session debug info:', error);
+                         alert('Error getting session debug info: ' + error);
+                       }
+                     }}
+                     className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm"
+                   >
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                     </svg>
+                     Debug Sesiones
+                   </button>
+                 </div>
+               </div>
+             </div>
            </div>
          </div>
 
