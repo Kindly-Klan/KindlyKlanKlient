@@ -15,6 +15,7 @@ use tauri::{Url, Emitter};
 use std::os::windows::process::CommandExt;
 
 mod logging;
+mod sessions;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1868,6 +1869,99 @@ async fn debug_env_vars() -> Result<String, String> {
     Ok(result)
 }
 
+// Session management commands
+#[tauri::command]
+async fn save_session(
+    app_handle: tauri::AppHandle,
+    username: String,
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_at: i64
+) -> Result<String, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let session = sessions::Session::new(username.clone(), access_token, refresh_token, expires_at);
+    session_manager.save_session(&session)
+        .map_err(|e| format!("Failed to save session: {}", e))?;
+
+    log::info!("Session saved for user: {}", username);
+    Ok("Session saved successfully".to_string())
+}
+
+#[tauri::command]
+async fn get_session(app_handle: tauri::AppHandle, username: String) -> Result<Option<sessions::Session>, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let session = session_manager.get_session(&username)
+        .map_err(|e| format!("Failed to get session: {}", e))?;
+
+    Ok(session)
+}
+
+#[tauri::command]
+async fn get_active_session(app_handle: tauri::AppHandle) -> Result<Option<sessions::Session>, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let session = session_manager.get_active_session()
+        .map_err(|e| format!("Failed to get active session: {}", e))?;
+
+    Ok(session)
+}
+
+#[tauri::command]
+async fn update_session(
+    app_handle: tauri::AppHandle,
+    session: sessions::Session
+) -> Result<String, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    session_manager.update_session(&session)
+        .map_err(|e| format!("Failed to update session: {}", e))?;
+
+    log::info!("Session updated for user: {}", session.username);
+    Ok("Session updated successfully".to_string())
+}
+
+#[tauri::command]
+async fn delete_session(app_handle: tauri::AppHandle, username: String) -> Result<String, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    session_manager.delete_session(&username)
+        .map_err(|e| format!("Failed to delete session: {}", e))?;
+
+    log::info!("Session deleted for user: {}", username);
+    Ok("Session deleted successfully".to_string())
+}
+
+#[tauri::command]
+async fn clear_all_sessions(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    session_manager.clear_all_sessions()
+        .map_err(|e| format!("Failed to clear sessions: {}", e))?;
+
+    log::info!("All sessions cleared");
+    Ok("All sessions cleared successfully".to_string())
+}
+
+#[tauri::command]
+async fn cleanup_expired_sessions(app_handle: tauri::AppHandle) -> Result<usize, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let cleaned = session_manager.cleanup_expired_sessions()
+        .map_err(|e| format!("Failed to cleanup sessions: {}", e))?;
+
+    log::info!("Cleaned up {} expired sessions", cleaned);
+    Ok(cleaned)
+}
+
 // Test manifest URL accessibility
 #[tauri::command]
 async fn test_manifest_url(
@@ -3483,6 +3577,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_updater::Builder::default().build())
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             get_versions,
@@ -3518,6 +3613,14 @@ pub fn run() {
             clear_whitelist_cache,
             open_url,
             debug_env_vars,
+            // Session management commands
+            save_session,
+            get_session,
+            get_active_session,
+            update_session,
+            delete_session,
+            clear_all_sessions,
+            cleanup_expired_sessions,
             download_instance_assets,
             test_manifest_url
         ])

@@ -12,6 +12,7 @@ import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
 import { UpdaterService } from "@/services/updater";
 import { WhitelistService } from "@/services/whitelist";
+import { SessionService } from "@/services/sessions";
 import NoAccessScreen from "@/components/NoAccessScreen";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
@@ -414,10 +415,17 @@ function App() {
     }
   };
 
-  const handleLogoutAccount = (accountId: string) => {
+  const handleLogoutAccount = async (accountId: string) => {
     const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
 
     if (updatedAccounts.length === 0) {
+      // Si no quedan cuentas, limpiar todo
+      try {
+        await SessionService.clearAllSessions();
+      } catch (error) {
+        console.error('Error clearing all sessions from database:', error);
+      }
+
       setAccounts([]);
       setCurrentAccount(null);
       localStorage.removeItem('kkk_accounts');
@@ -425,9 +433,20 @@ function App() {
       setIsLoginVisible(true);
       addToast('Todas las cuentas cerradas. Vuelve a iniciar sesión.', 'info');
     } else {
+      // Si quedan cuentas, establecer la primera como activa
       const newActiveAccount = updatedAccounts[0];
       setCurrentAccount(newActiveAccount);
       localStorage.setItem('kkk_active_account', newActiveAccount.id);
+
+      // También limpiar sesión de la base de datos para la cuenta cerrada
+      try {
+        const accountToRemove = accounts.find(acc => acc.id === accountId);
+        if (accountToRemove) {
+          await SessionService.deleteSession(accountToRemove.user.username);
+        }
+      } catch (error) {
+        console.error('Error deleting session from database:', error);
+      }
 
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
@@ -490,7 +509,18 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Limpiar sesiones de la base de datos si hay cuenta activa
+      if (currentAccount) {
+        await SessionService.deleteSession(currentAccount.user.username);
+      }
+      // También limpiar todas las sesiones por seguridad
+      await SessionService.clearAllSessions();
+    } catch (error) {
+      console.error('Error clearing sessions from database:', error);
+    }
+
     setAccounts([]);
     setCurrentAccount(null);
     setShowNoAccessScreen(false);
@@ -501,50 +531,74 @@ function App() {
   };
 
   const checkExistingSession = async () => {
-    const savedAccounts = localStorage.getItem('kkk_accounts');
-    const activeAccountId = localStorage.getItem('kkk_active_account');
+    try {
+      // Primero intentar cargar sesión activa desde la base de datos
+      const activeSession = await SessionService.getActiveSession();
 
-    if (savedAccounts) {
-      try {
-        const accountsData = JSON.parse(savedAccounts);
-        setAccounts(accountsData);
-
-        let activeAccount = null;
-        if (activeAccountId) {
-          activeAccount = accountsData.find((acc: Account) => acc.id === activeAccountId);
-        } else if (accountsData.length > 0) {
-          activeAccount = accountsData[0];
-          localStorage.setItem('kkk_active_account', accountsData[0].id);
+      if (activeSession) {
+        // Verificar si la sesión no ha expirado
+        if (SessionService.isSessionExpired(activeSession)) {
+          console.log('Session expired, removing...');
+          await SessionService.deleteSession(activeSession.username);
+          setShowNoAccessScreen(true);
+          return;
         }
 
-        if (activeAccount) {
-          // Verificar whitelist para la sesión existente
-          try {
-            const accessCheck = await WhitelistService.checkAccess(activeAccount.user.username);
-            
-            if (!accessCheck.has_access) {
-              // Usuario sin acceso - limpiar sesión y mostrar pantalla de acceso denegado
-              setAccounts([]);
-              setCurrentAccount(null);
-              setShowNoAccessScreen(true);
-              localStorage.removeItem('kkk_accounts');
-              localStorage.removeItem('kkk_active_account');
-              return;
-            }
+        // Crear cuenta desde la sesión
+        const account: Account = {
+          id: `session_${activeSession.username}`,
+          user: {
+            access_token: activeSession.access_token,
+            username: activeSession.username,
+            uuid: activeSession.id, // Usar el ID de sesión como UUID temporal
+            user_type: 'microsoft',
+            expires_at: activeSession.expires_at
+          },
+          isActive: true
+        };
 
-            // Usuario con acceso - establecer cuenta activa
-            setCurrentAccount(activeAccount);
-          } catch (whitelistError) {
-            console.error('Error checking whitelist for existing session:', whitelistError);
-            // En caso de error, permitir acceso pero mostrar advertencia
-            setCurrentAccount(activeAccount);
-            addToast('Advertencia: No se pudo verificar el acceso. Contacta a un administrador si hay problemas.', 'info');
+        setAccounts([account]);
+        setCurrentAccount(account);
+
+        try {
+          const accessCheck = await WhitelistService.checkAccess(account.user.username);
+          if (!accessCheck.has_access) {
+            setAccounts([]);
+            setCurrentAccount(null);
+            setShowNoAccessScreen(true);
+            await SessionService.deleteSession(activeSession.username);
+            return;
           }
+        } catch (whitelistError) {
+          console.error('Error checking whitelist for existing session:', whitelistError);
+          // No eliminar la sesión por error de whitelist, solo mostrar advertencia
+          addToast('Advertencia: No se pudo verificar el acceso. Contacta a un administrador si hay problemas.', 'info');
         }
-      } catch (error) {
-        console.error('Error parsing saved accounts:', error);
+      } else {
+        // Si no hay sesión activa, limpiar datos antiguos de localStorage
         localStorage.removeItem('kkk_accounts');
         localStorage.removeItem('kkk_active_account');
+      }
+    } catch (error) {
+      console.error('Error checking existing session:', error);
+      // Si hay error con la base de datos, intentar fallback a localStorage
+      const savedAccounts = localStorage.getItem('kkk_accounts');
+      const activeAccountId = localStorage.getItem('kkk_active_account');
+
+      if (savedAccounts && activeAccountId) {
+        try {
+          const accountsData = JSON.parse(savedAccounts);
+          setAccounts(accountsData);
+
+          const activeAccount = accountsData.find((acc: Account) => acc.id === activeAccountId);
+          if (activeAccount) {
+            setCurrentAccount(activeAccount);
+          }
+        } catch (parseError) {
+          console.error('Error parsing saved accounts:', parseError);
+          localStorage.removeItem('kkk_accounts');
+          localStorage.removeItem('kkk_active_account');
+        }
       }
     }
   };
@@ -563,6 +617,19 @@ function App() {
         isActive: true
       };
 
+      // Guardar sesión en la base de datos
+      try {
+        await SessionService.saveSession(
+          userSession.username,
+          userSession.access_token,
+          null, // refresh_token (no disponible en Microsoft auth)
+          userSession.expires_at || (Date.now() / 1000) + 3600 // 1 hora por defecto si no especificado
+        );
+      } catch (sessionError) {
+        console.error('Error saving session to database:', sessionError);
+        // Continuar con el flujo aunque falle la persistencia
+      }
+
       const updatedAccounts = [...accounts, newAccount];
 
       if (accounts.length === 0) {
@@ -572,13 +639,15 @@ function App() {
 
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
-      
+
       // Verificar whitelist después de autenticación exitosa
       setLoaderText("Verificando acceso...");
       try {
         const accessCheck = await WhitelistService.checkAccess(userSession.username);
-        
+
         if (!accessCheck.has_access) {
+          // Eliminar sesión de la base de datos si no tiene acceso
+          await SessionService.deleteSession(userSession.username);
           setShowNoAccessScreen(true);
           setIsLoading(false);
           setShowLoader(false);

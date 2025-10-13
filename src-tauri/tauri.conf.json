@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Kindly Klan Klient",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "identifier": "com.kindlyklan.klient",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Kindly Klan Klient v0.1.15",
+        "title": "Kindly Klan Klient v0.1.16",
         "width": 1200,
         "height": 650,
         "resizable": true,
@@ -49,7 +49,7 @@
         "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/latest/download/latest.json"
       ],
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5d21xcTBBNHZhRkpVbWQwbzhZdTVYSXNtZWdGY2c1RXg2YjRqNUpWV0Juc0FBQkFBQUFBQUFBQUFBQUlBQUFBQURhQnhMMWV2bGk3TGZNdGcyU1BWUmJjemlqSlVJd1ZHUkVmU2JyUmM0NWduc1pjd0xyMVg3WUtZdElTWGY3SmlpbG5MQzlrdmhHbnFUTkVuS0pHNUlTVWkxUE1HUWF2ODdaUFVla0gwRWJqalZobXV4U2tUQWk0aGQ2Y0JvdWVpaElwNHNwNzYrR009Cg=="
+      "pubkey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu+vixdfVDlOQYkzvWLN5v57hr1aCWGc/lTsvqlWJO2RTMyQp/9rkg9+ZOcEi6uBfJFq2d1tIObP6mYOYl3NybIqSeiLjj+gd62I9e12p186yLrd4HeIvy3ooMcKwpH1tJQWe8Tl9HcBtfBPwfYSJQtENEkU8XVLWpH/CtCgbiNmD5IdkvIUfWnU/QmL8LiNb1y3q1J62CtY3gQFzfNqe6Ujo5NWJ/YkTuOHK7KkvNuUg32BNEayL02a1OsCSmDqLIzpK9fvEDmLIxaeHeo5KSReY9tU2rGgBEV5kMD0G94d6YCyYC5aFZegRtHvRxVTk+U3REDIZ9jeRo438pUEKGwIDAQAB"
     }
   }
 }
