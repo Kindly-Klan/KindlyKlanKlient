@@ -1726,6 +1726,9 @@ async fn check_whitelist_access(username: String) -> Result<AccessCheck, String>
     let client = reqwest::Client::new();
     let url = format!("{}/rest/v1/whitelist?minecraft_username=eq.{}", supabase_url, username);
     
+    log::info!("🔗 Supabase URL: {}", url);
+    log::info!("🔑 Using API key (length: {})", supabase_key.len());
+    
     let response = client
         .get(&url)
         .header("apikey", &supabase_key)
@@ -1733,16 +1736,34 @@ async fn check_whitelist_access(username: String) -> Result<AccessCheck, String>
         .header("Content-Type", "application/json")
         .send()
         .await
-        .map_err(|e| format!("Failed to query whitelist: {}", e))?;
+        .map_err(|e| {
+            log::error!("❌ Failed to send request to Supabase: {}", e);
+            format!("Failed to query whitelist: {}", e)
+        })?;
 
-    if !response.status().is_success() {
-        return Err(format!("Whitelist API error: {}", response.status()));
+    let status = response.status();
+    log::info!("📡 Response status: {}", status);
+    
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("❌ API error response: {}", error_text);
+        return Err(format!("Whitelist API error: {} - {}", status, error_text));
     }
 
-    let entries: Vec<WhitelistEntry> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse whitelist response: {}", e))?;
+    let response_text = response.text().await.map_err(|e| {
+        log::error!("❌ Failed to read response: {}", e);
+        format!("Failed to read whitelist response: {}", e)
+    })?;
+    
+    log::info!("📄 Response body: {}", response_text);
+
+    let entries: Vec<WhitelistEntry> = serde_json::from_str(&response_text).map_err(|e| {
+        log::error!("❌ Failed to parse JSON: {}", e);
+        log::error!("❌ Raw response: {}", response_text);
+        format!("Failed to parse whitelist response: {}", e)
+    })?;
+    
+    log::info!("📊 Found {} entries for user: {}", entries.len(), username);
 
     let result = if entries.is_empty() {
         // User not in whitelist

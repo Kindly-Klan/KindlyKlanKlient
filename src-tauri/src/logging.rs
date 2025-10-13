@@ -66,8 +66,8 @@ impl Logger {
                 let compressed_name = log_file.with_extension("log.gz");
                 
                 // Simple compression using gzip (if available)
-                if let Ok(mut file) = std::fs::File::open(log_file) {
-                    if let Ok(mut compressed) = std::fs::File::create(&compressed_name) {
+                if let Ok(_file) = std::fs::File::open(log_file) {
+                    if let Ok(_compressed) = std::fs::File::create(&compressed_name) {
                         // For now, just rename the file
                         // In a real implementation, you'd use a compression library
                         std::fs::rename(log_file, &compressed_name)?;

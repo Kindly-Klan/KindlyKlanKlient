@@ -63,6 +63,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -81,6 +84,9 @@ jobs:
           prerelease: false
 
       - name: Generate updater artifacts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           cd src-tauri
           pnpm tauri build --no-bundle
