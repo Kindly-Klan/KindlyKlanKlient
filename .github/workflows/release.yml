@@ -113,10 +113,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - name: Get release assets JSON
+        id: assets
+        run: |
+          TAG=v${{ github.ref_name || steps.version.outputs.prop }}
+          if [[ -z "$TAG" ]]; then TAG=$(jq -r .version src-tauri/tauri.conf.json); TAG=v$TAG; fi
+          echo "Using tag: $TAG"
+          gh release view "$TAG" --json assets -q '.assets[] | {name: .name, url: .url}' > assets.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version from tauri.conf.json
         id: version
@@ -125,76 +130,57 @@ jobs:
           path: 'src-tauri/tauri.conf.json'
           prop_path: 'version'
 
-      - name: Create latest.json
+      - name: Create latest.json from release assets
         run: |
-          # List all files in artifacts to debug
-          echo "Files in artifacts directory:"
-          find artifacts -type f | sort
-
-          # Function to find file by pattern and return basename
-          find_file() {
-            local pattern="$1"
-            find artifacts -name "$pattern" | head -1 | xargs basename 2>/dev/null || echo ""
+          set -e
+          VERSION=${{ steps.version.outputs.prop }}
+          echo "Using version: $VERSION"
+          # Extraer URLs de assets y firmas directamente del JSON de assets
+          get_asset_url() { jq -r --arg name "$1" 'select(.name==$name) | .url' assets.json; }
+          get_sig_content() { \
+            local base="$1"; \
+            local sig_name="${base}.sig"; \
+            local url=$(jq -r --arg name "$sig_name" 'select(.name==$name) | .url' assets.json); \
+            if [[ "$url" == "null" || -z "$url" ]]; then echo ""; return; fi; \
+            gh api "$url" -H "Accept: application/octet-stream" | cat | tr -d '\n' | sed 's/\r//g'; \
           }
 
-          # Function to find signature for a file
-          find_signature() {
-            local file="$1"
-            local sig_file="${file}.sig"
-            if [ -f "artifacts/$sig_file" ]; then
-              cat "artifacts/$sig_file" 2>/dev/null || echo ""
-            else
-              echo ""
-            fi
-          }
+          # Posibles nombres (Tauri suele zippear instaladores)
+          LINUX_NAME=$(jq -r '.name | select(test("AppImage\\.tar\\.gz$"))' assets.json | head -1)
+          WINDOWS_NAME=$(jq -r '.name | select(test("msi\\.zip$|nsis\\.zip$"))' assets.json | head -1)
+          DARWIN_X86_NAME=$(jq -r '.name | select(test("darwin-x86_64.*\\.app\\.tar\\.gz$"))' assets.json | head -1)
+          DARWIN_ARM_NAME=$(jq -r '.name | select(test("darwin-aarch64.*\\.app\\.tar\\.gz$"))' assets.json | head -1)
 
-          # Find files for each platform
-          LINUX_FILE=$(find_file "*linux*.AppImage.tar.gz")
-          WINDOWS_FILE=$(find_file "*windows*.msi.zip")
-          DARWIN_X86_FILE=$(find_file "*darwin-x86_64*.app.tar.gz")
-          DARWIN_ARM_FILE=$(find_file "*darwin-aarch64*.app.tar.gz")
+          echo "Detected names:"; echo "$LINUX_NAME"; echo "$WINDOWS_NAME"; echo "$DARWIN_X86_NAME"; echo "$DARWIN_ARM_NAME";
 
-          # Find signatures
-          LINUX_SIG=$(find_signature "$LINUX_FILE")
-          WINDOWS_SIG=$(find_signature "$WINDOWS_FILE")
-          DARWIN_X86_SIG=$(find_signature "$DARWIN_X86_FILE")
-          DARWIN_ARM_SIG=$(find_signature "$DARWIN_ARM_FILE")
+          LINUX_URL=$(get_asset_url "$LINUX_NAME")
+          WINDOWS_URL=$(get_asset_url "$WINDOWS_NAME")
+          DARWIN_X86_URL=$(get_asset_url "$DARWIN_X86_NAME")
+          DARWIN_ARM_URL=$(get_asset_url "$DARWIN_ARM_NAME")
 
-          echo "Found files:"
-          echo "Linux: $LINUX_FILE"
-          echo "Windows: $WINDOWS_FILE"
-          echo "Darwin x86: $DARWIN_X86_FILE"
-          echo "Darwin ARM: $DARWIN_ARM_FILE"
+          # Descargar firmas como texto (contenido del .sig)
+          LINUX_SIG=$(get_sig_content "$LINUX_NAME")
+          WINDOWS_SIG=$(get_sig_content "$WINDOWS_NAME")
+          DARWIN_X86_SIG=$(get_sig_content "$DARWIN_X86_NAME")
+          DARWIN_ARM_SIG=$(get_sig_content "$DARWIN_ARM_NAME")
 
-          # Create latest.json with correct URLs and signatures
-          cat > latest.json << EOF
+          cat > latest.json <<EOF
           {
-            "version": "${{ steps.version.outputs.prop }}",
+            "version": "$VERSION",
             "notes": "Automated release from commit ${{ github.sha }}",
             "pub_date": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
             "platforms": {
-              "linux-x86_64": {
-                "signature": "$LINUX_SIG",
-                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$LINUX_FILE"
-              },
-              "windows-x86_64": {
-                "signature": "$WINDOWS_SIG",
-                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$WINDOWS_FILE"
-              },
-              "darwin-x86_64": {
-                "signature": "$DARWIN_X86_SIG",
-                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$DARWIN_X86_FILE"
-              },
-              "darwin-aarch64": {
-                "signature": "$DARWIN_ARM_SIG",
-                "url": "https://github.com/Kindly-Klan/KindlyKlanKlient/releases/download/v${{ steps.version.outputs.prop }}/$DARWIN_ARM_FILE"
-              }
+              "linux-x86_64": { "signature": "$LINUX_SIG", "url": "$LINUX_URL" },
+              "windows-x86_64": { "signature": "$WINDOWS_SIG", "url": "$WINDOWS_URL" },
+              "darwin-x86_64": { "signature": "$DARWIN_X86_SIG", "url": "$DARWIN_X86_URL" },
+              "darwin-aarch64": { "signature": "$DARWIN_ARM_SIG", "url": "$DARWIN_ARM_URL" }
             }
           }
           EOF
 
-          echo "Generated latest.json:"
-          cat latest.json
+          echo "Generated latest.json:"; cat latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload latest.json to release
         run: |
