@@ -35,6 +35,7 @@ impl Session {
         now >= self.expires_at
     }
 
+    #[allow(dead_code)]
     pub fn is_expiring_soon(&self, minutes_threshold: i64) -> bool {
         let now = Utc::now().timestamp();
         let threshold = now + (minutes_threshold * 60);

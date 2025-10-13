@@ -1,5 +1,6 @@
 // Kindly Klan Klient
 use anyhow::Result;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -243,6 +244,8 @@ pub struct AuthSession {
     pub username: String,
     pub uuid: String,
     pub user_type: String, // "microsoft" or "offline"
+    pub expires_at: Option<i64>,
+    pub refresh_token: Option<String>,
 }
 
 // Minecraft version structures from Mojang API
@@ -722,7 +725,7 @@ async fn start_microsoft_auth() -> Result<AuthSession, String> {
 
     // Wait for OAuth callback with timeout
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(300);
+    let timeout = std::time::Duration::from_secs(180);
 
     loop {
         let captured_url_option = {
@@ -773,11 +776,14 @@ async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> Resul
     let username = profile["name"].as_str().unwrap_or("Unknown");
     let uuid = profile["id"].as_str().unwrap_or("unknown");
 
+    let expires_at = (Utc::now().timestamp() + ms_token.expires_in as i64).into();
     let session = AuthSession {
         access_token: access_token,
         username: username.to_string(),
         uuid: uuid.to_string(),
         user_type: "microsoft".to_string(),
+        expires_at: Some(expires_at),
+        refresh_token: ms_token.refresh_token.clone(),
     };
 
     Ok(session)
@@ -821,6 +827,75 @@ async fn exchange_auth_code_for_token(auth_code: String, port: u16) -> Result<Mi
 
     let token: MicrosoftAuthResponse = response.json().await?;
     Ok(token)
+}
+
+// Refresh Microsoft access token using refresh_token
+async fn refresh_ms_token(refresh_token: String) -> Result<MicrosoftAuthResponse> {
+    let client = reqwest::Client::new();
+    let params = [
+        ("client_id", AZURE_CLIENT_ID),
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token.as_str()),
+        ("scope", "XboxLive.signin offline_access"),
+    ];
+
+    let response = client
+        .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+        .form(&params)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(anyhow::anyhow!("Token refresh failed: {}", error_text));
+    }
+
+    let token: MicrosoftAuthResponse = response.json().await?;
+    Ok(token)
+}
+
+// Refresh full session using stored refresh_token and return updated DB session
+#[tauri::command]
+async fn refresh_session(app_handle: tauri::AppHandle, username: String) -> Result<sessions::Session, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let existing = session_manager.get_session(&username)
+        .map_err(|e| format!("Failed to get session: {}", e))?;
+
+    let Some(existing_session) = existing else {
+        return Err("No existing session".to_string());
+    };
+
+    let Some(refresh_token) = existing_session.refresh_token.clone() else {
+        return Err("No refresh token stored".to_string());
+    };
+
+    // 1) Refresh Microsoft token
+    let ms_token = refresh_ms_token(refresh_token)
+        .await
+        .map_err(|e| format!("Failed to refresh MS token: {}", e))?;
+
+    // 2) Re-auth with Xbox Live / XSTS / Minecraft
+    let xbox_token = authenticate_xbox_live(&ms_token.access_token).await
+        .map_err(|e| format!("Failed Xbox Live auth: {}", e))?;
+    let xsts_token = authenticate_xsts(&xbox_token.token).await
+        .map_err(|e| format!("Failed XSTS auth: {}", e))?;
+    let mc_token = authenticate_minecraft(&xsts_token).await
+        .map_err(|e| format!("Failed Minecraft auth: {}", e))?;
+
+    // 3) Compute new expiry and update DB session
+    let new_expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
+    let mut updated = existing_session.clone();
+    updated.access_token = mc_token.access_token.clone();
+    updated.refresh_token = ms_token.refresh_token.clone();
+    updated.expires_at = new_expires_at;
+    updated.updated_at = Utc::now().timestamp();
+
+    session_manager.update_session(&updated)
+        .map_err(|e| format!("Failed to update session: {}", e))?;
+
+    Ok(updated)
 }
 
 // Authenticate with Xbox Live using Microsoft token
@@ -1971,6 +2046,14 @@ async fn debug_sessions(app_handle: tauri::AppHandle) -> Result<String, String> 
 
     log::info!("🔍 Session debug info:\n{}", result);
     Ok(result)
+}
+
+// Expose session database path for debugging
+#[tauri::command]
+async fn get_db_path(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+    Ok(manager.db_path.to_string_lossy().to_string())
 }
 
 // Test manifest URL accessibility
@@ -3633,6 +3716,8 @@ pub fn run() {
             clear_all_sessions,
             cleanup_expired_sessions,
             debug_sessions,
+            refresh_session,
+            get_db_path,
             download_instance_assets,
             test_manifest_url
         ])

@@ -33,6 +33,10 @@ export class SessionService {
     return await invoke<Session | null>('get_active_session');
   }
 
+  static async refreshActiveSession(username: string): Promise<Session> {
+    return await invoke<Session>('refresh_session', { username });
+  }
+
   static async updateSession(session: Session): Promise<string> {
     return await invoke<string>('update_session', { session });
   }

@@ -530,12 +530,23 @@ function App() {
         console.log('Current time:', new Date());
         console.log('Is expired:', SessionService.isSessionExpired(activeSession));
 
-        // Verificar si la sesión no ha expirado
+        // Si expirada, eliminar; si expira pronto, intentar refresh
         if (SessionService.isSessionExpired(activeSession)) {
           console.log('Session expired, removing...');
           await SessionService.deleteSession(activeSession.username);
           setShowNoAccessScreen(true);
           return;
+        }
+
+        // Si expira pronto, intentar refresh de forma transparente
+        if (SessionService.isSessionExpiringSoon(activeSession, 10)) {
+          try {
+            const refreshed = await SessionService.refreshActiveSession(activeSession.username);
+            console.log('Session refreshed until:', new Date(refreshed.expires_at * 1000));
+          } catch (refreshError) {
+            console.error('Session refresh failed:', refreshError);
+            // si falla, permanecer con la sesión actual hasta que realmente expire
+          }
         }
 
         // Crear cuenta desde la sesión
@@ -642,7 +653,10 @@ function App() {
       // Verificar whitelist después de autenticación exitosa
       setLoaderText("Verificando acceso...");
       try {
-        const accessCheck = await WhitelistService.checkAccess(userSession.username);
+        // Añadimos timeout a la verificación de whitelist para evitar bloqueo
+        const whitelistPromise = WhitelistService.checkAccess(userSession.username);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Whitelist timeout')), 8000));
+        const accessCheck = await Promise.race([whitelistPromise, timeoutPromise]) as any;
 
         if (!accessCheck.has_access) {
           // Eliminar sesión de la base de datos si no tiene acceso
