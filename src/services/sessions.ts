@@ -41,6 +41,14 @@ export class SessionService {
     return await invoke<Session>('validate_and_refresh_token', { username });
   }
 
+  static async getDbPath(): Promise<string> {
+    return await invoke<string>('get_db_path');
+  }
+
+  static async clearUpdateState(): Promise<string> {
+    return await invoke<string>('clear_update_state');
+  }
+
   static async updateSession(session: Session): Promise<string> {
     return await invoke<string>('update_session', { session });
   }

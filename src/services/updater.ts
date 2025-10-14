@@ -22,7 +22,7 @@ export class UpdaterService {
       return {
         last_check: '1970-01-01T00:00:00Z',
         available_version: null,
-        current_version: '0.1.22',
+        current_version: '0.1.0',
         downloaded: false,
         download_ready: false,
       };
@@ -101,7 +101,23 @@ export class UpdaterService {
       return state.current_version;
     } catch (error) {
       console.error('Error getting current version:', error);
-      return '0.1.22';
+      try {
+        const resp = await fetch('/package.json');
+        if (resp.ok) {
+          const pkg = await resp.json();
+          if (pkg && pkg.version) return pkg.version;
+        }
+      } catch (e1) {
+      }
+      try {
+        const resp2 = await fetch('/tauri.conf.json');
+        if (resp2.ok) {
+          const conf = await resp2.json();
+          if (conf && conf.version) return conf.version;
+        }
+      } catch (e2) {
+      }
+      return '0.1.0';
     }
   }
 

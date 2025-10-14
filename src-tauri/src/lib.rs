@@ -1659,11 +1659,14 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
                     }
                 ).await.map_err(|e| format!("Failed to install update: {}", e))?;
                 
-                // Clear update state after successful install
-                let mut new_state = state;
-                new_state.downloaded = false;
-                new_state.download_ready = false;
-                new_state.available_version = None;
+                // Clear update state after successful install and update current version
+                let new_state = UpdateState {
+                    last_check: chrono::Utc::now().to_rfc3339(),
+                    available_version: None,
+                    current_version: update.version.clone(), 
+                    downloaded: false,
+                    download_ready: false,
+                };
                 save_update_state(&new_state).await?;
                 
                 Ok("Update installed successfully. The application will restart.".to_string())
@@ -1684,7 +1687,6 @@ fn get_update_state_path() -> PathBuf {
     kindly_dir.join("update_state.json")
 }
 
-// Helper function to get current version from GitHub
 async fn get_current_version_from_github() -> String {
     // Try to get current version from GitHub releases
     match reqwest::get("https://api.github.com/repos/Kindly-Klan/KindlyKlanKlient/releases/latest").await {
@@ -1692,38 +1694,31 @@ async fn get_current_version_from_github() -> String {
             if response.status().is_success() {
                 if let Ok(json) = response.json::<serde_json::Value>().await {
                     if let Some(tag_name) = json.get("tag_name").and_then(|v| v.as_str()) {
-                        // Remove 'v' prefix if present
                         return tag_name.trim_start_matches('v').to_string();
                     }
                 }
             }
         }
         Err(_) => {
-            // Fallback to local version if GitHub is unreachable
         }
     }
-    
-    // Fallback to local version
+
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-// Helper function to load update state
 async fn load_update_state() -> UpdateState {
     let state_path = get_update_state_path();
-    
+
     if let Ok(content) = fs::read_to_string(&state_path).await {
-        if let Ok(mut state) = serde_json::from_str::<UpdateState>(&content) {
-            // Update current version from GitHub
-            state.current_version = get_current_version_from_github().await;
+        if let Ok(state) = serde_json::from_str::<UpdateState>(&content) {
             return state;
         }
     }
-    
-    // Return default state if file doesn't exist or is invalid
+
     UpdateState {
         last_check: "1970-01-01T00:00:00Z".to_string(),
         available_version: None,
-        current_version: get_current_version_from_github().await,
+        current_version: env!("CARGO_PKG_VERSION").to_string(), 
         downloaded: false,
         download_ready: false,
     }
@@ -2152,6 +2147,18 @@ async fn get_db_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     let manager = sessions::SessionManager::new(&app_handle)
         .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
     Ok(manager.db_path.to_string_lossy().to_string())
+}
+#[tauri::command]
+async fn clear_update_state() -> Result<String, String> {
+    let state_path = get_update_state_path();
+
+    if state_path.exists() {
+        fs::remove_file(&state_path).await
+            .map_err(|e| format!("Failed to remove update state file: {}", e))?;
+        Ok("Update state cleared".to_string())
+    } else {
+        Ok("No update state file to clear".to_string())
+    }
 }
 
 // Test manifest URL accessibility
@@ -3821,6 +3828,7 @@ pub fn run() {
             refresh_session,
             get_db_path,
             validate_and_refresh_token,
+            clear_update_state,
             download_instance_assets,
             test_manifest_url
         ])
