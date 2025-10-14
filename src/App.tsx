@@ -681,16 +681,18 @@ function App() {
       const userSession = await invoke<AuthSession>('start_microsoft_auth');
 
       const newAccount: Account = {
-        id: `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: userSession.username, // Usar username como id desde el inicio para evitar duplicados
         user: userSession,
         isActive: true
       };
 
       // Guardar sesión en la base de datos con tokens reales
-      const expiresAt = userSession.expires_at ? userSession.expires_at / 1000 : (Date.now() / 1000) + 3600;
+      // Backend devuelve expires_at en SEGUNDOS (timestamp UNIX), NO dividir por 1000
+      const expiresAt = userSession.expires_at || Math.floor(Date.now() / 1000) + 3600;
       console.log('Saving session for user:', userSession.username);
       console.log('Expires at:', new Date(expiresAt * 1000));
       console.log('Refresh token available:', !!userSession.refresh_token);
+      console.log('Raw expires_at from backend:', userSession.expires_at);
 
       try {
         await SessionService.saveSession(
@@ -699,15 +701,18 @@ function App() {
           userSession.refresh_token || null, // Convertir undefined a null
           expiresAt
         );
-        console.log('Session saved successfully');
+        console.log('✅ Session saved successfully to database');
       } catch (sessionError) {
-        console.error('Error saving session to database:', sessionError);
-        // Continuar con el flujo aunque falle la persistencia
+        console.error('❌ CRITICAL: Error saving session to database:', sessionError);
+        addToast('Error crítico: No se pudo guardar la sesión. Contacta a soporte.', 'error', 10000);
+        setIsLoading(false);
+        setShowLoader(false);
+        throw sessionError; // NO continuar si no se puede guardar
       }
 
-      // Evitar duplicados: usar id=username
-      const updatedAccounts = [...accounts.filter(a => a.user.username !== newAccount.user.username), { ...newAccount, id: newAccount.user.username }];
-      setCurrentAccount({ ...newAccount, id: newAccount.user.username });
+      // Evitar duplicados: filtrar por username y agregar la nueva cuenta
+      const updatedAccounts = [...accounts.filter(a => a.user.username !== newAccount.user.username), newAccount];
+      setCurrentAccount(newAccount);
       setAccounts(updatedAccounts);
       // DB es fuente de verdad, no sincronizar a localStorage
 

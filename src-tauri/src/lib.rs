@@ -776,15 +776,24 @@ async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> Resul
     let username = profile["name"].as_str().unwrap_or("Unknown");
     let uuid = profile["id"].as_str().unwrap_or("unknown");
 
-    let expires_at = (Utc::now().timestamp() + ms_token.expires_in as i64).into();
+    let expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
     let session = AuthSession {
-        access_token: access_token,
+        access_token: access_token.clone(),
         username: username.to_string(),
         uuid: uuid.to_string(),
         user_type: "microsoft".to_string(),
         expires_at: Some(expires_at),
         refresh_token: ms_token.refresh_token.clone(),
     };
+
+    log::info!("🔐 Microsoft auth completed for user: {}", username);
+    log::info!("   Token expires at: {} (timestamp: {})", 
+        chrono::DateTime::<Utc>::from_timestamp(expires_at, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "invalid".to_string()), 
+        expires_at
+    );
+    log::info!("   Refresh token present: {}", ms_token.refresh_token.is_some());
 
     Ok(session)
 }
@@ -2061,11 +2070,24 @@ async fn save_session(
     let session_manager = sessions::SessionManager::new(&app_handle)
         .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
 
-    let session = sessions::Session::new(username.clone(), access_token, refresh_token, expires_at);
+    let session = sessions::Session::new(username.clone(), access_token, refresh_token.clone(), expires_at);
+    
+    log::info!("💾 Attempting to save session for user: {}", username);
+    log::info!("   Expires at: {} (timestamp: {})", 
+        chrono::DateTime::<Utc>::from_timestamp(expires_at, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| "invalid".to_string()), 
+        expires_at
+    );
+    log::info!("   Refresh token present: {}", refresh_token.is_some());
+    
     session_manager.save_session(&session)
-        .map_err(|e| format!("Failed to save session: {}", e))?;
+        .map_err(|e| {
+            log::error!("❌ Failed to save session: {}", e);
+            format!("Failed to save session: {}", e)
+        })?;
 
-    log::info!("Session saved for user: {}", username);
+    log::info!("✅ Session saved successfully for user: {}", username);
     Ok("Session saved successfully".to_string())
 }
 
