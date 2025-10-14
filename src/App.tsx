@@ -124,6 +124,33 @@ const launchInstance = async (
       }
     }
 
+    // Validar y refrescar sesión antes de lanzar
+    let accessToken = currentAccount?.user.access_token || '';
+    if (currentAccount?.user.username) {
+      try {
+        const sessionResponse = await invoke<EnsureSessionResponse>('ensure_valid_session', {
+          username: currentAccount.user.username
+        });
+        
+        if (sessionResponse.status === 'Ok' && sessionResponse.data?.session) {
+          accessToken = sessionResponse.data.session.access_token;
+          if (sessionResponse.data.refreshed) {
+            addToast('Sesión renovada automáticamente', 'info', 2000);
+          }
+        } else if (sessionResponse.status === 'Err') {
+          // Error de sesión, pedir login
+          addToast('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
+          if (onAuthError) {
+            onAuthError();
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('Error validating session:', error);
+        // Continuar con el token actual si hay error de red
+      }
+    }
+
     // Load saved RAM configuration
     const [minRam, maxRam] = await invoke<[number, number]>('load_ram_config');
     
@@ -133,7 +160,7 @@ const launchInstance = async (
       javaPath: javaPath,
       minecraftVersion: instance.minecraft_version,
       javaVersion: javaVersion,
-      accessToken: currentAccount?.user.access_token || '',
+      accessToken: accessToken,
       minRamGb: minRam,
       maxRamGb: maxRam
     });
@@ -154,18 +181,20 @@ const launchInstance = async (
       setDownloadProgress(null);
     }
 
-    // Handle authentication errors
-    if (error && typeof error === 'string' && (
-      error.includes('No existing session') ||
-      error.includes('No refresh token') ||
-      error.includes('Failed to refresh')
-    )) {
-      addToast('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
-      // Call auth error callback to handle login state
-      if (onAuthError) {
-        onAuthError();
+    // Handle authentication errors using structured codes
+    if (error && typeof error === 'string') {
+      try {
+        const errorData = JSON.parse(error);
+        if (errorData.status === 'Err' && ['NO_SESSION', 'NO_REFRESH', 'REFRESH_FAILED', 'PROFILE_401'].includes(errorData.code)) {
+          addToast('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
+          if (onAuthError) {
+            onAuthError();
+          }
+          return;
+        }
+      } catch {
+        // Si no es JSON, ignorar y continuar con el error genérico
       }
-      return;
     }
 
     addToast(`Error lanzando ${instance.name}`, 'error');
@@ -201,6 +230,24 @@ interface AuthSession {
   user_type: string;
   expires_at?: number;
   refresh_token?: string;
+}
+
+interface EnsureSessionResponse {
+  status: 'Ok' | 'Err';
+  data?: {
+    session?: {
+      id: string;
+      username: string;
+      access_token: string;
+      refresh_token: string | null;
+      expires_at: number;
+      created_at: number;
+      updated_at: number;
+    };
+    refreshed?: boolean;
+    code?: string;
+    message?: string;
+  };
 }
 
 interface Account {
@@ -345,18 +392,16 @@ function App() {
 
       if (validAccounts.length !== accounts.length) {
         setAccounts(validAccounts);
-        localStorage.setItem('kkk_accounts', JSON.stringify(validAccounts));
+        // DB es fuente de verdad, no sincronizar a localStorage
 
 
         if (currentAccount && !validAccounts.find(acc => acc.id === currentAccount.id)) {
           if (validAccounts.length > 0) {
             setCurrentAccount(validAccounts[0]);
-            localStorage.setItem('kkk_active_account', validAccounts[0].id);
             addToast(`Cuenta activa cambiada a: ${validAccounts[0].user.username}`, 'info');
           } else {
             setCurrentAccount(null);
             setIsLoginVisible(true);
-            localStorage.removeItem('kkk_active_account');
             addToast('Todas las cuentas han expirado. Vuelve a iniciar sesión.', 'info');
           }
         }
@@ -391,7 +436,6 @@ function App() {
     setSkinViewOpen(false);
     setSettingsOpen(false);
     setIsLoginVisible(true);
-    localStorage.removeItem('kkk_active_account');
 
     addToast('Logéate para añadir una nueva cuenta', 'info');
   };
@@ -405,14 +449,13 @@ function App() {
       }
 
       setCurrentAccount(account);
-      localStorage.setItem('kkk_active_account', account.id);
 
       const updatedAccounts = accounts.map(acc => ({
         ...acc,
         isActive: acc.id === account.id
       }));
       setAccounts(updatedAccounts);
-      localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
+      // DB es fuente de verdad, no sincronizar a localStorage
 
       addToast(`Cambiado a cuenta: ${account.user.username}`, 'success');
     }).catch(error => {
@@ -444,15 +487,12 @@ function App() {
 
       setAccounts([]);
       setCurrentAccount(null);
-      localStorage.removeItem('kkk_accounts');
-      localStorage.removeItem('kkk_active_account');
       setIsLoginVisible(true);
       addToast('Todas las cuentas cerradas. Vuelve a iniciar sesión.', 'info');
     } else {
       // Si quedan cuentas, establecer la primera como activa
       const newActiveAccount = updatedAccounts[0];
       setCurrentAccount(newActiveAccount);
-      localStorage.setItem('kkk_active_account', newActiveAccount.id);
 
       // También limpiar sesión de la base de datos para la cuenta cerrada
       try {
@@ -465,7 +505,7 @@ function App() {
       }
 
       setAccounts(updatedAccounts);
-      localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
+      // DB es fuente de verdad, no sincronizar a localStorage
 
       addToast(`Sesión cerrada.`, 'info');
     }
@@ -541,8 +581,6 @@ function App() {
     setCurrentAccount(null);
     setShowNoAccessScreen(false);
     setIsLoginVisible(true);
-    localStorage.removeItem('kkk_accounts');
-    localStorage.removeItem('kkk_active_account');
     addToast('Sesión cerrada correctamente', 'info');
   };
 
@@ -579,13 +617,13 @@ function App() {
           }
         }
 
-        // Crear cuenta desde la sesión
+        // Crear cuenta desde la sesión con id=username para evitar duplicados
         const account: Account = {
-          id: `session_${activeSession.username}`,
+          id: activeSession.username,
           user: {
             access_token: activeSession.access_token,
             username: activeSession.username,
-            uuid: activeSession.id, // Usar el ID de sesión como UUID temporal
+            uuid: activeSession.id,
             user_type: 'microsoft',
             expires_at: activeSession.expires_at
           },
@@ -609,11 +647,8 @@ function App() {
           // No eliminar la sesión por error de whitelist, solo mostrar advertencia
           addToast('Advertencia: No se pudo verificar el acceso. Contacta a un administrador si hay problemas.', 'info');
         }
-      } else {
-        // Si no hay sesión activa, limpiar datos antiguos de localStorage
-        localStorage.removeItem('kkk_accounts');
-        localStorage.removeItem('kkk_active_account');
       }
+      // NO borrar localStorage aquí - la DB es la fuente de verdad
     } catch (error) {
       console.error('Error checking existing session:', error);
       // Si hay error con la base de datos, intentar fallback a localStorage
@@ -631,8 +666,7 @@ function App() {
           }
         } catch (parseError) {
           console.error('Error parsing saved accounts:', parseError);
-          localStorage.removeItem('kkk_accounts');
-          localStorage.removeItem('kkk_active_account');
+          // NO borrar localStorage por errores de parsing - puede ser temporal
         }
       }
     }
@@ -674,9 +708,8 @@ function App() {
       // Evitar duplicados: usar id=username
       const updatedAccounts = [...accounts.filter(a => a.user.username !== newAccount.user.username), { ...newAccount, id: newAccount.user.username }];
       setCurrentAccount({ ...newAccount, id: newAccount.user.username });
-      localStorage.setItem('kkk_active_account', newAccount.user.username);
       setAccounts(updatedAccounts);
-      localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
+      // DB es fuente de verdad, no sincronizar a localStorage
 
       // Verificar whitelist después de autenticación exitosa
       setLoaderText("Verificando acceso...");

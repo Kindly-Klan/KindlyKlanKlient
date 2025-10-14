@@ -19,13 +19,7 @@ export class UpdaterService {
       return await invoke<UpdateState>('get_update_state');
     } catch (error) {
       console.error('Error getting update state:', error);
-      return {
-        last_check: '1970-01-01T00:00:00Z',
-        available_version: null,
-        current_version: '0.1.0',
-        downloaded: false,
-        download_ready: false,
-      };
+      throw error; // No usar fallback, el backend siempre debe responder
     }
   }
 

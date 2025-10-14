@@ -1117,7 +1117,7 @@ async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: Stri
 
                                                 return Ok(EnsureSessionResponse::Ok { session, refreshed: true });
                                             },
-                                            Err(e) => return Ok(EnsureSessionResponse::Err { code: "MC_PROFILE".into(), message: e })
+                                            Err(e) => return Ok(EnsureSessionResponse::Err { code: "MC_PROFILE".into(), message: e.to_string() })
                                         }
                                     },
                                     Err(e) => return Ok(EnsureSessionResponse::Err { code: "XSTS".into(), message: e.to_string() })
@@ -1734,24 +1734,7 @@ fn get_update_state_path() -> PathBuf {
     kindly_dir.join("update_state.json")
 }
 
-async fn get_current_version_from_github() -> String {
-    // Try to get current version from GitHub releases
-    match reqwest::get("https://api.github.com/repos/Kindly-Klan/KindlyKlanKlient/releases/latest").await {
-        Ok(response) => {
-            if response.status().is_success() {
-                if let Ok(json) = response.json::<serde_json::Value>().await {
-                    if let Some(tag_name) = json.get("tag_name").and_then(|v| v.as_str()) {
-                        return tag_name.trim_start_matches('v').to_string();
-                    }
-                }
-            }
-        }
-        Err(_) => {
-        }
-    }
-
-    env!("CARGO_PKG_VERSION").to_string()
-}
+// Removed: get_current_version_from_github - now using env!("CARGO_PKG_VERSION") directly
 
 async fn load_update_state() -> UpdateState {
     let state_path = get_update_state_path();
@@ -3884,6 +3867,7 @@ pub fn run() {
             get_db_path,
             validate_and_refresh_token,
             ensure_valid_session,
+            get_minecraft_profile_safe,
             clear_update_state,
             download_instance_assets,
             test_manifest_url
