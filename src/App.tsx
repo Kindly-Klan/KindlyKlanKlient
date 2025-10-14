@@ -623,7 +623,7 @@ function App() {
           user: {
             access_token: activeSession.access_token,
             username: activeSession.username,
-            uuid: activeSession.id,
+            uuid: activeSession.uuid, // UUID real de Minecraft para la skin
             user_type: 'microsoft',
             expires_at: activeSession.expires_at
           },
@@ -697,11 +697,12 @@ function App() {
       try {
         await SessionService.saveSession(
           userSession.username,
+          userSession.uuid,
           userSession.access_token,
           userSession.refresh_token || null, // Convertir undefined a null
           expiresAt
         );
-        console.log('✅ Session saved successfully to database');
+        console.log('✅ Session saved successfully to database with UUID:', userSession.uuid);
       } catch (sessionError) {
         console.error('❌ CRITICAL: Error saving session to database:', sessionError);
         addToast('Error crítico: No se pudo guardar la sesión. Contacta a soporte.', 'error', 10000);

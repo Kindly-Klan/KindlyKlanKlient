@@ -767,11 +767,8 @@ async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> Resul
 
     // Get Minecraft profile
     let access_token = mc_token.access_token.clone();
-    let profile_json = get_minecraft_profile(access_token.clone()).await
+    let profile = get_minecraft_profile_from_token(&access_token).await
         .map_err(|e| format!("Failed to get profile: {}", e))?;
-
-    let profile: serde_json::Value = serde_json::from_str(&profile_json)
-        .map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
 
     let username = profile["name"].as_str().unwrap_or("Unknown");
     let uuid = profile["id"].as_str().unwrap_or("unknown");
@@ -898,9 +895,16 @@ async fn refresh_session(app_handle: tauri::AppHandle, username: String) -> Resu
     let mc_token = authenticate_minecraft(&xsts_token).await
         .map_err(|e| format!("Failed Minecraft auth: {}", e))?;
 
-    // 3) Compute new expiry and update DB session (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h)
+    // 3) Get Minecraft profile to obtain UUID if not present
+    let profile = get_minecraft_profile_from_token(&mc_token.access_token).await
+        .map_err(|e| format!("Failed to get Minecraft profile: {}", e))?;
+    
+    let mc_uuid = profile["id"].as_str().unwrap_or("").to_string();
+
+    // 4) Compute new expiry and update DB session (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h)
     let new_expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
     let mut updated = existing_session.clone();
+    updated.uuid = mc_uuid; // Actualizar UUID por si no existía
     updated.access_token = mc_token.access_token.clone();
     updated.refresh_token = ms_token.refresh_token.clone();
     updated.expires_at = new_expires_at;
@@ -1008,25 +1012,31 @@ async fn authenticate_minecraft(xsts_response: &XstsAuthResponse) -> Result<Mine
     Ok(mc_response)
 }
 
-// Get Minecraft profile using access token
-#[tauri::command]
-async fn get_minecraft_profile(access_token: String) -> Result<String, String> {
+// Helper function to get Minecraft profile from token (returns parsed JSON)
+async fn get_minecraft_profile_from_token(access_token: &str) -> Result<serde_json::Value> {
     let client = reqwest::Client::new();
 
     let response = client
         .get("https://api.minecraftservices.com/minecraft/profile")
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
-        .await
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+        .await?;
 
     if !response.status().is_success() {
-        let error_text = response.text().await.map_err(|e| format!("Failed to read error response: {}", e))?;
-        return Err(format!("Failed to get Minecraft profile: {}", error_text));
+        return Err(anyhow::anyhow!("Failed to get profile: HTTP {}", response.status()));
     }
 
-    let response_text = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
-    Ok(response_text)
+    let profile = response.json::<serde_json::Value>().await?;
+    Ok(profile)
+}
+
+// Get Minecraft profile using access token (Tauri command)
+#[tauri::command]
+async fn get_minecraft_profile(access_token: String) -> Result<String, String> {
+    match get_minecraft_profile_from_token(&access_token).await {
+        Ok(profile) => Ok(profile.to_string()),
+        Err(e) => Err(format!("Failed to get profile: {}", e))
+    }
 }
 
 // Safe profile fetch with structured error
@@ -1066,14 +1076,15 @@ async fn get_minecraft_profile_safe(access_token: String) -> Result<ProfileRespo
 
 // Validate access token by trying to get Minecraft profile
 async fn validate_access_token(access_token: &str) -> Result<bool, String> {
-    match get_minecraft_profile(access_token.to_string()).await {
+    match get_minecraft_profile_from_token(access_token).await {
         Ok(_) => Ok(true),
         Err(e) => {
             // Check if it's an authentication error (401) vs other errors
-            if e.contains("401") || e.contains("Unauthorized") {
+            let err_str = e.to_string();
+            if err_str.contains("401") || err_str.contains("Unauthorized") {
                 Ok(false)
             } else {
-                Err(e)
+                Err(err_str)
             }
         }
     }
@@ -1086,7 +1097,7 @@ enum EnsureSessionResponse {
     Err { code: String, message: String },
 }
 
-// Validate and refresh session if needed (structured response)
+// Validate and refresh session if needed 
 #[tauri::command]
 async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: String) -> Result<EnsureSessionResponse, String> {
     let session_manager = sessions::SessionManager::new(&app_handle)
@@ -1112,24 +1123,31 @@ async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: Stri
             if let Some(refresh_token) = session.refresh_token.clone() {
                 match refresh_ms_token(refresh_token).await {
                     Ok(ms_token) => {
-                        // Re-authenticate with Xbox Live / XSTS / Minecraft
                         match authenticate_xbox_live(&ms_token.access_token).await {
                             Ok(xbox_token) => {
                                 match authenticate_xsts(&xbox_token.token).await {
                                     Ok(xsts_token) => {
                                         match authenticate_minecraft(&xsts_token).await {
                                             Ok(mc_token) => {
-                                                // Update session with new tokens (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h)
-                                                let new_expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
-                                                session.access_token = mc_token.access_token;
-                                                session.refresh_token = ms_token.refresh_token;
-                                                session.expires_at = new_expires_at;
-                                                session.updated_at = Utc::now().timestamp();
+                                                match get_minecraft_profile_from_token(&mc_token.access_token).await {
+                                                    Ok(profile) => {
+                                                        let mc_uuid = profile["id"].as_str().unwrap_or("").to_string();
+                                                        
+                                                        // Update session with new tokens (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h!!!)
+                                                        let new_expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
+                                                        session.uuid = mc_uuid; 
+                                                        session.access_token = mc_token.access_token;
+                                                        session.refresh_token = ms_token.refresh_token;
+                                                        session.expires_at = new_expires_at;
+                                                        session.updated_at = Utc::now().timestamp();
 
-                                                session_manager.update_session(&session)
-                                                    .map_err(|e| format!("Failed to update session: {}", e))?;
+                                                        session_manager.update_session(&session)
+                                                            .map_err(|e| format!("Failed to update session: {}", e))?;
 
-                                                return Ok(EnsureSessionResponse::Ok { session, refreshed: true });
+                                                        return Ok(EnsureSessionResponse::Ok { session, refreshed: true });
+                                                    },
+                                                    Err(e) => return Ok(EnsureSessionResponse::Err { code: "MC_PROFILE_FETCH".into(), message: e.to_string() })
+                                                }
                                             },
                                             Err(e) => return Ok(EnsureSessionResponse::Err { code: "MC_PROFILE".into(), message: e.to_string() })
                                         }
@@ -2068,6 +2086,7 @@ async fn debug_env_vars() -> Result<String, String> {
 async fn save_session(
     app_handle: tauri::AppHandle,
     username: String,
+    uuid: String,
     access_token: String,
     refresh_token: Option<String>,
     expires_at: i64
@@ -2075,7 +2094,7 @@ async fn save_session(
     let session_manager = sessions::SessionManager::new(&app_handle)
         .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
 
-    let session = sessions::Session::new(username.clone(), access_token, refresh_token.clone(), expires_at);
+    let session = sessions::Session::new(username.clone(), uuid, access_token, refresh_token.clone(), expires_at);
     
     log::info!("💾 Attempting to save session for user: {}", username);
     log::info!("   Expires at: {} (timestamp: {})", 
@@ -3624,8 +3643,8 @@ async fn launch_minecraft_with_auth(
     let asset_index_id = ensure_assets_present(app_handle, &instance_dir, minecraft_version).await?;
 
     // Get Minecraft profile for username/uuid
-    let profile_json = get_minecraft_profile(access_token.to_string()).await?;
-    let profile: serde_json::Value = serde_json::from_str(&profile_json).map_err(|e| e.to_string())?;
+    let profile = get_minecraft_profile_from_token(access_token).await
+        .map_err(|e| e.to_string())?;
     let username = profile["name"].as_str().unwrap_or("Player");
     let uuid = profile["id"].as_str().unwrap_or("00000000000000000000000000000000");
 

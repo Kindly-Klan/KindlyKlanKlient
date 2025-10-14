@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export interface Session {
   id: string;
   username: string;
+  uuid: string; // UUID de Minecraft para la skin
   access_token: string;
   refresh_token: string | null;
   expires_at: number; // Unix timestamp in seconds
@@ -13,12 +14,14 @@ export interface Session {
 export class SessionService {
   static async saveSession(
     username: string,
+    uuid: string,
     accessToken: string,
     refreshToken: string | null,
     expiresAt: number
   ): Promise<string> {
     return await invoke<string>('save_session', {
       username,
+      uuid,
       accessToken,
       refreshToken,
       expiresAt

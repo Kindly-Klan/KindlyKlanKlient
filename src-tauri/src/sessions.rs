@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager};
 pub struct Session {
     pub id: String,
     pub username: String,
+    pub uuid: String, // UUID de Minecraft para la skin
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_at: i64, // Unix timestamp
@@ -17,11 +18,12 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(username: String, access_token: String, refresh_token: Option<String>, expires_at: i64) -> Self {
+    pub fn new(username: String, uuid: String, access_token: String, refresh_token: Option<String>, expires_at: i64) -> Self {
         let now = Utc::now().timestamp();
         Self {
             id: format!("session_{}", now),
             username,
+            uuid,
             access_token,
             refresh_token,
             expires_at,
@@ -70,6 +72,7 @@ impl SessionManager {
             "CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
+                uuid TEXT NOT NULL,
                 access_token TEXT NOT NULL,
                 refresh_token TEXT,
                 expires_at INTEGER NOT NULL,
@@ -97,6 +100,12 @@ impl SessionManager {
             "ALTER TABLE sessions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
             [],
         );
+        
+        // Try to add uuid column in case of older schema (ignore error if exists)
+        let _ = conn.execute(
+            "ALTER TABLE sessions ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
+            [],
+        );
 
         // Create index for expiration checks
         conn.execute(
@@ -112,9 +121,10 @@ impl SessionManager {
         let conn = Connection::open(&self.db_path)?;
 
         conn.execute(
-            "INSERT INTO sessions (id, username, access_token, refresh_token, expires_at, created_at, updated_at, is_active)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+            "INSERT INTO sessions (id, username, uuid, access_token, refresh_token, expires_at, created_at, updated_at, is_active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)
              ON CONFLICT(username) DO UPDATE SET
+               uuid=excluded.uuid,
                access_token=excluded.access_token,
                refresh_token=excluded.refresh_token,
                expires_at=excluded.expires_at,
@@ -122,6 +132,7 @@ impl SessionManager {
             params![
                 session.id,
                 session.username,
+                session.uuid,
                 session.access_token,
                 session.refresh_token,
                 session.expires_at,
@@ -138,7 +149,7 @@ impl SessionManager {
         let conn = Connection::open(&self.db_path)?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, username, access_token, refresh_token, expires_at, created_at, updated_at
+            "SELECT id, username, uuid, access_token, refresh_token, expires_at, created_at, updated_at
              FROM sessions WHERE username = ?1"
         )?;
 
@@ -146,11 +157,12 @@ impl SessionManager {
             Ok(Session {
                 id: row.get(0)?,
                 username: row.get(1)?,
-                access_token: row.get(2)?,
-                refresh_token: row.get(3)?,
-                expires_at: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                uuid: row.get(2)?,
+                access_token: row.get(3)?,
+                refresh_token: row.get(4)?,
+                expires_at: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         });
 
@@ -174,7 +186,7 @@ impl SessionManager {
         let conn = Connection::open(&self.db_path)?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, username, access_token, refresh_token, expires_at, created_at, updated_at
+            "SELECT id, username, uuid, access_token, refresh_token, expires_at, created_at, updated_at
              FROM sessions ORDER BY updated_at DESC"
         )?;
 
@@ -182,11 +194,12 @@ impl SessionManager {
             Ok(Session {
                 id: row.get(0)?,
                 username: row.get(1)?,
-                access_token: row.get(2)?,
-                refresh_token: row.get(3)?,
-                expires_at: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                uuid: row.get(2)?,
+                access_token: row.get(3)?,
+                refresh_token: row.get(4)?,
+                expires_at: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         })?;
 
@@ -266,7 +279,7 @@ impl SessionManager {
         let now = Utc::now().timestamp();
 
         let mut stmt = conn.prepare(
-            "SELECT id, username, access_token, refresh_token, expires_at, created_at, updated_at
+            "SELECT id, username, uuid, access_token, refresh_token, expires_at, created_at, updated_at
              FROM sessions WHERE expires_at > ?1 AND is_active = 1 ORDER BY updated_at DESC LIMIT 1"
         )?;
 
@@ -274,11 +287,12 @@ impl SessionManager {
             Ok(Session {
                 id: row.get(0)?,
                 username: row.get(1)?,
-                access_token: row.get(2)?,
-                refresh_token: row.get(3)?,
-                expires_at: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                uuid: row.get(2)?,
+                access_token: row.get(3)?,
+                refresh_token: row.get(4)?,
+                expires_at: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         });
 
