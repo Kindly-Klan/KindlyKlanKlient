@@ -133,7 +133,7 @@ const launchInstance = async (
       javaPath: javaPath,
       minecraftVersion: instance.minecraft_version,
       javaVersion: javaVersion,
-      username: currentAccount?.user.username || '',
+      accessToken: currentAccount?.user.access_token || '',
       minRamGb: minRam,
       maxRamGb: maxRam
     });
@@ -671,13 +671,10 @@ function App() {
         // Continuar con el flujo aunque falle la persistencia
       }
 
-      const updatedAccounts = [...accounts, newAccount];
-
-      if (accounts.length === 0) {
-        setCurrentAccount(newAccount);
-        localStorage.setItem('kkk_active_account', newAccount.id);
-      }
-
+      // Evitar duplicados: usar id=username
+      const updatedAccounts = [...accounts.filter(a => a.user.username !== newAccount.user.username), { ...newAccount, id: newAccount.user.username }];
+      setCurrentAccount({ ...newAccount, id: newAccount.user.username });
+      localStorage.setItem('kkk_active_account', newAccount.user.username);
       setAccounts(updatedAccounts);
       localStorage.setItem('kkk_accounts', JSON.stringify(updatedAccounts));
 

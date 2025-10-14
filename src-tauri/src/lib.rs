@@ -1015,6 +1015,41 @@ async fn get_minecraft_profile(access_token: String) -> Result<String, String> {
     Ok(response_text)
 }
 
+// Safe profile fetch with structured error
+#[derive(Serialize, Deserialize)]
+struct ProfileResponse {
+    status: String,
+    profile: Option<serde_json::Value>,
+    code: Option<String>,
+    message: Option<String>,
+}
+
+#[tauri::command]
+async fn get_minecraft_profile_safe(access_token: String) -> Result<ProfileResponse, String> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get("https://api.minecraftservices.com/minecraft/profile")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if response.status().as_u16() == 401 {
+        return Ok(ProfileResponse { status: "Err".into(), profile: None, code: Some("PROFILE_401".into()), message: Some("Unauthorized".into()) });
+    }
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        return Ok(ProfileResponse { status: "Err".into(), profile: None, code: Some("PROFILE_OTHER".into()), message: Some(error_text) });
+    }
+
+    let json = response.json::<serde_json::Value>().await
+        .map_err(|e| format!("Failed to parse profile json: {}", e))?;
+
+    Ok(ProfileResponse { status: "Ok".into(), profile: Some(json), code: None, message: None })
+}
+
 // Validate access token by trying to get Minecraft profile
 async fn validate_access_token(access_token: &str) -> Result<bool, String> {
     match get_minecraft_profile(access_token.to_string()).await {
@@ -1030,9 +1065,16 @@ async fn validate_access_token(access_token: &str) -> Result<bool, String> {
     }
 }
 
-// Validate and refresh session if needed
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "status", content = "data")]
+enum EnsureSessionResponse {
+    Ok { session: sessions::Session, refreshed: bool },
+    Err { code: String, message: String },
+}
+
+// Validate and refresh session if needed (structured response)
 #[tauri::command]
-async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: String) -> Result<sessions::Session, String> {
+async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: String) -> Result<EnsureSessionResponse, String> {
     let session_manager = sessions::SessionManager::new(&app_handle)
         .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
 
@@ -1040,17 +1082,16 @@ async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: Stri
         .map_err(|e| format!("Failed to get session: {}", e))?;
 
     let Some(mut session) = existing else {
-        return Err("No existing session".to_string());
+        return Ok(EnsureSessionResponse::Err { code: "NO_SESSION".into(), message: "No existing session".into() });
     };
 
     // First try to validate current access token
     match validate_access_token(&session.access_token).await {
         Ok(true) => {
-            // Token is still valid, just update the updated_at timestamp
             session.updated_at = Utc::now().timestamp();
             session_manager.update_session(&session)
                 .map_err(|e| format!("Failed to update session: {}", e))?;
-            Ok(session)
+            return Ok(EnsureSessionResponse::Ok { session, refreshed: false });
         },
         Ok(false) => {
             // Token is invalid, try to refresh
@@ -1074,25 +1115,31 @@ async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: Stri
                                                 session_manager.update_session(&session)
                                                     .map_err(|e| format!("Failed to update session: {}", e))?;
 
-                                                Ok(session)
+                                                return Ok(EnsureSessionResponse::Ok { session, refreshed: true });
                                             },
-                                            Err(e) => Err(format!("Failed to authenticate with Minecraft: {}", e))
+                                            Err(e) => return Ok(EnsureSessionResponse::Err { code: "MC_PROFILE".into(), message: e })
                                         }
                                     },
-                                    Err(e) => Err(format!("Failed to authenticate with XSTS: {}", e))
+                                    Err(e) => return Ok(EnsureSessionResponse::Err { code: "XSTS".into(), message: e.to_string() })
                                 }
                             },
-                            Err(e) => Err(format!("Failed to authenticate with Xbox Live: {}", e))
+                            Err(e) => return Ok(EnsureSessionResponse::Err { code: "XBL".into(), message: e.to_string() })
                         }
                     },
-                    Err(e) => Err(format!("Failed to refresh Microsoft token: {}", e))
+                    Err(e) => return Ok(EnsureSessionResponse::Err { code: "REFRESH_FAILED".into(), message: e.to_string() })
                 }
             } else {
-                Err("No refresh token available".to_string())
+                return Ok(EnsureSessionResponse::Err { code: "NO_REFRESH".into(), message: "No refresh token available".into() })
             }
         },
-        Err(e) => Err(format!("Failed to validate token: {}", e))
+        Err(e) => return Ok(EnsureSessionResponse::Err { code: "NETWORK".into(), message: e })
     }
+}
+
+// Ensure valid session wrapper
+#[tauri::command]
+async fn ensure_valid_session(app_handle: tauri::AppHandle, username: String) -> Result<EnsureSessionResponse, String> {
+    validate_and_refresh_token(app_handle, username).await
 }
 
 // Tauri command handlers
@@ -3488,7 +3535,7 @@ async fn load_advanced_config() -> Result<(String, String, u32, u32), String> {
     Ok((jvm_args, garbage_collector, window_width, window_height))
 }
 
-// Launch Minecraft with Java and authentication (validates session first)
+// Launch Minecraft with Java and authentication (validate session first, then pass token)
 #[tauri::command]
 async fn launch_minecraft_with_java(
     app_handle: tauri::AppHandle,
@@ -3496,7 +3543,7 @@ async fn launch_minecraft_with_java(
     java_path: String,
     minecraft_version: String,
     _java_version: String,
-    username: String,  // Changed from access_token to username
+    access_token: String,
     min_ram_gb: Option<f64>,
     max_ram_gb: Option<f64>
 ) -> Result<String, String> {
@@ -3505,11 +3552,19 @@ async fn launch_minecraft_with_java(
         return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
     }
 
-    // First validate and refresh the session
-    let session = validate_and_refresh_token(app_handle.clone(), username).await?;
+    // Validate token before launch (non-fatal if network error)
+    if let Ok(res) = ensure_valid_session(app_handle.clone(), "".into()).await {
+        match res {
+            EnsureSessionResponse::Ok { session, .. } => {
+                return launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &session.access_token, min_ram_gb, max_ram_gb).await;
+            },
+            EnsureSessionResponse::Err { .. } => {
+                // Fall back to provided token
+            }
+        }
+    }
 
-    // Now launch with the fresh access token
-    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &session.access_token, min_ram_gb, max_ram_gb).await
+    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &access_token, min_ram_gb, max_ram_gb).await
 }
 
 // Launch Minecraft with authentication and proper classpath
@@ -3828,6 +3883,7 @@ pub fn run() {
             refresh_session,
             get_db_path,
             validate_and_refresh_token,
+            ensure_valid_session,
             clear_update_state,
             download_instance_assets,
             test_manifest_url

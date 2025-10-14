@@ -74,7 +74,8 @@ impl SessionManager {
                 refresh_token TEXT,
                 expires_at INTEGER NOT NULL,
                 created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
+                updated_at INTEGER NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1
             )",
             [],
         )?;
@@ -84,6 +85,18 @@ impl SessionManager {
             "CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username)",
             [],
         )?;
+
+        // Ensure unique username to avoid duplicates
+        let _ = conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uniq_sessions_username ON sessions(username)",
+            [],
+        );
+
+        // Try to add is_active column in case of older schema (ignore error if exists)
+        let _ = conn.execute(
+            "ALTER TABLE sessions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+            [],
+        );
 
         // Create index for expiration checks
         conn.execute(
@@ -99,8 +112,13 @@ impl SessionManager {
         let conn = Connection::open(&self.db_path)?;
 
         conn.execute(
-            "INSERT OR REPLACE INTO sessions (id, username, access_token, refresh_token, expires_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO sessions (id, username, access_token, refresh_token, expires_at, created_at, updated_at, is_active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+             ON CONFLICT(username) DO UPDATE SET
+               access_token=excluded.access_token,
+               refresh_token=excluded.refresh_token,
+               expires_at=excluded.expires_at,
+               updated_at=excluded.updated_at",
             params![
                 session.id,
                 session.username,
@@ -249,7 +267,7 @@ impl SessionManager {
 
         let mut stmt = conn.prepare(
             "SELECT id, username, access_token, refresh_token, expires_at, created_at, updated_at
-             FROM sessions WHERE expires_at > ?1 ORDER BY updated_at DESC LIMIT 1"
+             FROM sessions WHERE expires_at > ?1 AND is_active = 1 ORDER BY updated_at DESC LIMIT 1"
         )?;
 
         let result = stmt.query_row(params![now], |row| {
