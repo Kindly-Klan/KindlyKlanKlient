@@ -776,7 +776,9 @@ async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> Resul
     let username = profile["name"].as_str().unwrap_or("Unknown");
     let uuid = profile["id"].as_str().unwrap_or("unknown");
 
-    let expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
+    // CRÍTICO: Usar mc_token.expires_in (Minecraft = 86400s = 24h), NO ms_token.expires_in (MS = 3600s = 1h)
+    // El token de Minecraft es el que importa para jugar, dura 24 horas
+    let expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
     let session = AuthSession {
         access_token: access_token.clone(),
         username: username.to_string(),
@@ -787,7 +789,10 @@ async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> Resul
     };
 
     log::info!("🔐 Microsoft auth completed for user: {}", username);
-    log::info!("   Token expires at: {} (timestamp: {})", 
+    log::info!("   MS token expires in: {}s ({}h), MC token expires in: {}s ({}h)", 
+        ms_token.expires_in, ms_token.expires_in / 3600,
+        mc_token.expires_in, mc_token.expires_in / 3600);
+    log::info!("   Session expires at: {} (timestamp: {})", 
         chrono::DateTime::<Utc>::from_timestamp(expires_at, 0)
             .map(|dt| dt.to_rfc3339())
             .unwrap_or_else(|| "invalid".to_string()), 
@@ -893,8 +898,8 @@ async fn refresh_session(app_handle: tauri::AppHandle, username: String) -> Resu
     let mc_token = authenticate_minecraft(&xsts_token).await
         .map_err(|e| format!("Failed Minecraft auth: {}", e))?;
 
-    // 3) Compute new expiry and update DB session
-    let new_expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
+    // 3) Compute new expiry and update DB session (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h)
+    let new_expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
     let mut updated = existing_session.clone();
     updated.access_token = mc_token.access_token.clone();
     updated.refresh_token = ms_token.refresh_token.clone();
@@ -1114,8 +1119,8 @@ async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: Stri
                                     Ok(xsts_token) => {
                                         match authenticate_minecraft(&xsts_token).await {
                                             Ok(mc_token) => {
-                                                // Update session with new tokens
-                                                let new_expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
+                                                // Update session with new tokens (usar mc_token.expires_in = 24h, NO ms_token.expires_in = 1h)
+                                                let new_expires_at = Utc::now().timestamp() + mc_token.expires_in as i64;
                                                 session.access_token = mc_token.access_token;
                                                 session.refresh_token = ms_token.refresh_token;
                                                 session.expires_at = new_expires_at;
