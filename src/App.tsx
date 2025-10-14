@@ -257,15 +257,29 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
-  // Check for updates on startup (dialog nativo)
+  // Check for updates on startup
   const checkForUpdatesOnStartup = async () => {
     try {
       // Check if we should check for updates (every 6 hours)
       const shouldCheck = await UpdaterService.shouldCheckForUpdates();
       if (!shouldCheck) return;
 
-      // Con diálogo nativo: sólo invocar check; el plugin se encarga de mostrar flujo/diálogo
-      await UpdaterService.checkForUpdates();
+      // Check if there's already a downloaded update ready
+      const state = await UpdaterService.getUpdateState();
+      if (state.download_ready) {
+        setUpdateDialogOpen(true);
+        return;
+      }
+
+      // Check for new updates in background
+      const result = await UpdaterService.checkForUpdates();
+      if (result.available) {
+        // Download the update silently
+        await UpdaterService.downloadUpdateSilent();
+        
+        // Show toast notification
+        addToast('Actualización descargada. Puedes instalarla desde Configuración.', 'info', 5000);
+      }
     } catch (error) {
       console.error('Error checking for updates on startup:', error);
     }

@@ -1554,8 +1554,13 @@ async fn check_for_updates(app_handle: tauri::AppHandle) -> Result<String, Strin
 #[tauri::command]
 async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
-    
-    // With dialog=true we delegate download+install UX to the plugin; do not require prior download_ready
+
+    // Check if we have a downloaded update ready
+    let state = load_update_state().await;
+    if !state.download_ready {
+        return Ok("No update ready to install. Please download the update first.".to_string());
+    }
+
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
     match updater.check().await {
         Ok(update) => {
@@ -1575,7 +1580,7 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
                 ).await.map_err(|e| format!("Failed to install update: {}", e))?;
                 
                 // Clear update state after successful install
-                let mut new_state = load_update_state().await;
+                let mut new_state = state;
                 new_state.downloaded = false;
                 new_state.download_ready = false;
                 new_state.available_version = None;
@@ -1676,8 +1681,7 @@ async fn save_update_state_command(state: UpdateState) -> Result<String, String>
     Ok("Update state saved successfully".to_string())
 }
 
-// Download step no longer installs; with dialog mode we let the plugin handle installation flow.
-// This command now only checks availability and updates state without performing any download/installation.
+// Download update silently (without installing)
 #[tauri::command]
 async fn download_update_silent(app_handle: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
@@ -1687,23 +1691,37 @@ async fn download_update_silent(app_handle: tauri::AppHandle) -> Result<String, 
     match updater.check().await {
         Ok(update) => {
             if let Some(update) = update {
-                // Update state to reflect that an update is available, but do not download/install here
+                // Emit download start event
+                app_handle.emit("update-download-start", ()).unwrap_or_default();
+                
+                // Download the update
+                update.download_and_install(
+                    |chunk_length, content_length| {
+                        let progress = if let Some(total) = content_length {
+                            (chunk_length as f64 / total as f64 * 100.0) as u32
+                        } else {
+                            0
+                        };
+                        
+                        // Emit progress event
+                        app_handle.emit("update-download-progress", progress).unwrap_or_default();
+                    },
+                    || {
+                        // Emit download complete event
+                        app_handle.emit("update-download-complete", ()).unwrap_or_default();
+                    }
+                ).await.map_err(|e| format!("Failed to download update: {}", e))?;
+                
+                // Update state
                 let mut state = load_update_state().await;
+                state.downloaded = true;
+                state.download_ready = true;
                 state.available_version = Some(update.version.clone());
-                state.downloaded = false;
-                state.download_ready = false;
                 save_update_state(&state).await?;
 
-                Ok(format!("Update available: {}", update.version))
+                Ok(format!("Update {} downloaded successfully", update.version))
             } else {
-                // No updates available
-                let mut state = load_update_state().await;
-                state.available_version = None;
-                state.downloaded = false;
-                state.download_ready = false;
-                save_update_state(&state).await?;
-
-                Ok("No updates available".to_string())
+                Ok("No updates available to download".to_string())
             }
         }
         Err(e) => Err(format!("Failed to check for updates: {}", e))

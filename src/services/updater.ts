@@ -22,7 +22,7 @@ export class UpdaterService {
       return {
         last_check: '1970-01-01T00:00:00Z',
         available_version: null,
-        current_version: '0.1.20',
+        current_version: '0.1.21',
         downloaded: false,
         download_ready: false,
       };
@@ -53,10 +53,9 @@ export class UpdaterService {
   
   static async downloadUpdateSilent(): Promise<{ success: boolean; message: string }> {
     try {
-      // Con diálogo nativo, este método solo verifica disponibilidad; no descarga ni instala.
       const result = await invoke<string>('download_update_silent');
       return {
-        success: result.includes('Update available') || result.includes('No updates available'),
+        success: result.includes('downloaded successfully'),
         message: result
       };
     } catch (error) {
@@ -102,7 +101,7 @@ export class UpdaterService {
       return state.current_version;
     } catch (error) {
       console.error('Error getting current version:', error);
-      return '0.1.20';
+      return '0.1.21';
     }
   }
 

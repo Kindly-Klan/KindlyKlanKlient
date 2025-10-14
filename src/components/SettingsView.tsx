@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { UpdaterService } from '@/services/updater';
-import type { UpdateState } from '@/types/updater';
+import type { UpdateState, UpdateProgress } from '@/types/updater';
 
 interface SettingsViewProps {
   onClose: () => void;
@@ -24,7 +24,8 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
   // Update Settings
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  // Con diálogo nativo, no gestionamos descarga ni progreso personalizados
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<UpdateProgress | null>(null);
 
   // Scroll state for shadow effect
   const [isScrolled, setIsScrolled] = useState(false);
@@ -79,13 +80,26 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
     initializeConfig();
   }, []);
 
-  // Initialize update state
+  // Initialize update state and event listeners
   useEffect(() => {
     const initializeUpdates = async () => {
       try {
         // Load current update state
         const state = await UpdaterService.getUpdateState();
         setUpdateState(state);
+
+        // Set up progress callback
+        UpdaterService.setProgressCallback((progress) => {
+          setDownloadProgress(progress);
+          if (progress.status.includes('completada') || progress.status.includes('completado')) {
+            setIsDownloadingUpdate(false);
+            // Refresh update state
+            UpdaterService.getUpdateState().then(setUpdateState);
+          }
+        });
+
+        // Start listening to update events
+        await UpdaterService.startListeningToEvents();
       } catch (error) {
         console.error('Error initializing updates:', error);
       }
@@ -144,25 +158,31 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
   };
 
   const handleDownloadUpdate = async () => {
-    // Con diálogo nativo ya no descargamos aquí; invocamos check para que gestione el flujo
-    setIsCheckingUpdates(true);
+    setIsDownloadingUpdate(true);
+    setDownloadProgress(null);
     try {
-      await UpdaterService.checkForUpdates();
+      const result = await UpdaterService.downloadUpdateSilent();
+      if (result.success) {
+        // Refresh update state
+        const newState = await UpdaterService.getUpdateState();
+        setUpdateState(newState);
+      }
     } catch (error) {
-      console.error('Error checking for updates:', error);
-    } finally {
-      setIsCheckingUpdates(false);
+      console.error('Error downloading update:', error);
+      setIsDownloadingUpdate(false);
     }
   };
 
   const handleInstallUpdate = async () => {
-    const confirmed = window.confirm('¿Instalar la actualización ahora? La aplicación preguntará antes de reiniciar.');
+    if (!updateState?.download_ready) return;
+    
+    const confirmed = window.confirm('¿Estás seguro de que quieres instalar la actualización? La aplicación se reiniciará.');
     if (!confirmed) return;
 
     try {
       const result = await UpdaterService.installUpdate();
-      if (!result.success) {
-        console.error('Install returned error:', result.message);
+      if (result.success) {
+        // The app will restart automatically
       }
     } catch (error) {
       console.error('Error installing update:', error);
@@ -501,7 +521,24 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   </div>
                 )}
 
-                {/* Con diálogo nativo, no mostramos barra de progreso personalizada */}
+                {/* Download Progress */}
+                {downloadProgress && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-white/80 font-medium">Progreso</label>
+                      <span className="text-white text-sm">{downloadProgress.status}</span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${downloadProgress.percentage}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-xs text-white/60 mt-1">
+                      {downloadProgress.percentage}% 
+                    </div>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-3">
@@ -528,20 +565,20 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   {updateState?.available_version && !updateState.download_ready && (
                     <button
                       onClick={handleDownloadUpdate}
-                      disabled={isCheckingUpdates}
+                      disabled={isDownloadingUpdate}
                       className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 disabled:bg-gray-500/20 disabled:cursor-not-allowed text-orange-300 border border-orange-500/30 rounded-lg transition-all duration-200 flex items-center gap-2"
                     >
-                      {isCheckingUpdates ? (
+                      {isDownloadingUpdate ? (
                         <>
                           <div className="w-4 h-4 border-2 border-orange-300 border-t-transparent rounded-full animate-spin"></div>
-                          Buscando actualizaciones...
+                          Descargando...
                         </>
                       ) : (
                         <>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          Buscar e instalar
+                          Descargar actualización
                         </>
                       )}
                     </button>
