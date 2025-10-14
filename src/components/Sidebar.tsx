@@ -23,6 +23,8 @@ interface AuthSession {
   username: string;
   uuid: string;
   user_type: string;
+  expires_at?: number;
+  refresh_token?: string;
 }
 
 interface SidebarProps {

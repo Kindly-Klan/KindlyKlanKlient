@@ -1015,6 +1015,86 @@ async fn get_minecraft_profile(access_token: String) -> Result<String, String> {
     Ok(response_text)
 }
 
+// Validate access token by trying to get Minecraft profile
+async fn validate_access_token(access_token: &str) -> Result<bool, String> {
+    match get_minecraft_profile(access_token.to_string()).await {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            // Check if it's an authentication error (401) vs other errors
+            if e.contains("401") || e.contains("Unauthorized") {
+                Ok(false)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+// Validate and refresh session if needed
+#[tauri::command]
+async fn validate_and_refresh_token(app_handle: tauri::AppHandle, username: String) -> Result<sessions::Session, String> {
+    let session_manager = sessions::SessionManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize session manager: {}", e))?;
+
+    let existing = session_manager.get_session(&username)
+        .map_err(|e| format!("Failed to get session: {}", e))?;
+
+    let Some(mut session) = existing else {
+        return Err("No existing session".to_string());
+    };
+
+    // First try to validate current access token
+    match validate_access_token(&session.access_token).await {
+        Ok(true) => {
+            // Token is still valid, just update the updated_at timestamp
+            session.updated_at = Utc::now().timestamp();
+            session_manager.update_session(&session)
+                .map_err(|e| format!("Failed to update session: {}", e))?;
+            Ok(session)
+        },
+        Ok(false) => {
+            // Token is invalid, try to refresh
+            if let Some(refresh_token) = session.refresh_token.clone() {
+                match refresh_ms_token(refresh_token).await {
+                    Ok(ms_token) => {
+                        // Re-authenticate with Xbox Live / XSTS / Minecraft
+                        match authenticate_xbox_live(&ms_token.access_token).await {
+                            Ok(xbox_token) => {
+                                match authenticate_xsts(&xbox_token.token).await {
+                                    Ok(xsts_token) => {
+                                        match authenticate_minecraft(&xsts_token).await {
+                                            Ok(mc_token) => {
+                                                // Update session with new tokens
+                                                let new_expires_at = Utc::now().timestamp() + ms_token.expires_in as i64;
+                                                session.access_token = mc_token.access_token;
+                                                session.refresh_token = ms_token.refresh_token;
+                                                session.expires_at = new_expires_at;
+                                                session.updated_at = Utc::now().timestamp();
+
+                                                session_manager.update_session(&session)
+                                                    .map_err(|e| format!("Failed to update session: {}", e))?;
+
+                                                Ok(session)
+                                            },
+                                            Err(e) => Err(format!("Failed to authenticate with Minecraft: {}", e))
+                                        }
+                                    },
+                                    Err(e) => Err(format!("Failed to authenticate with XSTS: {}", e))
+                                }
+                            },
+                            Err(e) => Err(format!("Failed to authenticate with Xbox Live: {}", e))
+                        }
+                    },
+                    Err(e) => Err(format!("Failed to refresh Microsoft token: {}", e))
+                }
+            } else {
+                Err("No refresh token available".to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to validate token: {}", e))
+    }
+}
+
 // Tauri command handlers
 #[tauri::command]
 async fn greet(name: String) -> String {
@@ -3401,7 +3481,7 @@ async fn load_advanced_config() -> Result<(String, String, u32, u32), String> {
     Ok((jvm_args, garbage_collector, window_width, window_height))
 }
 
-// Launch Minecraft with Java and authentication
+// Launch Minecraft with Java and authentication (validates session first)
 #[tauri::command]
 async fn launch_minecraft_with_java(
     app_handle: tauri::AppHandle,
@@ -3409,7 +3489,7 @@ async fn launch_minecraft_with_java(
     java_path: String,
     minecraft_version: String,
     _java_version: String,
-    access_token: String,
+    username: String,  // Changed from access_token to username
     min_ram_gb: Option<f64>,
     max_ram_gb: Option<f64>
 ) -> Result<String, String> {
@@ -3418,7 +3498,11 @@ async fn launch_minecraft_with_java(
         return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
     }
 
-    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &access_token, min_ram_gb, max_ram_gb).await
+    // First validate and refresh the session
+    let session = validate_and_refresh_token(app_handle.clone(), username).await?;
+
+    // Now launch with the fresh access token
+    launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &session.access_token, min_ram_gb, max_ram_gb).await
 }
 
 // Launch Minecraft with authentication and proper classpath
@@ -3736,6 +3820,7 @@ pub fn run() {
             debug_sessions,
             refresh_session,
             get_db_path,
+            validate_and_refresh_token,
             download_instance_assets,
             test_manifest_url
         ])

@@ -37,6 +37,10 @@ export class SessionService {
     return await invoke<Session>('refresh_session', { username });
   }
 
+  static async validateAndRefreshToken(username: string): Promise<Session> {
+    return await invoke<Session>('validate_and_refresh_token', { username });
+  }
+
   static async updateSession(session: Session): Promise<string> {
     return await invoke<string>('update_session', { session });
   }

@@ -73,7 +73,8 @@ const launchInstance = async (
   addToast: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void,
   onComplete?: () => void,
   setIsDownloadingAssets?: (downloading: boolean) => void,
-  setDownloadProgress?: Dispatch<SetStateAction<AssetDownloadProgress | null>>
+  setDownloadProgress?: Dispatch<SetStateAction<AssetDownloadProgress | null>>,
+  onAuthError?: () => void
 ): Promise<void> => {
   let javaVersion = '';
 
@@ -132,7 +133,7 @@ const launchInstance = async (
       javaPath: javaPath,
       minecraftVersion: instance.minecraft_version,
       javaVersion: javaVersion,
-      accessToken: currentAccount?.user.access_token || '',
+      username: currentAccount?.user.username || '',
       minRamGb: minRam,
       maxRamGb: maxRam
     });
@@ -151,6 +152,20 @@ const launchInstance = async (
     }
     if (setDownloadProgress) {
       setDownloadProgress(null);
+    }
+
+    // Handle authentication errors
+    if (error && typeof error === 'string' && (
+      error.includes('No existing session') ||
+      error.includes('No refresh token') ||
+      error.includes('Failed to refresh')
+    )) {
+      addToast('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
+      // Call auth error callback to handle login state
+      if (onAuthError) {
+        onAuthError();
+      }
+      return;
     }
 
     addToast(`Error lanzando ${instance.name}`, 'error');
@@ -185,6 +200,7 @@ interface AuthSession {
   uuid: string;
   user_type: string;
   expires_at?: number;
+  refresh_token?: string;
 }
 
 interface Account {
@@ -636,16 +652,17 @@ function App() {
         isActive: true
       };
 
-      // Guardar sesión en la base de datos
-      const expiresAt = userSession.expires_at || (Date.now() / 1000) + 3600;
+      // Guardar sesión en la base de datos con tokens reales
+      const expiresAt = userSession.expires_at ? userSession.expires_at / 1000 : (Date.now() / 1000) + 3600;
       console.log('Saving session for user:', userSession.username);
       console.log('Expires at:', new Date(expiresAt * 1000));
+      console.log('Refresh token available:', !!userSession.refresh_token);
 
       try {
         await SessionService.saveSession(
           userSession.username,
           userSession.access_token,
-          null, // refresh_token (no disponible en Microsoft auth)
+          userSession.refresh_token || null, // Convertir undefined a null
           expiresAt
         );
         console.log('Session saved successfully');
@@ -840,7 +857,12 @@ function App() {
                            setLoaderText("Iniciando sesión...");
                          },
                          setIsDownloadingAssets,
-                         setDownloadProgress
+                         setDownloadProgress,
+                         () => {
+                           // Auth error callback - clear account and show login
+                           setCurrentAccount(null);
+                           setIsLoginVisible(true);
+                         }
                        );
                      }}
                    />

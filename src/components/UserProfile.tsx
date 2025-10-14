@@ -8,6 +8,7 @@ interface AuthSession {
   uuid: string;
   user_type: string;
   expires_at?: number;
+  refresh_token?: string;
 }
 
 interface Account {
