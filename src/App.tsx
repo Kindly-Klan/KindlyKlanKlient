@@ -10,6 +10,7 @@ import SettingsView from "@/components/SettingsView";
 import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import { SkinManager } from "@/components/skin/SkinManager";
+import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
 import { UpdaterService } from "@/services/updater";
 import { WhitelistService } from "@/services/whitelist";
 import { SessionService } from "@/services/sessions";
@@ -59,11 +60,17 @@ const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> =>
 
 
   try {
+    // Mostrar barra de progreso en la barra de tareas durante la descarga de Java
+    try {
+      await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.Normal, progress: 50 });
+    } catch {}
     await invoke<string>('download_java', { version: javaVersion });
     return javaVersion;
   } catch (error) {
     console.error('Error downloading Java:', error);
     throw error;
+  } finally {
+    try { await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None }); } catch {}
   }
 };
 
@@ -74,7 +81,9 @@ const launchInstance = async (
   onComplete?: () => void,
   setIsDownloadingAssets?: (downloading: boolean) => void,
   setDownloadProgress?: Dispatch<SetStateAction<AssetDownloadProgress | null>>,
-  onAuthError?: () => void
+  onAuthError?: () => void,
+  baseUrl?: string,
+  instanceUrl?: string
 ): Promise<void> => {
   let javaVersion = '';
 
@@ -109,14 +118,13 @@ const launchInstance = async (
         await invoke<string>('download_instance_assets', {
           appHandle: undefined,
           instanceId: instance.id,
-          distributionUrl: 'http://files.kindlyklan.com:26500/dist'
+          minecraftVersion: instance.minecraft_version,
+          baseUrl: baseUrl,
+          instanceUrl: instanceUrl
         });
 
         unlistenProgress();
         unlistenCompleted();
-
-        addToast('Assets descargados correctamente', 'success');
-
       } catch (error) {
         console.error('Error downloading assets:', error);
         addToast('Error descargando assets de la instancia', 'error');
@@ -466,10 +474,15 @@ function App() {
 
   const validateAccountToken = async (account: Account): Promise<boolean> => {
     try {
-      await invoke<string>('get_minecraft_profile', { accessToken: account.user.access_token });
+      const refreshed = await SessionService.validateAndRefreshToken(account.user.username);
+      // Actualizar en memoria si el backend renovó el token
+      if (refreshed && refreshed.access_token && refreshed.username === account.user.username) {
+        account.user.access_token = refreshed.access_token;
+        account.user.expires_at = refreshed.expires_at;
+      }
       return true;
     } catch (error) {
-      console.error(`Token validation failed for account ${account.user.username}:`, error);
+      console.error(`Token validation/refresh failed for account ${account.user.username}:`, error);
       return false;
     }
   };
@@ -586,10 +599,7 @@ function App() {
 
   const checkExistingSession = async () => {
     try {
-      // Limpiar sesiones expiradas primero
-      await SessionService.cleanupExpiredSessions();
-
-      // Primero intentar cargar sesión activa desde la base de datos
+      // Primero intentar cargar sesión activa desde la base de datos (el backend intentará refrescar si es posible)
       const activeSession = await SessionService.getActiveSession();
 
       if (activeSession) {
@@ -898,7 +908,9 @@ function App() {
                            // Auth error callback - clear account and show login
                            setCurrentAccount(null);
                            setIsLoginVisible(true);
-                         }
+                        },
+                        distribution?.distribution.base_url,
+                        instance.instance_url
                        );
                      }}
                    />

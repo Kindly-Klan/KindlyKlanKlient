@@ -84,14 +84,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Settings Button at bottom - Only Icon */}
           <div className="absolute bottom-2 left-2 right-2">
-            {/* Skin Management Button - Just above settings */}
+            {/* Skin Management Button - Just above settings (deshabilitado temporalmente) */}
             {currentUser && (
               <div className="mb-2">
                 <div
-                  onClick={() => handleSkinToggle()}
+                  onClick={() => {}}
                   className="relative group"
                 >
-                  <div className="p-2 rounded-xl cursor-pointer transition-all duration-200 border relative bg-black/20 border-white/10 hover:bg-black/30 hover:border-white/20 select-none">
+                  <div className="p-2 rounded-xl cursor-not-allowed transition-all duration-200 border relative bg-black/10 border-white/5 opacity-50 select-none">
                     <div className="flex items-center justify-center">
                       <img
                         src={`https://crafatar.com/avatars/${currentUser.uuid}?size=32&overlay=true`}
@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {/* Tooltip on hover */}
                   <div className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                     <div className="bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                      Cambiar Skin
+                      Cambiar Skin (Próximamente)
                     </div>
                   </div>
                 </div>
