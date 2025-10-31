@@ -42,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedInstance,
   onInstanceSelect,
   handleSettingsToggle,
-  handleSkinToggle,
+  //handleSkinToggle,
   distributionBaseUrl,
   currentUser
 }) => {
