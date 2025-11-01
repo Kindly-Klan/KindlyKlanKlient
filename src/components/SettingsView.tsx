@@ -149,9 +149,27 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
         // Refresh update state
         const newState = await UpdaterService.getUpdateState();
         setUpdateState(newState);
+        // Mostrar notificación de actualización disponible
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = `✓ Actualización ${result.version} disponible`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      } else {
+        // Mostrar que no hay actualizaciones
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-blue-500/20 border border-blue-500/30 text-blue-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✓ Ya estás en la última versión';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+      toast.textContent = '✗ Error al verificar actualizaciones';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
     } finally {
       setIsCheckingUpdates(false);
     }
@@ -166,9 +184,28 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
         // Refresh update state
         const newState = await UpdaterService.getUpdateState();
         setUpdateState(newState);
+        // Mostrar notificación de descarga completada
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✓ Actualización descargada correctamente';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      } else {
+        // Mostrar error en la descarga
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✗ Error al descargar la actualización';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       }
     } catch (error) {
       console.error('Error downloading update:', error);
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+      toast.textContent = '✗ Error al descargar la actualización';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } finally {
       setIsDownloadingUpdate(false);
     }
   };
@@ -182,10 +219,27 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
     try {
       const result = await UpdaterService.installUpdate();
       if (result.success) {
+        // Mostrar notificación de instalación exitosa
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✓ Actualización instalada. Reiniciando...';
+        document.body.appendChild(toast);
         // The app will restart automatically
+      } else {
+        // Mostrar error en la instalación
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✗ Error al instalar la actualización';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       }
     } catch (error) {
       console.error('Error installing update:', error);
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+      toast.textContent = '✗ Error al instalar la actualización';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
     }
   };
 

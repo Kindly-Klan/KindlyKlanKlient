@@ -201,7 +201,7 @@ pub async fn check_for_updates(app_handle: AppHandle) -> Result<String, String> 
     use tauri_plugin_updater::UpdaterExt;
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
     let mut state = load_update_state().await;
-    // Asegurar que siempre use la versión real
+    // Ensure that always use the real version
     state.current_version = env!("CARGO_PKG_VERSION").to_string();
     state.last_check = chrono::Utc::now().to_rfc3339();
     match updater.check().await {
@@ -230,10 +230,6 @@ pub async fn check_for_updates(app_handle: AppHandle) -> Result<String, String> 
 #[tauri::command]
 pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
-    let state = load_update_state().await;
-    if !state.download_ready {
-        return Ok("No update ready to install. Please download the update first.".to_string());
-    }
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
     match updater.check().await {
         Ok(update) => {
@@ -241,13 +237,20 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
                 app_handle.emit("update-install-start", ()).unwrap_or_default();
                 update.download_and_install(
                     |chunk_length, content_length| {
-                        println!("Installing update: {} of {:?}", chunk_length, content_length);
+                        println!("Downloading and installing update: {} of {:?}", chunk_length, content_length);
+                        let percentage = if let Some(total) = content_length {
+                            ((chunk_length as f64 / total as f64) * 100.0) as u32
+                        } else {
+                            0
+                        };
+                        let _ = app_handle.emit("update-download-progress", percentage);
                     },
                     || {
-                        println!("Install finished");
-                        app_handle.emit("update-install-complete", ()).unwrap_or_default();
+                        println!("Install finished - app will restart");
+                        let _ = app_handle.emit("update-install-complete", ());
                     }
                 ).await.map_err(|e| format!("Failed to install update: {}", e))?;
+                // Clear the state after the installation
                 let mut new_state = load_update_state().await;
                 new_state.downloaded = false;
                 new_state.download_ready = false;
@@ -257,7 +260,7 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
                 Ok("No update available to install".to_string())
             }
         }
-        Err(e) => Err(format!("Failed to check for updates before install: {}", e))
+        Err(e) => Err(format!("Failed to check for updates: {}", e))
     }
 }
 
@@ -284,7 +287,7 @@ async fn read_update_state_file() -> Option<UpdateState> {
 async fn load_update_state() -> UpdateState {
     let real_version = env!("CARGO_PKG_VERSION").to_string();
     if let Some(mut state) = read_update_state_file().await {
-        // Siempre usar la versión real del Cargo.toml, no la guardada
+        // Always use the real version from Cargo.toml, not the saved one
         state.current_version = real_version;
         return state;
     }
@@ -319,13 +322,31 @@ pub async fn download_update_silent(app_handle: AppHandle) -> Result<String, Str
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
     match updater.check().await {
         Ok(Some(update)) => {
-            update.download(|_chunk, _total| {}, || {}).await.map_err(|e| format!("Failed to download update: {}", e))?;
+            // Emit the download start event
+            let _ = app_handle.emit("update-download-start", ());
+            
+            // Download the update with callbacks to report progress
+            update.download(
+                |chunk_length, content_length| {
+                    let percentage = if let Some(total) = content_length {
+                        ((chunk_length as f64 / total as f64) * 100.0) as u32
+                    } else {
+                        0
+                    };
+                    let _ = app_handle.emit("update-download-progress", percentage);
+                },
+                || {
+                    let _ = app_handle.emit("update-download-complete", ());
+                }
+            ).await.map_err(|e| format!("Failed to download update: {}", e))?;
+            
+            // Update the state to indicate that the download is ready
             let mut state = load_update_state().await;
             state.available_version = Some(update.version.clone());
             state.downloaded = true;
             state.download_ready = true;
             save_update_state(&state).await?;
-            Ok("downloaded".to_string())
+            Ok("downloaded successfully".to_string())
         }
         Ok(None) => Ok("no-update".to_string()),
         Err(e) => Err(format!("Failed to check for updates: {}", e))
