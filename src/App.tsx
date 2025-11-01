@@ -312,6 +312,7 @@ function App() {
   const [logoVisible, setLogoVisible] = useState(false);
   const [isDownloadingAssets, setIsDownloadingAssets] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateDialogState, setUpdateDialogState] = useState<{ isDownloadReady: boolean; hasUpdateAvailable: boolean; version: string | null } | null>(null);
   const [showNoAccessScreen, setShowNoAccessScreen] = useState(false);
   const [filteredInstances, setFilteredInstances] = useState<any[]>([]);
   const initialized = useRef(false);
@@ -328,31 +329,70 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
-  // Check for updates on startup
+  // Check for updates on startup - si hay actualización descargada, instalar automáticamente
   const checkForUpdatesOnStartup = async () => {
     try {
-      // Check if we should check for updates (every 6 hours)
-      const shouldCheck = await UpdaterService.shouldCheckForUpdates();
-      if (!shouldCheck) return;
-
-      // Check if there's already a downloaded update ready
       const state = await UpdaterService.getUpdateState();
+      
+      // Si hay una actualización descargada y lista, instalar automáticamente al inicio
       if (state.download_ready) {
+        console.log('Actualización descargada encontrada, instalando automáticamente...');
+        try {
+          const result = await UpdaterService.installUpdate();
+          if (result.success) {
+            addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
+            // La aplicación se reiniciará automáticamente después de la instalación
+            return;
+          }
+        } catch (error) {
+          console.error('Error instalando actualización automática:', error);
+          // Si falla, mostrar diálogo para que el usuario pueda intentar manualmente
+          setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
+          setUpdateDialogOpen(true);
+          return;
+        }
+      }
+
+      // Si hay actualización disponible pero no descargada, mostrar diálogo para descargar
+      if (state.available_version && !state.downloaded) {
+        setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
         setUpdateDialogOpen(true);
         return;
       }
 
-      // Check for new updates in background
-      const result = await UpdaterService.checkForUpdates();
-      if (result.available) {
-        // Download the update silently
-        await UpdaterService.downloadUpdateSilent();
-        
-        // Show toast notification
-        addToast('Actualización descargada. Puedes instalarla desde Configuración.', 'info', 5000);
+      // Verificar si debemos buscar nuevas actualizaciones (cada 30 minutos)
+      const shouldCheck = await UpdaterService.shouldCheckForUpdates();
+      if (shouldCheck) {
+        const result = await UpdaterService.checkForUpdates();
+        if (result.available) {
+          // Mostrar diálogo para que el usuario decida descargar
+          const newState = await UpdaterService.getUpdateState();
+          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
+          setUpdateDialogOpen(true);
+        }
       }
     } catch (error) {
       console.error('Error checking for updates on startup:', error);
+    }
+  };
+
+  // Verificar actualizaciones periódicamente (cada 30 minutos)
+  const checkForUpdatesPeriodic = async () => {
+    try {
+      const shouldCheck = await UpdaterService.shouldCheckForUpdates();
+      if (!shouldCheck) return;
+
+      const result = await UpdaterService.checkForUpdates();
+      if (result.available) {
+        // Si hay actualización disponible, mostrar diálogo
+        const state = await UpdaterService.getUpdateState();
+        if (state.available_version && !state.download_ready) {
+          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
+          setUpdateDialogOpen(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for updates periodically:', error);
     }
   };
 
@@ -375,12 +415,24 @@ function App() {
       checkForUpdatesOnStartup();
     }, 2000);
 
+    // Verificar actualizaciones periódicamente cada 30 minutos
+    const updateCheckInterval = setInterval(() => {
+      checkForUpdatesPeriodic();
+    }, 30 * 60 * 1000); // 30 minutos
+
     if (accounts.length === 0 && !isLoginVisible) {
       const timer = setTimeout(() => {
         setIsLoginVisible(true);
       }, 100);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        clearInterval(updateCheckInterval);
+      };
     }
+
+    return () => {
+      clearInterval(updateCheckInterval);
+    };
   }, [accounts.length, isLoginVisible]);
 
   useEffect(() => {
@@ -937,7 +989,7 @@ function App() {
       </ToastContainer>
 
       {/* Update Dialog */}
-      {updateDialogOpen && (
+      {updateDialogOpen && updateDialogState && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-8 max-w-md w-full mx-4 shadow-2xl">
             <div className="text-center">
@@ -947,38 +999,80 @@ function App() {
                 </svg>
               </div>
               
-              <h3 className="text-2xl font-bold text-white mb-2">Actualización Lista</h3>
-              <p className="text-white/80 mb-6">
-                Hay una actualización descargada y lista para instalar. ¿Quieres instalarla ahora?
-              </p>
-              
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={async () => {
-                    setUpdateDialogOpen(false);
-                    try {
-                      const result = await UpdaterService.installUpdate();
-                      if (result.success) {
-                        addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
-                      } else {
-                        addToast('Error al instalar la actualización', 'error');
-                      }
-                    } catch (error) {
-                      addToast('Error al instalar la actualización', 'error');
-                    }
-                  }}
-                  className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg transition-all duration-200 font-medium"
-                >
-                  Instalar Ahora
-                </button>
-                
-                <button
-                  onClick={() => setUpdateDialogOpen(false)}
-                  className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
-                >
-                  Más Tarde
-                </button>
-              </div>
+              {updateDialogState.isDownloadReady ? (
+                <>
+                  <h3 className="text-2xl font-bold text-white mb-2">Actualización Lista</h3>
+                  <p className="text-white/80 mb-6">
+                    Hay una actualización descargada y lista para instalar. La aplicación se reiniciará después de la instalación.
+                  </p>
+                  
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={async () => {
+                        setUpdateDialogOpen(false);
+                        try {
+                          const result = await UpdaterService.installUpdate();
+                          if (result.success) {
+                            addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
+                          } else {
+                            addToast('Error al instalar la actualización', 'error');
+                          }
+                        } catch (error) {
+                          addToast('Error al instalar la actualización', 'error');
+                        }
+                      }}
+                      className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      Instalar Ahora
+                    </button>
+                  </div>
+                </>
+              ) : updateDialogState.hasUpdateAvailable ? (
+                <>
+                  <h3 className="text-2xl font-bold text-white mb-2">Actualización Disponible</h3>
+                  <p className="text-white/80 mb-6">
+                    Hay una nueva versión disponible ({updateDialogState.version}). ¿Quieres descargarla ahora?
+                  </p>
+                  
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={async () => {
+                        setUpdateDialogOpen(false);
+                        try {
+                          const result = await UpdaterService.downloadUpdateSilent();
+                          if (result.success) {
+                            addToast('Actualización descargada. Se instalará al reiniciar el launcher.', 'success');
+                            // Verificar el estado después de descargar
+                            const newState = await UpdaterService.getUpdateState();
+                            if (newState.download_ready) {
+                              // Si se descargó completamente, mostrar diálogo de instalación
+                              setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newState.available_version });
+                              setTimeout(() => setUpdateDialogOpen(true), 500);
+                            }
+                          } else {
+                            addToast('Error al descargar la actualización', 'error');
+                          }
+                        } catch (error) {
+                          addToast('Error al descargar la actualización', 'error');
+                        }
+                      }}
+                      className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      Descargar
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setUpdateDialogOpen(false);
+                        addToast('Puedes descargar la actualización desde Configuración más tarde.', 'info', 3000);
+                      }}
+                      className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      Más Tarde
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

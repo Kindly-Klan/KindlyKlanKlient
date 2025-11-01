@@ -191,11 +191,15 @@ export class UpdaterService {
   static async shouldCheckForUpdates(): Promise<boolean> {
     try {
       const state = await this.getUpdateState();
+      if (!state.last_check || state.last_check === '') {
+        return true; // Nunca se ha verificado
+      }
       const lastCheck = new Date(state.last_check);
       const now = new Date();
-      const hoursDiff = (now.getTime() - lastCheck.getTime()) / (1000 * 60 * 60);
+      const minutesDiff = (now.getTime() - lastCheck.getTime()) / (1000 * 60);
       
-      return hoursDiff >= 6;
+      // Verificar cada 30 minutos (en lugar de 6 horas)
+      return minutesDiff >= 30;
     } catch (error) {
       console.error('Error checking if should update:', error);
       return true;
