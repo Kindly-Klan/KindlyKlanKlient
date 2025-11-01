@@ -490,6 +490,46 @@ pub async fn load_distribution_manifest(url: String) -> Result<DistributionManif
 }
 
 #[tauri::command]
+pub async fn get_instance_background_video(
+    base_url: String,
+    instance_id: String,
+    video_path: String,
+) -> Result<Vec<u8>, String> {
+    use std::path::Path;
+    
+    let launcher = crate::launcher::MinecraftLauncher::new().map_err(|e| e.to_string())?;
+    let instance_dir = launcher.config.minecraft_dir.join("instances").join(&instance_id);
+    let video_dir = instance_dir.join("assets");
+    tokio::fs::create_dir_all(&video_dir).await.map_err(|e| e.to_string())?;
+    
+    // Construir nombre del archivo desde la ruta (ej: "instances/thanatophobia2/assets/th2trailer.mp4" -> "th2trailer.mp4")
+    let video_file_name = Path::new(&video_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid video path".to_string())?;
+    
+    let local_video_path = video_dir.join(video_file_name);
+    
+    // Si el video no existe localmente, descargarlo
+    if !local_video_path.exists() {
+        // Construir URL completa del video
+        let video_url = if video_path.starts_with("http") {
+            video_path
+        } else {
+            format!("{}/{}", base_url.trim_end_matches('/'), video_path.trim_start_matches('/'))
+        };
+        
+        // Descargar el video
+        crate::instances::download_file(&video_url, &local_video_path).await.map_err(|e| e.to_string())?;
+    }
+    
+    // Leer el archivo como bytes
+    let video_bytes = tokio::fs::read(&local_video_path).await.map_err(|e| format!("Failed to read video file: {}", e))?;
+    
+    Ok(video_bytes)
+}
+
+#[tauri::command]
 pub async fn get_instance_details(base_url: String, instance_url: String) -> Result<InstanceManifest, String> {
     let full_url = if instance_url.starts_with("http") { instance_url } else { format!("{}/{}", base_url.trim_end_matches('/'), instance_url.trim_start_matches('/')) };
     let client = reqwest::Client::new();

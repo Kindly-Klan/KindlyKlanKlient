@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '@/components/ui/button';
 
@@ -7,28 +7,55 @@ interface LaunchButtonProps {
 	disabled?: boolean;
 	className?: string;
 	isJavaInstalling?: boolean;
+	instanceId?: string; // Añadir instanceId para identificar la instancia
 }
 
 type LaunchState = 'idle' | 'launching' | 'playing';
+
+// Caché global para estados de lanzamiento por instancia
+const launchStateCache = new Map<string, { state: LaunchState; playTime: number; startTime: number }>();
 
 const LaunchButton: React.FC<LaunchButtonProps> = ({
 	onLaunch,
 	disabled = false,
 	className = '',
-	isJavaInstalling = false
+	isJavaInstalling = false,
+	instanceId = 'default'
 }) => {
-	const [state, setState] = useState<LaunchState>('idle');
-	const [playTime, setPlayTime] = useState(0);
+	// Inicializar con estado en caché si existe
+	const cachedState = launchStateCache.get(instanceId);
+	const [state, setState] = useState<LaunchState>(cachedState?.state || 'idle');
+	const [playTime, setPlayTime] = useState(() => {
+		if (cachedState && cachedState.state === 'playing') {
+			// Calcular tiempo transcurrido desde el inicio
+			const elapsed = Math.floor((Date.now() - cachedState.startTime) / 1000);
+			return cachedState.playTime + elapsed;
+		}
+		return cachedState?.playTime || 0;
+	});
+	const startTimeRef = useRef<number>(cachedState?.startTime || Date.now());
 
 	useEffect(() => {
 		let interval: NodeJS.Timeout | null = null;
 		if (state === 'playing') {
 			interval = setInterval(() => {
-				setPlayTime(prev => prev + 1);
+				setPlayTime(prev => {
+					const newTime = prev + 1;
+					// Actualizar caché
+					if (launchStateCache.has(instanceId)) {
+						const cached = launchStateCache.get(instanceId)!;
+						launchStateCache.set(instanceId, { 
+							...cached, 
+							playTime: newTime,
+							startTime: startTimeRef.current
+						});
+					}
+					return newTime;
+				});
 			}, 1000);
 		}
 		return () => { if (interval) clearInterval(interval); };
-	}, [state]);
+	}, [state, instanceId]);
 
 	// Reset when the Minecraft process exits
 	useEffect(() => {
@@ -36,21 +63,28 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 		listen('minecraft_exited', () => {
 			setState('idle');
 			setPlayTime(0);
+			// Limpiar caché cuando el juego termina
+			launchStateCache.delete(instanceId);
+			startTimeRef.current = Date.now();
 		}).then((fn) => { unlisten = fn; }).catch(() => {});
 		return () => { if (unlisten) { try { unlisten(); } catch {} } };
-	}, []);
+	}, [instanceId]);
 
 	const handleClick = async () => {
 		if (disabled || state !== 'idle' || isJavaInstalling) return;
 		setState('launching');
+		launchStateCache.set(instanceId, { state: 'launching', playTime: 0, startTime: Date.now() });
 		try {
 			await onLaunch();
+			startTimeRef.current = Date.now();
 			setState('playing');
 			setPlayTime(0);
+			launchStateCache.set(instanceId, { state: 'playing', playTime: 0, startTime: startTimeRef.current });
 		} catch (error) {
 			console.error('Error during launch:', error);
 			setState('idle');
 			setPlayTime(0);
+			launchStateCache.delete(instanceId);
 		}
 	};
 

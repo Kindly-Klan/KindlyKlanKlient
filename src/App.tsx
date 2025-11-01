@@ -288,8 +288,13 @@ interface DistributionManifest {
     minecraft_version: string;
     icon?: string;
     background?: string;
+    background_video?: string;
     last_updated?: string;
     instance_url: string;
+    mod_loader?: {
+      type: string;
+      version: string;
+    };
   }>;
 }
 

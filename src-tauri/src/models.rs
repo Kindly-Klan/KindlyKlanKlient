@@ -24,8 +24,10 @@ pub struct InstanceSummary {
     pub minecraft_version: String,
     pub icon: Option<String>,
     pub background: Option<String>,
+    pub background_video: Option<String>,
     pub last_updated: Option<String>,
     pub instance_url: String,
+    pub mod_loader: Option<ModLoader>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
