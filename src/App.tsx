@@ -334,10 +334,20 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
-  // Check for updates on startup - solo instalar automáticamente si NO fue descarga manual
+  // Check for updates on startup - verificar si ya estamos en la nueva versión y limpiar estado si es así
   const checkForUpdatesOnStartup = async () => {
     try {
       const state = await UpdaterService.getUpdateState();
+      const currentVersion = state.current_version;
+      
+      // Si la versión actual coincide con la disponible, significa que ya se instaló
+      // Limpiar el estado automáticamente para evitar mostrar "necesita instalar"
+      if (state.available_version && state.available_version === currentVersion) {
+        console.log('La versión actual coincide con la disponible, limpiando estado...');
+        await invoke('clear_update_state');
+        // No continuar con la verificación después de limpiar
+        return;
+      }
       
       // Si hay una actualización descargada y lista, solo instalar automáticamente si NO fue manual
       if (state.download_ready && !state.manual_download) {

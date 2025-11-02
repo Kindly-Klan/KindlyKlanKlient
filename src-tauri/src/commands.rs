@@ -236,6 +236,14 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
     match updater.check().await {
         Ok(update) => {
             if let Some(update) = update {
+                // Limpiar el estado ANTES de instalar para evitar que se quede en "necesita instalar"
+                let mut new_state = load_update_state().await;
+                new_state.downloaded = false;
+                new_state.download_ready = false;
+                new_state.manual_download = false;
+                new_state.available_version = None; // Limpiar también la versión disponible
+                save_update_state(&new_state).await.ok(); // Intentar guardar, pero no fallar si no se puede
+                
                 app_handle.emit("update-install-start", ()).unwrap_or_default();
                 update.download_and_install(
                     |chunk_length, content_length| {
@@ -252,12 +260,6 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
                         let _ = app_handle.emit("update-install-complete", ());
                     }
                 ).await.map_err(|e| format!("Failed to install update: {}", e))?;
-                // Clear the state after the installation
-                let mut new_state = load_update_state().await;
-                new_state.downloaded = false;
-                new_state.download_ready = false;
-                new_state.manual_download = false;
-                save_update_state(&new_state).await?;
                 Ok("Update installed successfully".to_string())
             } else {
                 Ok("No update available to install".to_string())
