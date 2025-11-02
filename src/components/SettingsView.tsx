@@ -12,6 +12,9 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
   const [minRam, setMinRam] = useState(2.0);
   const [maxRam, setMaxRam] = useState(4.0);
   const [systemRam, setSystemRam] = useState(8);
+  // Display values for the sliders
+  const [displayMinRam, setDisplayMinRam] = useState(2.0);
+  const [displayMaxRam, setDisplayMaxRam] = useState(4.0);
   
   // JVM Advanced Settings
   const [jvmArgs, setJvmArgs] = useState('');
@@ -55,6 +58,8 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
         
         setMinRam(validMinRam);
         setMaxRam(validMaxRam);
+        setDisplayMinRam(validMinRam);
+        setDisplayMaxRam(validMaxRam);
         
         // Load advanced configuration
         const [savedJvmArgs, savedGc, savedWidth, savedHeight] = 
@@ -241,17 +246,58 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
 
   const handleMinRamChange = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
-    if (value <= maxRam && value <= maxRamLimit) {
+    
+    // Actualizar display inmediatamente para respuesta fluida
+    setDisplayMinRam(value);
+    
+    // Solo procesar cambios válidos (cuando se suelta o llega a un step válido)
+    if (value <= maxRamLimit) {
+      let newMaxRam = maxRam;
+      
+      // Si el mínimo supera al máximo, subir el máximo automáticamente
+      if (value > maxRam && value <= maxRamLimit) {
+        newMaxRam = value;
+        setMaxRam(newMaxRam);
+        setDisplayMaxRam(newMaxRam);
+      }
+      
       setMinRam(value);
-      saveConfig(value, maxRam);
+      saveConfig(value, newMaxRam);
+    }
+  };
+  
+  // Handler para cuando se está arrastrando (actualización fluida del display)
+  const handleMinRamInput = (value: number) => {
+    const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Solo actualizar el display visual mientras se arrastra
+    if (value <= maxRamLimit) {
+      setDisplayMinRam(value);
+      
+      // Si supera el máximo, actualizar también el display del máximo
+      if (value > maxRam) {
+        setDisplayMaxRam(value);
+      }
     }
   };
 
   const handleMaxRamChange = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    
+    // Actualizar display inmediatamente para respuesta fluida
+    setDisplayMaxRam(value);
+    
     if (value >= minRam && value <= maxRamLimit) {
       setMaxRam(value);
       saveConfig(minRam, value);
+    }
+  };
+  
+  // Handler para cuando se está arrastrando (actualización fluida del display)
+  const handleMaxRamInput = (value: number) => {
+    const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Solo actualizar el display visual mientras se arrastra
+    if (value >= minRam && value <= maxRamLimit) {
+      setDisplayMaxRam(value);
     }
   };
 
@@ -337,15 +383,16 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-white/80 font-medium">RAM Mínima</label>
-                      <span className="text-white font-bold">{minRam.toFixed(1)} GB</span>
+                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMinRam.toFixed(1)} GB</span>
                     </div>
                     <div className="relative ">
                       <input
                         type="range"
                         min="0.5"
                         max={Math.max(2, Math.floor(systemRam * 0.75))}
-                        step="0.5"
+                        step="0.1"
                         value={minRam}
+                        onInput={(e) => handleMinRamInput(parseFloat((e.target as HTMLInputElement).value))}
                         onChange={(e) => handleMinRamChange(parseFloat(e.target.value))}
                         className="w-full slider"
                       />
@@ -356,15 +403,16 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-white/80 font-medium">RAM Máxima</label>
-                      <span className="text-white font-bold">{maxRam.toFixed(1)} GB</span>
+                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMaxRam.toFixed(1)} GB</span>
                     </div>
                     <div className="relative">
                       <input
                         type="range"
                         min="0.5"
                         max={Math.max(2, Math.floor(systemRam * 0.75))}
-                        step="0.5"
+                        step="0.1"
                         value={maxRam}
+                        onInput={(e) => handleMaxRamInput(parseFloat((e.target as HTMLInputElement).value))}
                         onChange={(e) => handleMaxRamChange(parseFloat(e.target.value))}
                         className="w-full slider"
                       />
@@ -642,57 +690,71 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
 
        <style dangerouslySetInnerHTML={{
          __html: `
-           .slider {
-             -webkit-appearance: none;
-             width: 100%;
-             height: 10px;
-             border-radius: 5px;
-             background-color: #4158D0;
-             background-image: linear-gradient(43deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%);
-             outline: none;
-             opacity: 0.9;
-             -webkit-transition: .2s;
-             transition: opacity .2s;
-           }
+          .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 10px;
+            border-radius: 5px;
+            background-color: #4158D0;
+            background-image: linear-gradient(43deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%);
+            outline: none;
+            opacity: 0.9;
+            -webkit-transition: opacity 0.3s ease-in-out;
+            transition: opacity 0.3s ease-in-out;
+          }
 
-           .slider:hover {
-             opacity: 1;
-           }
+          .slider:hover {
+            opacity: 1;
+          }
 
-           .slider::-webkit-slider-thumb {
-             -webkit-appearance: none;
-             appearance: none;
-             width: 20px;
-             height: 20px;
-             border-radius: 50%;
-             background-color: #4c00ff;
-             background-image: linear-gradient(160deg, #4900f5 0%, #80D0C7 100%);
-             cursor: pointer;
-             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-             transition: all 0.2s ease-in-out;
-           }
+          .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #4c00ff;
+            background-image: linear-gradient(160deg, #4900f5 0%, #80D0C7 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform, box-shadow;
+          }
 
-           .slider::-webkit-slider-thumb:hover {
-             transform: scale(1.1);
-             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-           }
+          .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          }
 
-           .slider::-moz-range-thumb {
-             width: 20px;
-             height: 20px;
-             border-radius: 50%;
-             background-color: #0093E9;
-             background-image: linear-gradient(160deg, #0093E9 0%, #80D0C7 100%);
-             cursor: pointer;
-             border: none;
-             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-             transition: all 0.2s ease-in-out;
-           }
+          .slider::-webkit-slider-thumb:active {
+            transform: scale(1.15);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+            transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+          }
 
-           .slider::-moz-range-thumb:hover {
-             transform: scale(1.1);
-             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-           }
+          .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #0093E9;
+            background-image: linear-gradient(160deg, #0093E9 0%, #80D0C7 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform, box-shadow;
+          }
+
+          .slider::-moz-range-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          }
+
+          .slider::-moz-range-thumb:active {
+            transform: scale(1.15);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+            transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+          }
 
            .slider::-moz-range-track {
              height: 10px;
