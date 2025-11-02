@@ -211,12 +211,18 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
     }
   };
 
+  const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
+
   const handleInstallUpdate = async () => {
     if (!updateState?.download_ready) return;
     
-    const confirmed = window.confirm('¿Estás seguro de que quieres instalar la actualización? La aplicación se reiniciará.');
-    if (!confirmed) return;
+    // Mostrar diálogo de confirmación personalizado en lugar de window.confirm
+    setInstallConfirmOpen(true);
+  };
 
+  const handleConfirmInstall = async () => {
+    setInstallConfirmOpen(false);
+    
     try {
       const result = await UpdaterService.installUpdate();
       if (result.success) {
@@ -246,58 +252,68 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
 
   const handleMinRamChange = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Redondear a múltiplos de 0.5 (valor válido para Java)
+    const roundedValue = Math.round(value * 2) / 2;
     
     // Actualizar display inmediatamente para respuesta fluida
-    setDisplayMinRam(value);
+    setDisplayMinRam(roundedValue);
     
     // Solo procesar cambios válidos (cuando se suelta o llega a un step válido)
-    if (value <= maxRamLimit) {
+    if (roundedValue <= maxRamLimit) {
       let newMaxRam = maxRam;
       
       // Si el mínimo supera al máximo, subir el máximo automáticamente
-      if (value > maxRam && value <= maxRamLimit) {
-        newMaxRam = value;
+      if (roundedValue > maxRam && roundedValue <= maxRamLimit) {
+        newMaxRam = roundedValue;
         setMaxRam(newMaxRam);
         setDisplayMaxRam(newMaxRam);
       }
       
-      setMinRam(value);
-      saveConfig(value, newMaxRam);
+      setMinRam(roundedValue);
+      saveConfig(roundedValue, newMaxRam);
     }
   };
   
   // Handler para cuando se está arrastrando (actualización fluida del display)
   const handleMinRamInput = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Redondear a múltiplos de 0.5 para mostrar, pero mantener fluidez
+    const roundedValue = Math.round(value * 2) / 2;
+    
     // Solo actualizar el display visual mientras se arrastra
-    if (value <= maxRamLimit) {
-      setDisplayMinRam(value);
+    if (roundedValue <= maxRamLimit) {
+      setDisplayMinRam(roundedValue);
       
       // Si supera el máximo, actualizar también el display del máximo
-      if (value > maxRam) {
-        setDisplayMaxRam(value);
+      if (roundedValue > maxRam) {
+        setDisplayMaxRam(roundedValue);
       }
     }
   };
 
   const handleMaxRamChange = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Redondear a múltiplos de 0.5 (valor válido para Java)
+    const roundedValue = Math.round(value * 2) / 2;
     
     // Actualizar display inmediatamente para respuesta fluida
-    setDisplayMaxRam(value);
+    setDisplayMaxRam(roundedValue);
     
-    if (value >= minRam && value <= maxRamLimit) {
-      setMaxRam(value);
-      saveConfig(minRam, value);
+    if (roundedValue >= minRam && roundedValue <= maxRamLimit) {
+      setMaxRam(roundedValue);
+      saveConfig(minRam, roundedValue);
     }
   };
   
   // Handler para cuando se está arrastrando (actualización fluida del display)
   const handleMaxRamInput = (value: number) => {
     const maxRamLimit = Math.max(2, Math.floor(systemRam * 0.75));
+    // Redondear a múltiplos de 0.5 para mostrar, pero mantener fluidez
+    const roundedValue = Math.round(value * 2) / 2;
+    
     // Solo actualizar el display visual mientras se arrastra
-    if (value >= minRam && value <= maxRamLimit) {
-      setDisplayMaxRam(value);
+    if (roundedValue >= minRam && roundedValue <= maxRamLimit) {
+      setDisplayMaxRam(roundedValue);
     }
   };
 
@@ -383,7 +399,7 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-white/80 font-medium">RAM Mínima</label>
-                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMinRam.toFixed(1)} GB</span>
+                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMinRam.toFixed(displayMinRam % 1 === 0 ? 0 : 1)} GB</span>
                     </div>
                     <div className="relative ">
                       <input
@@ -403,7 +419,7 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-white/80 font-medium">RAM Máxima</label>
-                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMaxRam.toFixed(1)} GB</span>
+                      <span className="text-white font-bold transition-all duration-100 ease-out">{displayMaxRam.toFixed(displayMaxRam % 1 === 0 ? 0 : 1)} GB</span>
                     </div>
                     <div className="relative">
                       <input
@@ -687,6 +703,42 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
          </div>
 
       </div>
+
+      {/* Diálogo de confirmación para instalar actualización */}
+      {installConfirmOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-orange-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-2">Instalar Actualización</h3>
+              <p className="text-white/80 mb-6">
+                ¿Estás seguro de que quieres instalar la actualización? La aplicación se reiniciará después de la instalación.
+              </p>
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleConfirmInstall}
+                  className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Instalar
+                </button>
+                
+                <button
+                  onClick={() => setInstallConfirmOpen(false)}
+                  className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
        <style dangerouslySetInnerHTML={{
          __html: `

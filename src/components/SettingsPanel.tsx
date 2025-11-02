@@ -51,14 +51,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     try {
       const result = await UpdaterService.installUpdate();
       if (result.success) {
-        alert('Actualización instalada correctamente. La aplicación se reiniciará.');
+        // Mostrar notificación personalizada en lugar de alert
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = '✓ Actualización instalada. Reiniciando...';
+        document.body.appendChild(toast);
         // La aplicación se reiniciará automáticamente después de la instalación
       } else {
-        alert(`Error al instalar actualización: ${result.message}`);
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+        toast.textContent = `✗ Error al instalar actualización: ${result.message}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       }
     } catch (error) {
       console.error('Error installing update:', error);
-      alert('Error al instalar la actualización');
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
+      toast.textContent = '✗ Error al instalar la actualización';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
     }
     setIsInstalling(false);
   };
