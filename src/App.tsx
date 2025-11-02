@@ -334,14 +334,14 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
-  // Check for updates on startup - si hay actualización descargada, instalar automáticamente
+  // Check for updates on startup - solo instalar automáticamente si NO fue descarga manual
   const checkForUpdatesOnStartup = async () => {
     try {
       const state = await UpdaterService.getUpdateState();
       
-      // Si hay una actualización descargada y lista, instalar automáticamente al inicio
-      if (state.download_ready) {
-        console.log('Actualización descargada encontrada, instalando automáticamente...');
+      // Si hay una actualización descargada y lista, solo instalar automáticamente si NO fue manual
+      if (state.download_ready && !state.manual_download) {
+        console.log('Actualización descargada automáticamente encontrada, instalando automáticamente...');
         try {
           const result = await UpdaterService.installUpdate();
           if (result.success) {
@@ -356,6 +356,11 @@ function App() {
           setUpdateDialogOpen(true);
           return;
         }
+      } else if (state.download_ready && state.manual_download) {
+        // Si fue descarga manual, preguntar al usuario
+        setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
+        setUpdateDialogOpen(true);
+        return;
       }
 
       // Si hay actualización disponible pero no descargada, mostrar diálogo para descargar
@@ -1044,13 +1049,14 @@ function App() {
                       onClick={async () => {
                         setUpdateDialogOpen(false);
                         try {
-                          const result = await UpdaterService.downloadUpdateSilent();
+                          // Descarga automática (desde diálogo), NO manual
+                          const result = await UpdaterService.downloadUpdateSilent(false);
                           if (result.success) {
-                            addToast('Actualización descargada. Se instalará al reiniciar el launcher.', 'success');
+                            addToast('Actualización descargada correctamente', 'success');
                             // Verificar el estado después de descargar
                             const newState = await UpdaterService.getUpdateState();
                             if (newState.download_ready) {
-                              // Si se descargó completamente, mostrar diálogo de instalación
+                              // Mostrar diálogo de instalación
                               setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newState.available_version });
                               setTimeout(() => setUpdateDialogOpen(true), 500);
                             }
@@ -1069,7 +1075,6 @@ function App() {
                     <button
                       onClick={() => {
                         setUpdateDialogOpen(false);
-                        addToast('Puedes descargar la actualización desde Configuración más tarde.', 'info', 3000);
                       }}
                       className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
                     >

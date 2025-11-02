@@ -4,6 +4,7 @@ export interface UpdateState {
   current_version: string;
   downloaded: boolean;
   download_ready: boolean;
+  manual_download: boolean;
 }
 
 export interface UpdateInfo {

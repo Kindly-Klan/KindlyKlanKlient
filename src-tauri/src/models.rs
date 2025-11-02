@@ -56,6 +56,8 @@ pub struct UpdateState {
     pub current_version: String,
     pub downloaded: bool,
     pub download_ready: bool,
+    #[serde(default)]
+    pub manual_download: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

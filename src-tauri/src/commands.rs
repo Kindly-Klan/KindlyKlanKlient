@@ -210,12 +210,14 @@ pub async fn check_for_updates(app_handle: AppHandle) -> Result<String, String> 
                 state.available_version = Some(update.version.clone());
                 state.downloaded = false;
                 state.download_ready = false;
+                state.manual_download = false;
                 save_update_state(&state).await?;
                 Ok(format!("Update available: {}", update.version))
             } else {
                 state.available_version = None;
                 state.downloaded = false;
                 state.download_ready = false;
+                state.manual_download = false;
                 save_update_state(&state).await?;
                 Ok("No updates available".to_string())
             }
@@ -254,6 +256,7 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
                 let mut new_state = load_update_state().await;
                 new_state.downloaded = false;
                 new_state.download_ready = false;
+                new_state.manual_download = false;
                 save_update_state(&new_state).await?;
                 Ok("Update installed successfully".to_string())
             } else {
@@ -289,9 +292,11 @@ async fn load_update_state() -> UpdateState {
     if let Some(mut state) = read_update_state_file().await {
         // Always use the real version from Cargo.toml, not the saved one
         state.current_version = real_version;
+        // Si es un estado antiguo sin manual_download, establecerlo a false por defecto
+        // serde debería manejar esto, pero por si acaso:
         return state;
     }
-    UpdateState { last_check: String::new(), available_version: None, current_version: real_version, downloaded: false, download_ready: false }
+    UpdateState { last_check: String::new(), available_version: None, current_version: real_version, downloaded: false, download_ready: false, manual_download: false }
 }
 
 #[tauri::command]
@@ -317,9 +322,10 @@ pub async fn clear_update_state() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn download_update_silent(app_handle: AppHandle) -> Result<String, String> {
+pub async fn download_update_silent(app_handle: AppHandle, manual: Option<bool>) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
     let updater = app_handle.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    let is_manual = manual.unwrap_or(false);
     match updater.check().await {
         Ok(Some(update)) => {
             // Emit the download start event
@@ -345,6 +351,7 @@ pub async fn download_update_silent(app_handle: AppHandle) -> Result<String, Str
             state.available_version = Some(update.version.clone());
             state.downloaded = true;
             state.download_ready = true;
+            state.manual_download = is_manual;
             save_update_state(&state).await?;
             Ok("downloaded successfully".to_string())
         }

@@ -145,24 +145,19 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
     setIsCheckingUpdates(true);
     try {
       const result = await UpdaterService.checkForUpdates();
+      // Refresh update state siempre
+      const newState = await UpdaterService.getUpdateState();
+      setUpdateState(newState);
+      
+      // Solo mostrar toast si hay actualización disponible
       if (result.available) {
-        // Refresh update state
-        const newState = await UpdaterService.getUpdateState();
-        setUpdateState(newState);
-        // Mostrar notificación de actualización disponible
         const toast = document.createElement('div');
         toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
         toast.textContent = `✓ Actualización ${result.version} disponible`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
-      } else {
-        // Mostrar que no hay actualizaciones
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-blue-500/20 border border-blue-500/30 text-blue-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✓ Ya estás en la última versión';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
       }
+      // Si no hay actualizaciones, NO mostrar toast (más limpio)
     } catch (error) {
       console.error('Error checking for updates:', error);
       const toast = document.createElement('div');
@@ -179,7 +174,8 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
     setIsDownloadingUpdate(true);
     setDownloadProgress(null);
     try {
-      const result = await UpdaterService.downloadUpdateSilent();
+      // Descarga MANUAL desde Settings (pasar true)
+      const result = await UpdaterService.downloadUpdateSilent(true);
       if (result.success) {
         // Refresh update state
         const newState = await UpdaterService.getUpdateState();
@@ -187,7 +183,7 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
         // Mostrar notificación de descarga completada
         const toast = document.createElement('div');
         toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✓ Actualización descargada correctamente';
+        toast.textContent = '✓ Actualización descargada. Lista para instalar.';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
       } else {
@@ -525,55 +521,42 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
             <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
               
               {/* Section Header */}
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-8 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white">Actualizaciones</h2>
                 </div>
-                <h2 className="text-2xl font-bold text-white">Actualizaciones</h2>
+                
+                {/* Status Badge - A la derecha del header */}
+                {updateState?.download_ready ? (
+                  <div className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-blue-300 font-medium">Actualización lista para instalar</span>
+                  </div>
+                ) : updateState?.available_version ? (
+                  <div className="px-4 py-2 bg-orange-500/20 border border-orange-500/30 rounded-lg flex items-center gap-2">
+                    <svg className="w-5 h-5 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-orange-300 font-medium">Nueva versión disponible: {updateState.available_version}</span>
+                  </div>
+                ) : (
+                  <div className="px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-lg flex items-center gap-2">
+                    <svg className="w-5 h-5 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-green-300 font-medium">Tienes la última versión</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-6">
-                {/* Current Version */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-white/80 font-medium">Versión Actual</label>
-                    <span className="text-white font-bold">{updateState?.current_version || '0.1.0'}</span>
-                  </div>
-                </div>
-
-                {/* Update Status */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-white/80 font-medium">Estado</label>
-                    <div className="flex items-center gap-2">
-                      {updateState?.available_version ? (
-                        <span className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm font-medium border border-orange-500/30">
-                          Actualización disponible
-                        </span>
-                      ) : updateState?.download_ready ? (
-                        <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm font-medium border border-blue-500/30">
-                          Lista para instalar
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm font-medium border border-green-500/30">
-                          Actualizado
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Available Version */}
-                {updateState?.available_version && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-white/80 font-medium">Nueva Versión</label>
-                      <span className="text-white font-bold">{updateState.available_version}</span>
-                    </div>
-                  </div>
-                )}
 
                 {/* Download Progress */}
                 {downloadProgress && (

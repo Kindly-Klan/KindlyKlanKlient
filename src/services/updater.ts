@@ -45,9 +45,9 @@ export class UpdaterService {
   }
 
   
-  static async downloadUpdateSilent(): Promise<{ success: boolean; message: string }> {
+  static async downloadUpdateSilent(manual: boolean = false): Promise<{ success: boolean; message: string }> {
     try {
-      const result = await invoke<string>('download_update_silent');
+      const result = await invoke<string>('download_update_silent', { manual });
       return {
         success: result.includes('downloaded successfully'),
         message: result
