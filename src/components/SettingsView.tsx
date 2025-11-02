@@ -4,10 +4,10 @@ import { UpdaterService } from '@/services/updater';
 import type { UpdateState, UpdateProgress } from '@/types/updater';
 
 interface SettingsViewProps {
-  onClose: () => void;
+  addToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = () => {
+const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [minRam, setMinRam] = useState(2.0);
   const [maxRam, setMaxRam] = useState(4.0);
@@ -154,22 +154,16 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
       const newState = await UpdaterService.getUpdateState();
       setUpdateState(newState);
       
-      // Solo mostrar toast si hay actualización disponible
-      if (result.available) {
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = `✓ Actualización ${result.version} disponible`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+      // Solo mostrar toast si hay actualización disponible usando el sistema universal
+      if (result.available && addToast) {
+        addToast(`Actualización ${result.version} disponible`, 'info');
       }
       // Si no hay actualizaciones, NO mostrar toast (más limpio)
     } catch (error) {
       console.error('Error checking for updates:', error);
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-      toast.textContent = '✗ Error al verificar actualizaciones';
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      if (addToast) {
+        addToast('Error al verificar actualizaciones', 'error');
+      }
     } finally {
       setIsCheckingUpdates(false);
     }
@@ -185,27 +179,21 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
         // Refresh update state
         const newState = await UpdaterService.getUpdateState();
         setUpdateState(newState);
-        // Mostrar notificación de descarga completada
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✓ Actualización descargada. Lista para instalar.';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        // Mostrar notificación de descarga completada usando el sistema universal
+        if (addToast) {
+          addToast('Actualización descargada. Lista para instalar.', 'success');
+        }
       } else {
-        // Mostrar error en la descarga
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✗ Error al descargar la actualización';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        // Mostrar error en la descarga usando el sistema universal
+        if (addToast) {
+          addToast('Error al descargar la actualización', 'error');
+        }
       }
     } catch (error) {
       console.error('Error downloading update:', error);
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-      toast.textContent = '✗ Error al descargar la actualización';
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      if (addToast) {
+        addToast('Error al descargar la actualización', 'error');
+      }
     } finally {
       setIsDownloadingUpdate(false);
     }
@@ -223,31 +211,26 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
   const handleConfirmInstall = async () => {
     setInstallConfirmOpen(false);
     
-    try {
-      const result = await UpdaterService.installUpdate();
-      if (result.success) {
-        // Mostrar notificación de instalación exitosa
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✓ Actualización instalada. Reiniciando...';
-        document.body.appendChild(toast);
-        // The app will restart automatically
-      } else {
-        // Mostrar error en la instalación
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✗ Error al instalar la actualización';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+      try {
+        const result = await UpdaterService.installUpdate();
+        if (result.success) {
+          // Mostrar notificación de instalación exitosa usando el sistema universal
+          if (addToast) {
+            addToast('Actualización instalada. Reiniciando...', 'success');
+          }
+          // The app will restart automatically
+        } else {
+          // Mostrar error en la instalación usando el sistema universal
+          if (addToast) {
+            addToast('Error al instalar la actualización', 'error');
+          }
+        }
+      } catch (error) {
+        console.error('Error installing update:', error);
+        if (addToast) {
+          addToast('Error al instalar la actualización', 'error');
+        }
       }
-    } catch (error) {
-      console.error('Error installing update:', error);
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-      toast.textContent = '✗ Error al instalar la actualización';
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
-    }
   };
 
   const handleMinRamChange = (value: number) => {
@@ -345,7 +328,7 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
               <h1 className={`text-4xl font-black tracking-wide text-white drop-shadow-lg transition-all duration-500 ${
                 isScrolled ? 'opacity-80 scale-95' : 'opacity-100 scale-100'
               }`}>
-                Configuración
+                Ajustes
               </h1>
             </div>
             
@@ -448,7 +431,7 @@ const SettingsView: React.FC<SettingsViewProps> = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-white">Configuración JVM Avanzada</h2>
+                <h2 className="text-2xl font-bold text-white">Configuración de la JVM</h2>
               </div>
 
               <div className="space-y-6">

@@ -373,10 +373,24 @@ function App() {
         return;
       }
 
-      // Si hay actualización disponible pero no descargada, mostrar diálogo para descargar
+      // Si hay actualización disponible pero no descargada, descargar automáticamente
       if (state.available_version && !state.downloaded) {
-        setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
-        setUpdateDialogOpen(true);
+        addToast('Se ha detectado una nueva versión. Descargando...', 'info');
+        
+        // Descargar automáticamente
+        const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+        if (downloadResult.success) {
+          const newStateAfterDownload = await UpdaterService.getUpdateState();
+          if (newStateAfterDownload.download_ready) {
+            addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
+            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newStateAfterDownload.available_version });
+            setUpdateDialogOpen(true);
+          }
+        } else {
+          // Si falla la descarga, mostrar diálogo para que el usuario pueda intentar manualmente
+          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
+          setUpdateDialogOpen(true);
+        }
         return;
       }
 
@@ -385,10 +399,27 @@ function App() {
       if (shouldCheck) {
         const result = await UpdaterService.checkForUpdates();
         if (result.available) {
-          // Mostrar diálogo para que el usuario decida descargar
+          // Mostrar toast de que se detectó una nueva versión
+          addToast('Se ha detectado una nueva versión. Descargando...', 'info');
+          
+          // Descargar automáticamente
+          const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+          if (downloadResult.success) {
+            const newState = await UpdaterService.getUpdateState();
+            if (newState.download_ready) {
+              addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
+            }
+          }
+          
+          // Mostrar diálogo para que el usuario decida instalar
           const newState = await UpdaterService.getUpdateState();
-          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
-          setUpdateDialogOpen(true);
+          if (newState.download_ready) {
+            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newState.available_version });
+            setUpdateDialogOpen(true);
+          } else {
+            setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
+            setUpdateDialogOpen(true);
+          }
         }
       }
     } catch (error) {
@@ -404,11 +435,25 @@ function App() {
 
       const result = await UpdaterService.checkForUpdates();
       if (result.available) {
-        // Si hay actualización disponible, mostrar diálogo
-        const state = await UpdaterService.getUpdateState();
-        if (state.available_version && !state.download_ready) {
-          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
-          setUpdateDialogOpen(true);
+        // Mostrar toast de que se detectó una nueva versión
+        addToast('Se ha detectado una nueva versión. Descargando...', 'info');
+        
+        // Descargar automáticamente
+        const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+        if (downloadResult.success) {
+          const state = await UpdaterService.getUpdateState();
+          if (state.download_ready) {
+            addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
+            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
+            setUpdateDialogOpen(true);
+          }
+        } else {
+          // Si falla la descarga, mostrar diálogo
+          const state = await UpdaterService.getUpdateState();
+          if (state.available_version && !state.download_ready) {
+            setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
+            setUpdateDialogOpen(true);
+          }
         }
       }
     } catch (error) {
@@ -916,7 +961,7 @@ function App() {
                  />
                ) : settingsOpen ? (
                  <SettingsView
-                   onClose={() => setSettingsOpen(false)}
+                   addToast={addToast}
                  />
                ) : !distribution ? (
                 <div className="flex items-center justify-center h-full">
