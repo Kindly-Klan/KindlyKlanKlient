@@ -309,13 +309,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
         <div
           className="w-full h-full"
           style={{
-            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+            background: 'linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%)'
           }}
         />
       </div>
 
+      {/* Subtle neon accents in background */}
+      <div className="absolute inset-0 z-5 opacity-10">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00ffff] rounded-full blur-3xl"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff00ff] rounded-full blur-3xl"></div>
+      </div>
+
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/40 z-10" />
+      <div className="absolute inset-0 bg-black/60 z-10" />
 
        {/* Content */}
        <div className="relative z-20 h-full flex flex-col">
@@ -357,7 +363,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
           
           {/* Java Configuration Section */}
           <div className="max-w-4xl mx-auto">
-            <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6">
+            <div className="glass-card rounded-2xl p-6">
               
               {/* Section Header */}
               <div className="flex items-center gap-3 mb-6">
@@ -422,7 +428,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
             </div>
 
             {/* JVM Advanced Configuration Section */}
-            <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
+            <div className="glass-card rounded-2xl p-6 mt-6">
               
               {/* Section Header */}
               <div className="flex items-center gap-3 mb-6">
@@ -458,10 +464,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
                           setGarbageCollector(gc);
                           saveAdvancedConfig();
                         }}
-                        className={`p-3 rounded-lg border transition-all duration-200 ${
+                        className={`p-3 rounded-xl border-2 transition-all duration-300 ease-out ${
                           garbageCollector === gc
-                            ? 'bg-purple-500/20 border-purple-400 cursor-pointer text-purple-300'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 cursor-pointer'
+                            ? 'glass-light border-[#00ffff]/50 cursor-pointer text-cyan-200 neon-glow-cyan'
+                            : 'glass-light border-white/10 text-white/70 hover:bg-white/10 hover:border-[#00ffff]/30 cursor-pointer'
                         }`}
                       >
                         <div className="text-sm font-semibold">{gc}</div>
@@ -539,7 +545,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
                            Alto
                            <span className="inline-flex items-center">
                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 15 15">
-    <path fill="currentColor" fill-rule="evenodd" d="M7.181 1.682a.45.45 0 0 1 .637 0l2.5 2.5a.45.45 0 0 1-.637.636L7.95 3.086v8.828l1.731-1.732a.45.45 0 0 1 .637.636l-2.5 2.5a.45.45 0 0 1-.637 0l-2.5-2.5a.45.45 0 0 1 .637-.636l1.732 1.732V3.086L5.317 4.818a.45.45 0 0 1-.637-.636l2.5-2.5Z" clip-rule="evenodd"/>
+    <path fill="currentColor" fillRule="evenodd" d="M7.181 1.682a.45.45 0 0 1 .637 0l2.5 2.5a.45.45 0 0 1-.637.636L7.95 3.086v8.828l1.731-1.732a.45.45 0 0 1 .637.636l-2.5 2.5a.45.45 0 0 1-.637 0l-2.5-2.5a.45.45 0 0 1 .637-.636l1.732 1.732V3.086L5.317 4.818a.45.45 0 0 1-.637-.636l2.5-2.5Z" clipRule="evenodd"/>
 </svg>
                            </span>
                          </label>

@@ -45,18 +45,18 @@ const UserProfile: React.FC<UserProfileProps> = ({
   };
 
   return (
-    <div className="flex items-center space-x-2 bg-black/30 backdrop-blur-md rounded-full px-3 py-2 border border-white/10 select-none">
+    <div className="flex items-center space-x-2 glass-card rounded-2xl px-4 py-2 border border-white/10 select-none backdrop-blur-md">
       
-      <div className="flex items-center space-x-1">
+      <div className="flex items-center space-x-2">
         {accounts.map((account) => (
           <div key={account.id} className="relative">
             <Tooltip content={account.user.username} side="top">
               <img
                 src={`https://crafatar.com/avatars/${account.user.uuid}?size=32&overlay=true`}
-                className={`w-6 h-6 rounded-lg border-2 cursor-pointer transition-all duration-200 select-none ${
+                className={`w-8 h-8 rounded-xl border-2 cursor-pointer transition-all duration-300 ease-out select-none ${
                   account.id === currentAccount?.id
-                    ? 'border-blue-400 shadow-lg shadow-blue-400/50'
-                    : 'border-white/20 hover:border-white/40'
+                    ? 'border-[#00ffff] shadow-lg neon-glow-cyan scale-110'
+                    : 'border-white/20 hover:border-[#00ffff]/50 hover:scale-105'
                 }`}
                 onError={(e) => handleImageError(e, account)}
                 onClick={() => onSwitchAccount(account)}
@@ -64,7 +64,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
             </Tooltip>
             
             {account.id === currentAccount?.id && (
-              <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-400 rounded-full border border-black"></div>
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-[#00ffff] rounded-full border-2 border-black shadow-lg neon-glow-cyan"></div>
             )}
           </div>
         ))}
@@ -76,7 +76,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
           onClick={onAddAccount}
           size="sm"
           variant="ghost"
-          className="w-6 h-6 p-0 text-white/60 hover:text-white hover:bg-white/10 rounded-full cursor-pointer select-none"
+          className="w-8 h-8 p-0 text-white/60 hover:text-white glass-light hover:bg-white/10 rounded-xl border border-white/10 hover:border-[#00ffff]/30 cursor-pointer select-none transition-all duration-300 ease-out hover:scale-105"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -90,7 +90,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
           onClick={() => currentAccount && onLogoutAccount(currentAccount.id)}
           size="sm"
           variant="ghost"
-          className="w-6 h-6 p-0 text-white/60 hover:text-red-400 hover:bg-red-500/10 rounded-full cursor-pointer select-none"
+          className="w-8 h-8 p-0 text-white/60 hover:text-[#ff00ff] glass-light hover:bg-[#ff00ff]/10 rounded-xl border border-white/10 hover:border-[#ff00ff]/30 cursor-pointer select-none transition-all duration-300 ease-out hover:scale-105 neon-glow-magenta-hover"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

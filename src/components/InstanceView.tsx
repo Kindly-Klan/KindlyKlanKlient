@@ -173,22 +173,29 @@ const InstanceView: React.FC<InstanceViewProps> = ({
             Tu navegador no soporta videos HTML5.
           </video>
         ) : (
-          <div
-            className="w-full h-full"
-            style={{
-              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-            }}
-          />
+          <>
+            <div
+              className="w-full h-full"
+              style={{
+                background: 'linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%)'
+              }}
+            />
+            {/* Subtle neon accents in background */}
+            <div className="absolute inset-0 z-5 opacity-10">
+              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00ffff] rounded-full blur-3xl"></div>
+              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff00ff] rounded-full blur-3xl"></div>
+            </div>
+          </>
         )}
       </div>
 
-      <div className="absolute inset-0 bg-black/40 z-10" />
+      <div className="absolute inset-0 bg-black/60 z-10" />
       
       {/* Título de la instancia - se desvanece cuando el video está cargado */}
       {showTitle && instance && (
         <div 
-          className={`absolute inset-0 z-15 flex items-center justify-center transition-opacity duration-1000 ${
-            videoLoaded ? 'opacity-0' : 'opacity-100'
+          className={`absolute inset-0 z-15 flex items-center justify-center transition-all duration-700 ${
+            videoLoaded ? 'opacity-0' : isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'
           }`}
           style={{
             fontFamily: '"Bebas Neue", cursive, sans-serif'
@@ -209,15 +216,69 @@ const InstanceView: React.FC<InstanceViewProps> = ({
         <div className={`pb-12 flex flex-col items-center gap-6 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
           {/* Tags */}
           <div className="flex items-center justify-center space-x-4 mb-4">
-            <span className="bg-gradient-to-r from-green-600/80 to-green-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-green-400/30 flex items-center space-x-2 shadow-lg">
+            <span 
+              className="px-4 py-2 rounded-2xl border flex items-center space-x-2 shadow-xl backdrop-blur-xl transition-all duration-500 ease-out"
+              style={{
+                background: 'rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.7)',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                borderWidth: '1px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.6)';
+              }}
+            >
               <img src={minecraftIcon} alt="Minecraft" className="w-4 h-4 filter brightness-0 invert" />
               <span className="text-white font-semibold text-sm">{instance.minecraft_version}</span>
             </span>
-            <span className="bg-gradient-to-r from-blue-600/80 to-blue-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-400/30 shadow-lg">
+            <span 
+              className="px-4 py-2 rounded-2xl border shadow-xl backdrop-blur-xl transition-all duration-500 ease-out"
+              style={{
+                background: 'rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.7)',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                borderWidth: '1px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.6)';
+              }}
+            >
               <span className="text-white font-semibold text-sm">v{instance.version}</span>
             </span>
             {instance.mod_loader && (
-              <span className="bg-gradient-to-r from-purple-600/80 to-purple-700/80 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-400/30 flex items-center space-x-2 shadow-lg">
+              <span 
+                className="px-4 py-2 rounded-2xl border flex items-center space-x-2 shadow-xl backdrop-blur-xl transition-all duration-500 ease-out"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)',
+                  boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.7)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  borderWidth: '1px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+                  e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.background = 'rgba(0, 0, 0, 0.6)';
+                }}
+              >
                 <img
                   src={instance.mod_loader.type === 'fabric' ? fabricmcIcon : neoforgeIcon}
                   alt={instance.mod_loader.type}

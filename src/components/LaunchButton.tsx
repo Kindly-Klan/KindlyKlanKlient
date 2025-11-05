@@ -34,6 +34,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 		return cachedState?.playTime || 0;
 	});
 	const startTimeRef = useRef<number>(cachedState?.startTime || Date.now());
+	const [isHovered, setIsHovered] = useState(false);
 
 	useEffect(() => {
 		let interval: NodeJS.Timeout | null = null;
@@ -149,11 +150,34 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	};
 
 	const getButtonClass = () => {
-		const baseClass = "bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 hover:from-blue-700 hover:via-blue-800 hover:to-indigo-900 text-white font-bold text-xl px-16 py-8 rounded-full shadow-2xl transform transition-all duration-500 border-2 text-center relative overflow-hidden min-w-[16rem]";
+		const baseClass = "text-white font-bold text-xl px-16 py-8 rounded-2xl shadow-2xl transform transition-all duration-500 ease-out text-center relative overflow-hidden min-w-[16rem] hover:scale-105";
 		if (state === 'playing' || state === 'launching') {
-			return `${baseClass} border-green-400/50 hover:border-green-300/70 bg-gradient-to-r from-green-600 via-green-700 to-emerald-800 hover:from-green-700 hover:via-green-800 hover:to-emerald-900`;
+			return `${baseClass} bg-gradient-to-r from-[#00ffff]/20 via-[#00d4ff]/20 to-[#00ffff]/20 hover:from-[#00ffff]/30 hover:via-[#00d4ff]/30 hover:to-[#00ffff]/30 neon-glow-cyan`;
 		}
-		return `${baseClass} border-blue-400/30 hover:border-blue-300/50 ${state === 'idle' ? 'hover:scale-105' : ''}`;
+		return `${baseClass} bg-gradient-to-r from-[#00ffff]/10 via-[#ff00ff]/10 to-[#00ffff]/10 hover:from-[#00ffff]/20 hover:via-[#ff00ff]/20 hover:to-[#00ffff]/20 neon-glow-cyan-hover`;
+	};
+
+	const getButtonStyle = (isHovered: boolean = false) => {
+		if (state === 'playing' || state === 'launching') {
+			return {
+				background: 'rgba(0, 0, 0, 0.6)',
+				backdropFilter: 'blur(24px)',
+				WebkitBackdropFilter: 'blur(24px)',
+				boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.7)',
+				border: '1px solid',
+				borderColor: isHovered ? 'rgba(0, 255, 255, 0.8)' : 'rgba(0, 255, 255, 0.5)',
+				transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+			};
+		}
+		return {
+			background: 'rgba(0, 0, 0, 0.6)',
+			backdropFilter: 'blur(24px)',
+			WebkitBackdropFilter: 'blur(24px)',
+			boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.7)',
+			border: '1px solid',
+			borderColor: isHovered ? 'rgba(0, 255, 255, 0.7)' : 'rgba(0, 255, 255, 0.4)',
+			transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+		};
 	};
 
 	return (
@@ -162,6 +186,9 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 				onClick={handleClick}
 				disabled={disabled || state !== 'idle' || isJavaInstalling}
 				className={`${getButtonClass()} ${className}`}
+				style={getButtonStyle(isHovered)}
+				onMouseEnter={() => setIsHovered(true)}
+				onMouseLeave={() => setIsHovered(false)}
 			>
 				{(state === 'launching' || state === 'playing') && (
 					<div className="absolute inset-0 flex items-center justify-center">

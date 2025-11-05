@@ -896,7 +896,7 @@ function App() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black flex relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-black via-[#0a0a0a] to-black flex relative overflow-hidden">
       {/* No Access Screen - Full screen overlay */}
       {showNoAccessScreen ? (
         <NoAccessScreen 
@@ -914,6 +914,7 @@ function App() {
                  handleSkinToggle={handleSkinToggle}
                  distributionBaseUrl={distribution?.distribution.base_url || ''}
                  currentUser={currentAccount.user}
+                 settingsOpen={settingsOpen}
                />
           )}
 
@@ -930,26 +931,31 @@ function App() {
               </div>
             )}
 
-                 <main className={`flex-1 relative transition-all duration-700 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+                 <main className={`flex-1 relative transition-all duration-500 ease-out ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                   {!currentAccount ? (
-                <div className={`flex items-center justify-center h-full transition-all duration-700 ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-                  <div className="text-center group">
-                    <div className={`mb-8 transition-all duration-500 delay-200 ${isLoginVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                      <img
-                        src={kindlyklanLogo}
-                        alt="KindlyKlan"
-                        className="w-48 h-48 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] select-none"
-                      />
+                <div className={`flex items-center justify-center h-full transition-all duration-500 ease-out ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+                  <div className="text-center group animate-fade-in-up">
+                    <div className={`mb-10 transition-all duration-500 delay-200 ${isLoginVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+                      <div className="p-12 inline-block">
+                        <img
+                          src={kindlyklanLogo}
+                          alt="KindlyKlan"
+                          className="w-48 h-48 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_40px_rgba(0,255,255,0.4)] group-hover:scale-105 select-none"
+                        />
+                      </div>
                     </div>
                     <div className={`transition-all duration-500 delay-400 ${isLoginVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 <Button
                         onClick={handleMicrosoftAuth}
                         disabled={isLoading}
-                        className="relative bg-black hover:bg-gray-900 text-white border-2 border-gray-600 hover:border-gray-400 rounded-2xl px-16 py-6 text-2xl font-semibold transition-all duration-300 shadow-2xl hover:shadow-white/20 group overflow-hidden min-w-[380px] cursor-pointer"
+                        className="relative glass-light hover:bg-white/10 text-white border-2 border-white/20 hover:border-[#00ffff]/50 
+                                 rounded-2xl px-16 py-6 text-2xl font-semibold transition-all duration-300 ease-out 
+                                 shadow-2xl hover:shadow-[0_0_30px_rgba(0,255,255,0.3)] group overflow-hidden min-w-[380px] 
+                                 cursor-pointer hover:scale-105 neon-glow-cyan-hover"
                       >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <img src={microsoftIcon} alt="Microsoft" className="w-8 h-8 mr-3" />
-                        Iniciar Sesión
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#00ffff]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <img src={microsoftIcon} alt="Microsoft" className="w-8 h-8 mr-3 relative z-10" />
+                        <span className="relative z-10">Iniciar Sesión</span>
                 </Button>
               </div>
             </div>
@@ -970,28 +976,36 @@ function App() {
                ) : !selectedInstance ? (
                  <div className="relative h-full w-full overflow-hidden">
                    
-                   {/* Background */}
+                   {/* Background - More subtle gradient */}
                    <div className="absolute inset-0 z-0">
                      <div
                        className="w-full h-full"
                        style={{
-                         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+                         background: 'linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%)'
                        }}
                      />
                    </div>
 
+                   {/* Subtle neon accents in background */}
+                   <div className="absolute inset-0 z-5 opacity-10">
+                     <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00ffff] rounded-full blur-3xl"></div>
+                     <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff00ff] rounded-full blur-3xl"></div>
+                   </div>
+
                    {/* Overlay */}
-                   <div className="absolute inset-0 bg-black/40 z-10" />
+                   <div className="absolute inset-0 bg-black/60 z-10" />
 
                    {/* Content */}
                    <div className="relative z-20 h-full flex flex-col">
-                     <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-700 delay-200 ${logoVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
-                       <div className="text-center group transition-all duration-500 hover:scale-110 hover:drop-shadow-2xl">
-                         <img 
-                           src={kindlyklanLogo} 
-                           alt="KindlyKlan" 
-                           className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
-                         />
+                     <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-500 ease-out delay-200 ${logoVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
+                       <div className="text-center group animate-scale-in">
+                         <div className="p-16 inline-block">
+                           <img 
+                             src={kindlyklanLogo} 
+                             alt="KindlyKlan" 
+                             className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_50px_rgba(0,255,255,0.5)] group-hover:scale-105"
+                           />
+                         </div>
                        </div>
                      </div>
                    </div>
