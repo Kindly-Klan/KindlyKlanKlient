@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/Loader";
 import ToastContainer from "@/components/ToastContainer";
@@ -9,6 +10,7 @@ import UserProfile from "@/components/UserProfile";
 import SettingsView from "@/components/SettingsView";
 import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
+import UpdateReadyToast from "@/components/UpdateReadyToast";
 import { SkinManager } from "@/components/skin/SkinManager";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
 import { UpdaterService } from "@/services/updater";
@@ -321,6 +323,11 @@ function App() {
   const [showNoAccessScreen, setShowNoAccessScreen] = useState(false);
   const [filteredInstances, setFilteredInstances] = useState<any[]>([]);
   const initialized = useRef(false);
+  
+  // Estados para toasts de actualización
+  const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number | null>(null);
+  const [updateDownloadVersion, setUpdateDownloadVersion] = useState<string | null>(null);
+  const [updateReadyVersion, setUpdateReadyVersion] = useState<string | null>(null);
 
   useEffect(() => {}, [distributionLoaded]);
   
@@ -361,33 +368,39 @@ function App() {
           }
         } catch (error) {
           console.error('Error instalando actualización automática:', error);
-          // Si falla, mostrar diálogo para que el usuario pueda intentar manualmente
-          setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
-          setUpdateDialogOpen(true);
+          // Si falla, mostrar toast de actualización lista para que el usuario pueda instalar manualmente
+          if (state.available_version) {
+            setUpdateReadyVersion(state.available_version);
+          }
           return;
         }
       } else if (state.download_ready && state.manual_download) {
-        // Si fue descarga manual, preguntar al usuario
-        setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
-        setUpdateDialogOpen(true);
+        // Si fue descarga manual, mostrar toast de actualización lista
+        if (state.available_version) {
+          setUpdateReadyVersion(state.available_version);
+        }
         return;
       }
 
       // Si hay actualización disponible pero no descargada, descargar automáticamente
       if (state.available_version && !state.downloaded) {
-        addToast('Se ha detectado una nueva versión. Descargando...', 'info');
+        // Mostrar toast de descarga con progreso
+        setUpdateDownloadVersion(state.available_version);
+        setUpdateDownloadProgress(0);
         
         // Descargar automáticamente
         const downloadResult = await UpdaterService.downloadUpdateSilent(false);
         if (downloadResult.success) {
           const newStateAfterDownload = await UpdaterService.getUpdateState();
           if (newStateAfterDownload.download_ready) {
-            addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
-            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newStateAfterDownload.available_version });
-            setUpdateDialogOpen(true);
+            // El toast de "lista para instalar" se mostrará cuando se complete la descarga
+            // a través del evento update-download-complete
           }
         } else {
-          // Si falla la descarga, mostrar diálogo para que el usuario pueda intentar manualmente
+          // Si falla la descarga, ocultar toast de descarga y mostrar error
+          setUpdateDownloadProgress(null);
+          setUpdateDownloadVersion(null);
+          addToast('Error al descargar la actualización', 'error');
           setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
           setUpdateDialogOpen(true);
         }
@@ -399,26 +412,25 @@ function App() {
       if (shouldCheck) {
         const result = await UpdaterService.checkForUpdates();
         if (result.available) {
-          // Mostrar toast de que se detectó una nueva versión
-          addToast('Se ha detectado una nueva versión. Descargando...', 'info');
-          
-          // Descargar automáticamente
-          const downloadResult = await UpdaterService.downloadUpdateSilent(false);
-          if (downloadResult.success) {
-            const newState = await UpdaterService.getUpdateState();
-            if (newState.download_ready) {
-              addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
+          // Mostrar toast de descarga con progreso
+          const state = await UpdaterService.getUpdateState();
+          if (state.available_version) {
+            setUpdateDownloadVersion(state.available_version);
+            setUpdateDownloadProgress(0);
+            
+            // Descargar automáticamente
+            const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+            if (!downloadResult.success) {
+              // Si falla la descarga, ocultar toast de descarga y mostrar error
+              setUpdateDownloadProgress(null);
+              setUpdateDownloadVersion(null);
+              addToast('Error al descargar la actualización', 'error');
+              const newState = await UpdaterService.getUpdateState();
+              setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
+              setUpdateDialogOpen(true);
             }
-          }
-          
-          // Mostrar diálogo para que el usuario decida instalar
-          const newState = await UpdaterService.getUpdateState();
-          if (newState.download_ready) {
-            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newState.available_version });
-            setUpdateDialogOpen(true);
-          } else {
-            setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
-            setUpdateDialogOpen(true);
+            // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
+            // a través del evento update-download-complete
           }
         }
       }
@@ -435,25 +447,27 @@ function App() {
 
       const result = await UpdaterService.checkForUpdates();
       if (result.available) {
-        // Mostrar toast de que se detectó una nueva versión
-        addToast('Se ha detectado una nueva versión. Descargando...', 'info');
-        
-        // Descargar automáticamente
-        const downloadResult = await UpdaterService.downloadUpdateSilent(false);
-        if (downloadResult.success) {
-          const state = await UpdaterService.getUpdateState();
-          if (state.download_ready) {
-            addToast('Se ha descargado una nueva actualización. Instálala en ajustes', 'success');
-            setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: state.available_version });
-            setUpdateDialogOpen(true);
+        // Mostrar toast de descarga con progreso
+        const state = await UpdaterService.getUpdateState();
+        if (state.available_version && !state.downloaded) {
+          setUpdateDownloadVersion(state.available_version);
+          setUpdateDownloadProgress(0);
+          
+          // Descargar automáticamente
+          const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+          if (!downloadResult.success) {
+            // Si falla la descarga, ocultar toast de descarga y mostrar error
+            setUpdateDownloadProgress(null);
+            setUpdateDownloadVersion(null);
+            addToast('Error al descargar la actualización', 'error');
+            const newState = await UpdaterService.getUpdateState();
+            if (newState.available_version && !newState.download_ready) {
+              setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
+              setUpdateDialogOpen(true);
+            }
           }
-        } else {
-          // Si falla la descarga, mostrar diálogo
-          const state = await UpdaterService.getUpdateState();
-          if (state.available_version && !state.download_ready) {
-            setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
-            setUpdateDialogOpen(true);
-          }
+          // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
+          // a través del evento update-download-complete
         }
       }
     } catch (error) {
@@ -485,6 +499,41 @@ function App() {
       checkForUpdatesPeriodic();
     }, 30 * 60 * 1000); // 30 minutos
 
+    // Escuchar eventos de actualización
+    let unlistenUpdateProgress: (() => void) | null = null;
+    let unlistenUpdateComplete: (() => void) | null = null;
+    
+    (async () => {
+      try {
+        unlistenUpdateProgress = await listen<number>('update-download-progress', (event) => {
+          setUpdateDownloadProgress(event.payload);
+        });
+        
+        unlistenUpdateComplete = await listen('update-download-complete', async () => {
+          setUpdateDownloadProgress(100);
+          // Esperar un poco para que se actualice el estado
+          setTimeout(async () => {
+            const state = await UpdaterService.getUpdateState();
+            // Verificar que la actualización no se haya instalado ya
+            if (state.available_version && state.available_version === state.current_version) {
+              // Ya está instalada, limpiar estado
+              await invoke('clear_update_state');
+              setUpdateDownloadProgress(null);
+              setUpdateDownloadVersion(null);
+              return;
+            }
+            if (state.download_ready && state.available_version) {
+              setUpdateDownloadProgress(null);
+              setUpdateDownloadVersion(null);
+              setUpdateReadyVersion(state.available_version);
+            }
+          }, 500);
+        });
+      } catch (error) {
+        console.error('Error setting up update event listeners:', error);
+      }
+    })();
+
     if (accounts.length === 0 && !isLoginVisible) {
       const timer = setTimeout(() => {
         setIsLoginVisible(true);
@@ -492,11 +541,15 @@ function App() {
       return () => {
         clearTimeout(timer);
         clearInterval(updateCheckInterval);
+        if (unlistenUpdateProgress) unlistenUpdateProgress();
+        if (unlistenUpdateComplete) unlistenUpdateComplete();
       };
     }
-
+    
     return () => {
       clearInterval(updateCheckInterval);
+      if (unlistenUpdateProgress) unlistenUpdateProgress();
+      if (unlistenUpdateComplete) unlistenUpdateComplete();
     };
   }, [accounts.length, isLoginVisible]);
 
@@ -1063,6 +1116,28 @@ function App() {
             message={downloadProgress.status === 'Completed' ? 'Assets descargados' : 'Descargando assets de instancia'}
             percentage={downloadProgress.percentage}
             onClose={() => setDownloadProgress(null)}
+          />
+        )}
+        {updateDownloadProgress !== null && updateDownloadVersion && (
+          <DownloadProgressToast
+            message="Descargando nueva actualización"
+            percentage={updateDownloadProgress}
+            onClose={() => {
+              setUpdateDownloadProgress(null);
+              setUpdateDownloadVersion(null);
+            }}
+          />
+        )}
+        {updateReadyVersion && (
+          <UpdateReadyToast
+            message="Nueva actualización lista para instalar"
+            version={updateReadyVersion}
+            onClose={() => setUpdateReadyVersion(null)}
+            onClick={() => {
+              setSettingsOpen(true);
+              setSelectedInstance(null);
+              setSkinViewOpen(false);
+            }}
           />
         )}
       </ToastContainer>
