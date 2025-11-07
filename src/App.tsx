@@ -352,18 +352,24 @@ function App() {
       if (state.available_version && state.available_version === currentVersion) {
         console.log('La versión actual coincide con la disponible, limpiando estado...');
         await invoke('clear_update_state');
-        // No continuar con la verificación después de limpiar
-        return;
+        // Continuar con la verificación después de limpiar para buscar nuevas actualizaciones
       }
       
-      // Si hay una actualización descargada y lista, solo instalar automáticamente si NO fue manual
-      if (state.download_ready && !state.manual_download) {
-        console.log('Actualización descargada automáticamente encontrada, instalando automáticamente...');
+      // Si hay una actualización descargada y lista, instalar automáticamente al reiniciar
+      if (state.download_ready) {
+        console.log('Actualización descargada encontrada al iniciar, instalando automáticamente...');
         try {
           const result = await UpdaterService.installUpdate();
           if (result.success) {
             addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
             // La aplicación se reiniciará automáticamente después de la instalación
+            return;
+          } else {
+            console.error('Error instalando actualización automática:', result.message);
+            // Si falla, mostrar toast de actualización lista para que el usuario pueda instalar manualmente
+            if (state.available_version) {
+              setUpdateReadyVersion(state.available_version);
+            }
             return;
           }
         } catch (error) {
@@ -374,65 +380,40 @@ function App() {
           }
           return;
         }
-      } else if (state.download_ready && state.manual_download) {
-        // Si fue descarga manual, mostrar toast de actualización lista
-        if (state.available_version) {
-          setUpdateReadyVersion(state.available_version);
-        }
-        return;
       }
 
-      // Si hay actualización disponible pero no descargada, descargar automáticamente
-      if (state.available_version && !state.downloaded) {
-        // Mostrar toast de descarga con progreso
-        setUpdateDownloadVersion(state.available_version);
-        setUpdateDownloadProgress(0);
-        
-        // Descargar automáticamente
-        const downloadResult = await UpdaterService.downloadUpdateSilent(false);
-        if (downloadResult.success) {
-          const newStateAfterDownload = await UpdaterService.getUpdateState();
-          if (newStateAfterDownload.download_ready) {
-            // El toast de "lista para instalar" se mostrará cuando se complete la descarga
-            // a través del evento update-download-complete
-          }
-        } else {
-          // Si falla la descarga, ocultar toast de descarga y mostrar error
-          setUpdateDownloadProgress(null);
-          setUpdateDownloadVersion(null);
-          addToast('Error al descargar la actualización', 'error');
-          setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: state.available_version });
-          setUpdateDialogOpen(true);
-        }
-        return;
-      }
-
-      // Verificar si debemos buscar nuevas actualizaciones (cada 30 minutos)
-      const shouldCheck = await UpdaterService.shouldCheckForUpdates();
-      if (shouldCheck) {
-        const result = await UpdaterService.checkForUpdates();
-        if (result.available) {
-          // Mostrar toast de descarga con progreso
-          const state = await UpdaterService.getUpdateState();
-          if (state.available_version) {
-            setUpdateDownloadVersion(state.available_version);
-            setUpdateDownloadProgress(0);
-            
-            // Descargar automáticamente
-            const downloadResult = await UpdaterService.downloadUpdateSilent(false);
-            if (!downloadResult.success) {
-              // Si falla la descarga, ocultar toast de descarga y mostrar error
-              setUpdateDownloadProgress(null);
-              setUpdateDownloadVersion(null);
-              addToast('Error al descargar la actualización', 'error');
-              const newState = await UpdaterService.getUpdateState();
-              setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: newState.available_version });
+      // SIEMPRE verificar si hay nuevas actualizaciones al iniciar (no solo cada 30 minutos)
+      // Esto asegura que siempre se verifique al iniciar el launcher
+      console.log('Verificando actualizaciones al iniciar...');
+      const result = await UpdaterService.checkForUpdates();
+      
+      if (result.available) {
+        // Obtener el estado actualizado después de verificar
+        const newState = await UpdaterService.getUpdateState();
+        if (newState.available_version && !newState.downloaded) {
+          console.log('Nueva actualización disponible, iniciando descarga automática...');
+          // Mostrar toast de descarga con progreso ANTES de iniciar la descarga
+          setUpdateDownloadVersion(newState.available_version);
+          setUpdateDownloadProgress(0);
+          
+          // Descargar automáticamente
+          const downloadResult = await UpdaterService.downloadUpdateSilent(false);
+          if (!downloadResult.success) {
+            // Si falla la descarga, ocultar toast de descarga y mostrar error
+            setUpdateDownloadProgress(null);
+            setUpdateDownloadVersion(null);
+            addToast('Error al descargar la actualización', 'error');
+            const finalState = await UpdaterService.getUpdateState();
+            if (finalState.available_version) {
+              setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: finalState.available_version });
               setUpdateDialogOpen(true);
             }
-            // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
-            // a través del evento update-download-complete
           }
+          // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
+          // a través del evento update-download-complete
         }
+      } else {
+        console.log('No hay actualizaciones disponibles');
       }
     } catch (error) {
       console.error('Error checking for updates on startup:', error);
@@ -443,13 +424,19 @@ function App() {
   const checkForUpdatesPeriodic = async () => {
     try {
       const shouldCheck = await UpdaterService.shouldCheckForUpdates();
-      if (!shouldCheck) return;
+      if (!shouldCheck) {
+        console.log('Aún no es momento de verificar actualizaciones (cada 30 minutos)');
+        return;
+      }
 
+      console.log('Verificando actualizaciones periódicamente...');
       const result = await UpdaterService.checkForUpdates();
       if (result.available) {
-        // Mostrar toast de descarga con progreso
+        // Obtener el estado actualizado después de verificar
         const state = await UpdaterService.getUpdateState();
         if (state.available_version && !state.downloaded) {
+          console.log('Nueva actualización disponible en verificación periódica, iniciando descarga...');
+          // Mostrar toast de descarga con progreso ANTES de iniciar la descarga
           setUpdateDownloadVersion(state.available_version);
           setUpdateDownloadProgress(0);
           
@@ -469,6 +456,8 @@ function App() {
           // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
           // a través del evento update-download-complete
         }
+      } else {
+        console.log('No hay actualizaciones disponibles en verificación periódica');
       }
     } catch (error) {
       console.error('Error checking for updates periodically:', error);
@@ -500,16 +489,35 @@ function App() {
     }, 30 * 60 * 1000); // 30 minutos
 
     // Escuchar eventos de actualización
+    let unlistenUpdateStart: (() => void) | null = null;
     let unlistenUpdateProgress: (() => void) | null = null;
     let unlistenUpdateComplete: (() => void) | null = null;
     
     (async () => {
       try {
+        // Listener para cuando inicia la descarga - mostrar toast inmediatamente
+        unlistenUpdateStart = await listen('update-download-start', async () => {
+          console.log('Descarga de actualización iniciada');
+          // Obtener el estado para asegurar que tenemos la versión correcta
+          try {
+            const state = await UpdaterService.getUpdateState();
+            if (state.available_version) {
+              setUpdateDownloadVersion(state.available_version);
+              setUpdateDownloadProgress(0);
+            }
+          } catch (error) {
+            console.error('Error obteniendo estado de actualización:', error);
+            // Aún así, establecer el progreso a 0 para mostrar el toast
+            setUpdateDownloadProgress(0);
+          }
+        });
+        
         unlistenUpdateProgress = await listen<number>('update-download-progress', (event) => {
           setUpdateDownloadProgress(event.payload);
         });
         
         unlistenUpdateComplete = await listen('update-download-complete', async () => {
+          console.log('Descarga de actualización completada');
           setUpdateDownloadProgress(100);
           // Esperar un poco para que se actualice el estado
           setTimeout(async () => {
@@ -541,6 +549,7 @@ function App() {
       return () => {
         clearTimeout(timer);
         clearInterval(updateCheckInterval);
+        if (unlistenUpdateStart) unlistenUpdateStart();
         if (unlistenUpdateProgress) unlistenUpdateProgress();
         if (unlistenUpdateComplete) unlistenUpdateComplete();
       };
@@ -548,6 +557,7 @@ function App() {
     
     return () => {
       clearInterval(updateCheckInterval);
+      if (unlistenUpdateStart) unlistenUpdateStart();
       if (unlistenUpdateProgress) unlistenUpdateProgress();
       if (unlistenUpdateComplete) unlistenUpdateComplete();
     };
