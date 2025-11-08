@@ -275,7 +275,8 @@ pub fn run() {
             get_local_instances,
             sync_mods_from_remote,
             open_instance_folder,
-            launch_local_instance
+            launch_local_instance,
+            delete_local_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

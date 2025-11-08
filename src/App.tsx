@@ -906,6 +906,15 @@ function App() {
     }
   };
 
+  // Handle local instance deleted
+  const handleLocalInstanceDeleted = (instanceId: string) => {
+    setLocalInstances(localInstances.filter(li => li.id !== instanceId));
+    if (selectedInstance === instanceId) {
+      setSelectedInstance(null);
+    }
+    addToast('Instancia local eliminada', 'success');
+  };
+
   // Effect to check admin status when user changes
   useEffect(() => {
     checkAdminStatus();
@@ -1173,6 +1182,7 @@ function App() {
                  isAdmin={isAdmin}
                  onCreateLocalInstance={() => setCreateLocalModalOpen(true)}
                  creatingInstanceId={creatingInstanceId}
+                 onLocalInstanceDeleted={handleLocalInstanceDeleted}
                />
           )}
 

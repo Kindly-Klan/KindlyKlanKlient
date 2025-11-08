@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Tooltip from '@/components/ui/Tooltip';
 import type { LocalInstance } from '@/types/local-instances';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Instance {
   id: string;
@@ -41,6 +42,7 @@ interface SidebarProps {
   isAdmin?: boolean;
   onCreateLocalInstance?: () => void;
   creatingInstanceId?: string | null;
+  onLocalInstanceDeleted?: (instanceId: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -56,7 +58,35 @@ const Sidebar: React.FC<SidebarProps> = ({
   isAdmin = false,
   onCreateLocalInstance,
   creatingInstanceId = null,
+  onLocalInstanceDeleted,
 }) => {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent, instanceId: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, instanceId });
+  };
+
+  const handleDeleteInstance = async () => {
+    if (!contextMenu) return;
+    
+    try {
+      await invoke('delete_local_instance', { instanceId: contextMenu.instanceId });
+      onLocalInstanceDeleted?.(contextMenu.instanceId);
+      setContextMenu(null);
+    } catch (error) {
+      console.error('Error deleting instance:', error);
+      alert(`Error al eliminar instancia: ${error}`);
+    }
+  };
+
+  // Close context menu when clicking elsewhere
+  React.useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
   return (
     <>
 
@@ -105,35 +135,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               </Tooltip>
             ))}
             
-            {/* Separator for local instances (only if admin) */}
-            {isAdmin && (
+            {/* Local instances (only if admin) */}
+            {isAdmin && localInstances.length > 0 && (
               <>
-                <div className="my-4 relative">
-                  <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
-                    <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
-                  </div>
-                </div>
-
-                {/* Add button */}
-                <Tooltip content="Nueva Instancia Local" side="right">
-                  <div
-                    onClick={() => onCreateLocalInstance?.()}
-                    className="w-full aspect-square cursor-pointer transition-all duration-300 ease-out relative select-none hover:scale-105 group"
-                  >
-                    <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/50 hover:ring-[#FFD700] bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center hover:shadow-lg hover:shadow-[#FFD700]/20">
-                      <svg 
-                        className="w-8 h-8 text-[#FFD700] transition-transform duration-300 group-hover:rotate-90"
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                  </div>
-                </Tooltip>
-
                 {/* Local instances */}
                 {localInstances.map((localInstance) => {
                   const isCreating = creatingInstanceId === localInstance.id;
@@ -142,6 +146,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <Tooltip key={localInstance.id} content={localInstance.name} side="right">
                       <div
                         onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
+                        onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
                         className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
                           isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
                         } ${
@@ -188,7 +193,44 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Settings Button at bottom - Only Icon */}
           <div className="flex-shrink-0 space-y-3 px-2 pb-2">
-            {/* Skin Management Button - Just above settings */}
+            {/* Local instances section (only if admin) */}
+            {isAdmin && (
+              <>
+                {/* Separator above LOCAL text */}
+                <div className="mb-3">
+                  <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-2" />
+                  <div className="text-center">
+                    <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
+                  </div>
+                </div>
+
+                {/* Add button */}
+                <Tooltip content="Nueva Instancia Local" side="right">
+                  <div
+                    onClick={() => onCreateLocalInstance?.()}
+                    className="flex justify-center cursor-pointer transition-all duration-300 ease-out hover:scale-105 group"
+                  >
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/50 hover:ring-[#FFD700] bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center hover:shadow-lg hover:shadow-[#FFD700]/20">
+                      <svg 
+                        className="w-6 h-6 text-[#FFD700] transition-transform duration-300 group-hover:rotate-90"
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                  </div>
+                </Tooltip>
+
+                {/* Separator below local button */}
+                <div className="my-3">
+                  <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                </div>
+              </>
+            )}
+
+            {/* Skin Management Button */}
             {currentUser && (
               <div className="flex justify-center">
                 <div
@@ -266,6 +308,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Context menu for local instances */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-gray-900/95 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={handleDeleteInstance}
+            className="w-full px-4 py-3 text-left text-red-300 hover:bg-red-500/20 transition-colors duration-200 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Eliminar
+          </button>
+        </div>
+      )}
     </>
   );
 };

@@ -64,7 +64,26 @@ const InstanceView: React.FC<InstanceViewProps> = ({
   const [localVideoPath, setLocalVideoPath] = useState<string | null>(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [showTitle, setShowTitle] = useState(true);
-  const instance = distribution.instances.find(inst => inst.id === instanceId);
+  
+  // If it's a local instance, use localInstance data, otherwise find in distribution
+  const instance = isLocal && localInstance 
+    ? {
+        id: localInstance.id,
+        name: localInstance.name,
+        description: `Instancia local`,
+        version: "local",
+        minecraft_version: localInstance.minecraft_version,
+        icon: null,
+        background: localInstance.background || null,
+        background_video: null,
+        last_updated: localInstance.created_at,
+        instance_url: "",
+        mod_loader: {
+          type: "fabric",
+          version: localInstance.fabric_version
+        }
+      }
+    : distribution.instances.find(inst => inst.id === instanceId);
 
   // Animate on instance change
   useEffect(() => {

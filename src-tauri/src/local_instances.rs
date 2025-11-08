@@ -478,3 +478,24 @@ pub async fn launch_local_instance(
     Ok(format!("Local instance {} launched successfully", instance_id))
 }
 
+#[tauri::command]
+pub async fn delete_local_instance(instance_id: String) -> Result<String, String> {
+    log::info!("🗑️  Deleting local instance: {}", instance_id);
+    
+    let local_instances_dir = get_local_instances_dir()?;
+    let instance_dir = local_instances_dir.join(&instance_id);
+    
+    if !instance_dir.exists() {
+        return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
+    }
+    
+    // Delete the entire instance directory
+    tokio::fs::remove_dir_all(&instance_dir)
+        .await
+        .map_err(|e| format!("Failed to delete instance directory: {}", e))?;
+    
+    log::info!("✅ Local instance deleted successfully: {}", instance_id);
+    
+    Ok(format!("Local instance {} deleted successfully", instance_id))
+}
+

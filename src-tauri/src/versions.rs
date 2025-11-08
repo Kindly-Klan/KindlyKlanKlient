@@ -169,14 +169,9 @@ pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec
             format!("Failed to parse Fabric Loader versions: {}", e)
         })?;
     
-    // Filter only stable versions
-    let stable_versions: Vec<crate::models::FabricLoaderVersion> = versions
-        .into_iter()
-        .filter(|v| v.loader.stable)
-        .collect();
-    
-    log::info!("✅ Found {} stable Fabric Loader versions", stable_versions.len());
-    Ok(stable_versions)
+    // Return all versions (not just stable)
+    log::info!("✅ Found {} Fabric Loader versions", versions.len());
+    Ok(versions)
 }
 
 
