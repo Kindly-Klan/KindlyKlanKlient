@@ -21,6 +21,8 @@ mod sessions_api;
 mod instances;
 mod auth_ms;
 mod commands;
+mod admins;
+mod local_instances;
 pub use models::*;
 pub use versions::*;
 pub use whitelist::*;
@@ -29,6 +31,8 @@ pub use sessions_api::*;
 pub use instances::*;
 pub use auth_ms::*;
 pub use commands::*;
+pub use admins::*;
+pub use local_instances::*;
  
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,7 +264,18 @@ pub fn run() {
             get_minecraft_profile_safe,
             clear_update_state,
             download_instance_assets,
-            test_manifest_url
+            test_manifest_url,
+            // Admin system
+            check_is_admin,
+            // Versions
+            get_minecraft_versions,
+            get_fabric_loader_versions,
+            // Local instances
+            create_local_instance,
+            get_local_instances,
+            sync_mods_from_remote,
+            open_instance_folder,
+            launch_local_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

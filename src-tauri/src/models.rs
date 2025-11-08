@@ -178,4 +178,66 @@ pub struct LaunchSettings {
     pub jvm_args: Option<Vec<String>>,
 }
 
+// Admin system structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminEntry {
+    pub minecraft_username: String,
+}
+
+// Local instances structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalInstance {
+    pub id: String,
+    pub name: String,
+    pub minecraft_version: String,
+    pub fabric_version: String,
+    pub created_at: String,
+    pub is_local: bool,
+    pub background: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalInstanceMetadata {
+    pub id: String,
+    pub name: String,
+    pub minecraft_version: String,
+    pub fabric_version: String,
+    pub created_at: String,
+}
+
+// Minecraft version structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinecraftVersionManifest {
+    pub latest: LatestVersions,
+    pub versions: Vec<MinecraftVersionInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestVersions {
+    pub release: String,
+    pub snapshot: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinecraftVersionInfo {
+    pub id: String,
+    pub r#type: String,
+    pub url: String,
+    pub time: String,
+    #[serde(rename = "releaseTime")]
+    pub release_time: String,
+}
+
+// Fabric Loader version structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FabricLoaderVersion {
+    pub loader: FabricLoaderInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FabricLoaderInfo {
+    pub version: String,
+    pub stable: bool,
+}
+
 

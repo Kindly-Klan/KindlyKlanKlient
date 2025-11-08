@@ -17,7 +17,10 @@ import { sendNotification } from "@tauri-apps/plugin-notification";
 import { UpdaterService } from "@/services/updater";
 import { WhitelistService } from "@/services/whitelist";
 import { SessionService } from "@/services/sessions";
+import { AdminService } from "@/services/admins";
 import NoAccessScreen from "@/components/NoAccessScreen";
+import CreateLocalInstanceModal from "@/components/CreateLocalInstanceModal";
+import type { LocalInstance } from "@/types/local-instances";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
 type AssetDownloadProgress = {
@@ -369,6 +372,14 @@ function App() {
   const [updateDownloadVersion, setUpdateDownloadVersion] = useState<string | null>(null);
   const [updateReadyVersion, setUpdateReadyVersion] = useState<string | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
+  // Estados para instancias locales
+  const [localInstances, setLocalInstances] = useState<LocalInstance[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [createLocalModalOpen, setCreateLocalModalOpen] = useState(false);
+  const [creatingInstanceId, setCreatingInstanceId] = useState<string | null>(null);
+  const [syncModsModalOpen, setSyncModsModalOpen] = useState(false);
+  const [syncingLocalId, setSyncingLocalId] = useState<string | null>(null);
 
   useEffect(() => {}, [distributionLoaded]);
   
@@ -808,6 +819,136 @@ function App() {
     }
   };
 
+  // Check if current user is admin
+  const checkAdminStatus = async () => {
+    if (!currentAccount) {
+      setIsAdmin(false);
+      return;
+    }
+
+    try {
+      const admin = await AdminService.checkIsAdmin(currentAccount.user.username);
+      setIsAdmin(admin);
+      console.log(`Admin status for ${currentAccount.user.username}: ${admin}`);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      setIsAdmin(false);
+    }
+  };
+
+  // Load local instances (only for admins)
+  const loadLocalInstances = async () => {
+    if (!isAdmin) {
+      setLocalInstances([]);
+      return;
+    }
+
+    try {
+      const instances = await invoke<LocalInstance[]>('get_local_instances');
+      setLocalInstances(instances);
+      console.log('Local instances loaded:', instances.length);
+    } catch (error) {
+      console.error('Error loading local instances:', error);
+      addToast('Error al cargar instancias locales', 'error');
+    }
+  };
+
+  // Handle creating a local instance
+  const handleCreateLocalInstance = (instance: LocalInstance) => {
+    setLocalInstances([...localInstances, instance]);
+    setCreatingInstanceId(instance.id);
+    addToast(`Instancia "${instance.name}" creada exitosamente`, 'success');
+    
+    // Remove creating state after animation
+    setTimeout(() => {
+      setCreatingInstanceId(null);
+    }, 2000);
+  };
+
+  // Handle sync mods from remote
+  const handleSyncMods = (localId: string) => {
+    setSyncingLocalId(localId);
+    setSyncModsModalOpen(true);
+  };
+
+  const handleSyncModsConfirm = async (remoteId: string) => {
+    if (!syncingLocalId || !distribution) return;
+
+    try {
+      setShowLoader(true);
+      setLoaderText('Sincronizando mods...');
+      
+      await invoke('sync_mods_from_remote', {
+        localInstanceId: syncingLocalId,
+        remoteInstanceId: remoteId,
+        distributionUrl: distribution.distribution.base_url,
+      });
+
+      addToast('Mods sincronizados exitosamente', 'success');
+      setSyncModsModalOpen(false);
+      setSyncingLocalId(null);
+    } catch (error) {
+      console.error('Error syncing mods:', error);
+      addToast(`Error al sincronizar mods: ${error}`, 'error');
+    } finally {
+      setShowLoader(false);
+      setLoaderText('Iniciando sesión...');
+    }
+  };
+
+  // Handle open instance folder
+  const handleOpenFolder = async (instanceId: string) => {
+    try {
+      await invoke('open_instance_folder', { instanceId });
+    } catch (error) {
+      console.error('Error opening folder:', error);
+      addToast('Error al abrir carpeta de la instancia', 'error');
+    }
+  };
+
+  // Effect to check admin status when user changes
+  useEffect(() => {
+    checkAdminStatus();
+  }, [currentAccount]);
+
+  // Effect to load local instances when admin status changes
+  useEffect(() => {
+    loadLocalInstances();
+  }, [isAdmin]);
+
+  // Listen to local instance creation progress
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    listen('local-instance-progress', (event: any) => {
+      const progress = event.payload;
+      console.log('Local instance progress:', progress);
+      
+      if (progress.stage === 'completed') {
+        addToast(progress.message, 'success');
+        loadLocalInstances(); // Reload local instances
+      }
+    }).then((fn) => { unlisten = fn; }).catch(() => {});
+    
+    return () => { if (unlisten) { try { unlisten(); } catch {} } };
+  }, []);
+
+  // Listen to mod sync progress
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    listen('mod-sync-progress', (event: any) => {
+      const progress = event.payload;
+      console.log('Mod sync progress:', progress);
+      
+      if (progress.stage === 'completed') {
+        addToast(progress.message, 'success');
+      }
+    }).then((fn) => { unlisten = fn; }).catch(() => {});
+    
+    return () => { if (unlisten) { try { unlisten(); } catch {} } };
+  }, []);
+
   const handleLogout = async () => {
     try {
       // Limpiar sesiones de la base de datos si hay cuenta activa
@@ -1021,6 +1162,7 @@ function App() {
           {currentAccount && (
                <Sidebar
                  instances={filteredInstances.length > 0 ? filteredInstances : (distribution?.instances || [])}
+                 localInstances={localInstances}
                  selectedInstance={selectedInstance}
                  onInstanceSelect={handleInstanceSelect}
                  handleSettingsToggle={handleSettingsToggle}
@@ -1028,6 +1170,9 @@ function App() {
                  distributionBaseUrl={distribution?.distribution.base_url || ''}
                  currentUser={currentAccount.user}
                  settingsOpen={settingsOpen}
+                 isAdmin={isAdmin}
+                 onCreateLocalInstance={() => setCreateLocalModalOpen(true)}
+                 creatingInstanceId={creatingInstanceId}
                />
           )}
 
@@ -1130,6 +1275,10 @@ function App() {
                      distribution={distribution}
                      distributionBaseUrl={distribution.distribution.base_url}
                      isJavaInstalling={showLoader || isDownloadingAssets}
+                     localInstance={localInstances.find(li => li.id === selectedInstance)}
+                     isLocal={localInstances.some(li => li.id === selectedInstance)}
+                     onSyncMods={handleSyncMods}
+                     onOpenFolder={handleOpenFolder}
                      onLaunch={async (instance) => {
                        if (isDownloadingAssets) {
                          setLoaderText("Descargando assets de instancia...");
@@ -1138,6 +1287,35 @@ function App() {
                        }
                        setShowLoader(true);
 
+                       // Check if it's a local instance
+                       const isLocalInstance = localInstances.some(li => li.id === selectedInstance);
+                       
+                       if (isLocalInstance) {
+                         // Launch local instance
+                         try {
+                           const localInst = localInstances.find(li => li.id === selectedInstance);
+                           if (!localInst) throw new Error('Local instance not found');
+                           
+                           await invoke('launch_local_instance', {
+                             instanceId: localInst.id,
+                             accessToken: currentAccount.user.access_token,
+                             username: currentAccount.user.username,
+                             uuid: currentAccount.user.uuid,
+                             minRamGb: 4.0,
+                             maxRamGb: 8.0,
+                           });
+                           
+                           setShowLoader(false);
+                           setLoaderText("Iniciando sesión...");
+                           addToast('Minecraft iniciado exitosamente', 'success');
+                         } catch (error) {
+                           console.error('Error launching local instance:', error);
+                           addToast(`Error al iniciar instancia: ${error}`, 'error');
+                           setShowLoader(false);
+                           setLoaderText("Iniciando sesión...");
+                         }
+                       } else {
+                         // Launch remote instance
                        await launchInstance(
                          instance,
                          currentAccount,
@@ -1156,6 +1334,7 @@ function App() {
                         distribution?.distribution.base_url,
                         instance.instance_url
                        );
+                       }
                      }}
                    />
           </div>
@@ -1329,6 +1508,82 @@ function App() {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de creación de instancia local */}
+      <CreateLocalInstanceModal
+        isOpen={createLocalModalOpen}
+        onClose={() => setCreateLocalModalOpen(false)}
+        onInstanceCreated={handleCreateLocalInstance}
+      />
+
+      {/* Modal de sincronización de mods */}
+      {syncModsModalOpen && distribution && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div 
+            className="glass-card rounded-3xl border border-white/10 p-8 max-w-2xl w-full shadow-2xl"
+            style={{
+              background: 'rgba(10, 10, 10, 0.95)',
+              backdropFilter: 'blur(24px)',
+              WebkitBackdropFilter: 'blur(24px)',
+            }}
+          >
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Sincronizar Mods
+            </h2>
+            <p className="text-white/60 mb-6">
+              Selecciona una instancia remota para copiar sus mods a esta instancia local
+            </p>
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar mb-6">
+              {filteredInstances.map((instance) => (
+                <button
+                  key={instance.id}
+                  onClick={() => handleSyncModsConfirm(instance.id)}
+                  className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-left hover:bg-white/10 hover:border-[#00ffff]/30 transition-all duration-200 group"
+                >
+                  <div className="flex items-center gap-4">
+                    {instance.icon && (
+                      <img
+                        src={`${distribution.distribution.base_url}/${instance.icon}`}
+                        alt={instance.name}
+                        className="w-12 h-12 rounded-lg"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <h3 className="text-white font-bold group-hover:text-[#00ffff] transition-colors">
+                        {instance.name}
+                      </h3>
+                      <p className="text-white/60 text-sm">
+                        Minecraft {instance.minecraft_version} • {instance.mod_loader?.type} {instance.mod_loader?.version}
+                      </p>
+                    </div>
+                    <svg 
+                      className="w-6 h-6 text-white/40 group-hover:text-[#00ffff] transition-colors" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  setSyncModsModalOpen(false);
+                  setSyncingLocalId(null);
+                }}
+                className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all duration-200"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>

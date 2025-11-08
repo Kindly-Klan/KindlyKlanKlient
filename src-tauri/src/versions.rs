@@ -93,4 +93,90 @@ pub fn is_library_allowed(lib: &Library, os_name: &str) -> bool {
     allowed
 }
 
+// Commands for fetching Minecraft and Fabric versions
+
+#[tauri::command]
+pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVersionInfo>, String> {
+    log::info!("🔍 Fetching Minecraft versions from Mojang");
+    
+    let client = reqwest::Client::new();
+    let url = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+    
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Failed to fetch Minecraft versions: {}", e);
+            format!("Failed to fetch Minecraft versions: {}", e)
+        })?;
+    
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("❌ Mojang API error: {} - {}", status, error_text);
+        return Err(format!("Mojang API error: {} - {}", status, error_text));
+    }
+    
+    let manifest: crate::models::MinecraftVersionManifest = response
+        .json()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Failed to parse Minecraft versions: {}", e);
+            format!("Failed to parse Minecraft versions: {}", e)
+        })?;
+    
+    // Filter only release versions and take the latest 20
+    let releases: Vec<crate::models::MinecraftVersionInfo> = manifest
+        .versions
+        .into_iter()
+        .filter(|v| v.r#type == "release")
+        .take(20)
+        .collect();
+    
+    log::info!("✅ Found {} release versions", releases.len());
+    Ok(releases)
+}
+
+#[tauri::command]
+pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec<crate::models::FabricLoaderVersion>, String> {
+    log::info!("🔍 Fetching Fabric Loader versions for Minecraft {}", minecraft_version);
+    
+    let client = reqwest::Client::new();
+    let url = format!("https://meta.fabricmc.net/v2/versions/loader/{}", minecraft_version);
+    
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Failed to fetch Fabric Loader versions: {}", e);
+            format!("Failed to fetch Fabric Loader versions: {}", e)
+        })?;
+    
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("❌ Fabric API error: {} - {}", status, error_text);
+        return Err(format!("Fabric API error: {} - {}", status, error_text));
+    }
+    
+    let versions: Vec<crate::models::FabricLoaderVersion> = response
+        .json()
+        .await
+        .map_err(|e| {
+            log::error!("❌ Failed to parse Fabric Loader versions: {}", e);
+            format!("Failed to parse Fabric Loader versions: {}", e)
+        })?;
+    
+    // Filter only stable versions
+    let stable_versions: Vec<crate::models::FabricLoaderVersion> = versions
+        .into_iter()
+        .filter(|v| v.loader.stable)
+        .collect();
+    
+    log::info!("✅ Found {} stable Fabric Loader versions", stable_versions.len());
+    Ok(stable_versions)
+}
+
 

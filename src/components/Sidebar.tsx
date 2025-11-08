@@ -1,5 +1,6 @@
 import React from 'react';
 import Tooltip from '@/components/ui/Tooltip';
+import type { LocalInstance } from '@/types/local-instances';
 
 interface Instance {
   id: string;
@@ -15,6 +16,7 @@ interface Instance {
     type: string;
     version: string;
   };
+  is_local?: boolean;
 }
 
 interface AuthSession {
@@ -28,6 +30,7 @@ interface AuthSession {
 
 interface SidebarProps {
   instances: Instance[];
+  localInstances?: LocalInstance[];
   selectedInstance: string | null;
   onInstanceSelect: (instanceId: string) => void;
   handleSettingsToggle: () => void;
@@ -35,24 +38,32 @@ interface SidebarProps {
   distributionBaseUrl: string;
   currentUser?: AuthSession | null;
   settingsOpen?: boolean;
+  isAdmin?: boolean;
+  onCreateLocalInstance?: () => void;
+  creatingInstanceId?: string | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
   instances,
+  localInstances = [],
   selectedInstance,
   onInstanceSelect,
   handleSettingsToggle,
   //handleSkinToggle,
   distributionBaseUrl,
   currentUser,
-  settingsOpen = false
+  settingsOpen = false,
+  isAdmin = false,
+  onCreateLocalInstance,
+  creatingInstanceId = null,
 }) => {
   return (
     <>
 
       <div className="fixed left-0 top-0 h-full w-20 glass border-r border-white/10 z-40">
-        <div className="p-2">
-          <div className="space-y-2">
+        <div className="h-full flex flex-col">
+          <div className="space-y-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {/* Remote instances */}
             {instances.map((instance) => (
               <Tooltip key={instance.id} content={instance.name} side="right">
                 <div
@@ -63,11 +74,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                       : 'hover:scale-105'
                   }`}
                 >
-                  <div className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                    selectedInstance === instance.id
-                      ? 'ring-2 ring-[#00ffff] ring-offset-2 ring-offset-black/50 shadow-lg neon-glow-cyan'
-                      : 'ring-1 ring-white/10 hover:ring-white/20'
-                  }`}>
+                  <div 
+                    className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
+                      selectedInstance === instance.id
+                        ? 'ring-2 ring-[#00ffff]'
+                        : 'ring-1 ring-white/10 hover:ring-white/20'
+                    }`}
+                    style={selectedInstance === instance.id ? {
+                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.6), 0 0 40px rgba(0, 255, 255, 0.4)'
+                    } : {}}
+                  >
                     {instance.icon ? (
                       <img
                         src={`${distributionBaseUrl}/${instance.icon}`}
@@ -88,18 +104,98 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </Tooltip>
             ))}
+            
+            {/* Separator for local instances (only if admin) */}
+            {isAdmin && (
+              <>
+                <div className="my-4 relative">
+                  <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
+                    <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
+                  </div>
+                </div>
+
+                {/* Add button */}
+                <Tooltip content="Nueva Instancia Local" side="right">
+                  <div
+                    onClick={() => onCreateLocalInstance?.()}
+                    className="w-full aspect-square cursor-pointer transition-all duration-300 ease-out relative select-none hover:scale-105 group"
+                  >
+                    <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/50 hover:ring-[#FFD700] bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center hover:shadow-lg hover:shadow-[#FFD700]/20">
+                      <svg 
+                        className="w-8 h-8 text-[#FFD700] transition-transform duration-300 group-hover:rotate-90"
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                  </div>
+                </Tooltip>
+
+                {/* Local instances */}
+                {localInstances.map((localInstance) => {
+                  const isCreating = creatingInstanceId === localInstance.id;
+                  
+                  return (
+                    <Tooltip key={localInstance.id} content={localInstance.name} side="right">
+                      <div
+                        onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
+                        className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
+                          isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                        } ${
+                          selectedInstance === localInstance.id && !isCreating
+                            ? 'scale-105'
+                            : ''
+                        }`}
+                      >
+                        <div 
+                          className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
+                            selectedInstance === localInstance.id && !isCreating
+                              ? 'ring-2 ring-[#FFD700]'
+                              : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
+                          }`}
+                          style={selectedInstance === localInstance.id && !isCreating ? {
+                            boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
+                          } : {}}
+                        >
+                          {isCreating ? (
+                            <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#FFD700]"></div>
+                            </div>
+                          ) : localInstance.background ? (
+                            <img
+                              src={`file://${localInstance.background}`}
+                              alt={localInstance.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                              <span className="text-[#FFD700] font-bold text-xl">
+                                {localInstance.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </Tooltip>
+                  );
+                })}
+              </>
+            )}
           </div>
 
           {/* Settings Button at bottom - Only Icon */}
-          <div className="absolute bottom-2 left-2 right-2">
+          <div className="flex-shrink-0 space-y-3 px-2 pb-2">
             {/* Skin Management Button - Just above settings */}
             {currentUser && (
-              <div className="mb-2">
+              <div className="flex justify-center">
                 <div
                   onClick={() => {}}
                   className="relative group"
                 >
-                  <div className="w-full aspect-square rounded-2xl overflow-hidden ring-1 ring-white/10 cursor-not-allowed transition-all duration-300 ease-out opacity-50 select-none">
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden ring-1 ring-white/10 cursor-not-allowed transition-all duration-300 ease-out opacity-50 select-none">
                     <img
                       src={`https://crafatar.com/avatars/${currentUser.uuid}?size=64&overlay=true`}
                       alt={`${currentUser.username}'s avatar`}
