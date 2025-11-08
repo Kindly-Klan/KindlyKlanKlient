@@ -1,6 +1,6 @@
 [package]
 name = "kindlyklanklient"
-version = "0.1.44"
+version = "0.1.45"
 description = "Client for Kindly Klan's events."
 authors = ["Kindly Klan"]
 edition = "2024"
@@ -44,5 +44,6 @@ dotenv = "0.15"
 log = "0.4"
 env_logger = "0.11"
 tauri-plugin-sql = { version = "2.0.0", features = ["sqlite"] }
+tauri-plugin-notification = "2.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 

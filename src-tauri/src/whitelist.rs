@@ -2,24 +2,6 @@ use crate::models::{AccessCheck, WhitelistEntry};
 use anyhow::Result;
 use reqwest;
 use serde_json;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::sync::LazyLock;
-
-// Cache for whitelist entries (5 minutes TTL)
-static WHITELIST_CACHE: LazyLock<Mutex<HashMap<String, (AccessCheck, u64)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn get_current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-fn is_cache_valid(timestamp: u64) -> bool {
-    get_current_timestamp() - timestamp < 300
-}
 
 pub fn get_supabase_config() -> (String, String) {
     let url = std::env::var("SUPABASE_URL")
@@ -36,7 +18,7 @@ pub fn get_supabase_config() -> (String, String) {
 
 #[tauri::command]
 pub async fn check_whitelist_access(username: String) -> Result<AccessCheck, String> {
-    log::info!("🔍 Checking whitelist access for user: {}", username);
+    log::info!("🔍 Checking whitelist access for user: {} (always querying database, no cache)", username);
     let (supabase_url, supabase_key) = get_supabase_config();
 
     if supabase_url == "https://your-project.supabase.co" || supabase_key == "your-anon-key" {
@@ -44,17 +26,7 @@ pub async fn check_whitelist_access(username: String) -> Result<AccessCheck, Str
         return Ok(AccessCheck { has_access: true, allowed_instances: Vec::new(), global_access: true });
     }
 
-    {
-        let cache = WHITELIST_CACHE.lock().unwrap();
-        if let Some((cached_result, timestamp)) = cache.get(&username) {
-            if is_cache_valid(*timestamp) {
-                log::info!("✅ Using cached whitelist result for user: {}", username);
-                return Ok(cached_result.clone());
-            }
-        }
-    }
-
-    log::info!("🌐 Querying Supabase for user: {}", username);
+    log::info!("🌐 Querying Supabase for user: {} (no cache used)", username);
     let client = reqwest::Client::new();
     let url = format!("{}/rest/v1/whitelist?minecraft_username=eq.{}", supabase_url, username);
 
@@ -102,11 +74,7 @@ pub async fn check_whitelist_access(username: String) -> Result<AccessCheck, Str
         AccessCheck { has_access: true, allowed_instances: entry.allowed_instances.clone().unwrap_or_default(), global_access: entry.global_access }
     };
 
-    {
-        let mut cache = WHITELIST_CACHE.lock().unwrap();
-        cache.insert(username, (result.clone(), get_current_timestamp()));
-    }
-
+    // No cache - always return fresh result from database
     Ok(result)
 }
 
@@ -122,9 +90,9 @@ pub async fn get_accessible_instances(username: String, all_instances: Vec<Strin
 
 #[tauri::command]
 pub async fn clear_whitelist_cache() -> Result<String, String> {
-    let mut cache = WHITELIST_CACHE.lock().unwrap();
-    cache.clear();
-    Ok("Whitelist cache cleared".to_string())
+    // Cache has been removed - this function is kept for backwards compatibility
+    log::info!("clear_whitelist_cache called but cache is disabled");
+    Ok("Whitelist cache is disabled - always queries database".to_string())
 }
 
 

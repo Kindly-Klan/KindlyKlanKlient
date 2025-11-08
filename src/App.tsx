@@ -13,6 +13,7 @@ import DownloadProgressToast from "@/components/DownloadProgressToast";
 import UpdateReadyToast from "@/components/UpdateReadyToast";
 import { SkinManager } from "@/components/skin/SkinManager";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import { UpdaterService } from "@/services/updater";
 import { WhitelistService } from "@/services/whitelist";
 import { SessionService } from "@/services/sessions";
@@ -52,7 +53,10 @@ const checkJavaInstalled = async (javaVersion: string): Promise<boolean> => {
 };
 
 
-const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> => {
+const ensureJavaInstalled = async (
+  minecraftVersion: string,
+  setJavaProgress?: (progress: number) => void
+): Promise<string> => {
   const javaVersion = getRequiredJavaVersion(minecraftVersion);
 
   const isInstalled = await checkJavaInstalled(javaVersion);
@@ -60,19 +64,40 @@ const ensureJavaInstalled = async (minecraftVersion: string): Promise<string> =>
     return javaVersion;
   }
 
-
   try {
-    // Mostrar barra de progreso en la barra de tareas durante la descarga de Java
-    try {
-      await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.Normal, progress: 50 });
-    } catch {}
+    // Escuchar eventos de progreso de Java
+    const unlistenProgress = await listen('java-download-progress', (e: any) => {
+      const data = e.payload as { percentage: number; status: string };
+      const progress = data.percentage / 100;
+      // Actualizar barra de progreso en la barra de tareas
+      getCurrentWindow().setProgressBar({ 
+        status: ProgressBarStatus.Normal, 
+        progress: progress 
+      }).catch(() => {});
+      if (setJavaProgress) {
+        setJavaProgress(data.percentage);
+      }
+    });
+    
+    const unlistenCompleted = await listen('java-download-completed', async (e: any) => {
+      try {
+        await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
+        // Mostrar notificación
+        await sendNotification({
+          title: 'Java instalado',
+          body: `Java ${e.payload.version || ''} se ha instalado correctamente`,
+        });
+      } catch {}
+      unlistenProgress();
+      unlistenCompleted();
+    });
+    
     await invoke<string>('download_java', { version: javaVersion });
     return javaVersion;
   } catch (error) {
     console.error('Error downloading Java:', error);
-    throw error;
-  } finally {
     try { await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None }); } catch {}
+    throw error;
   }
 };
 
@@ -112,13 +137,28 @@ const launchInstance = async (
         const unlistenProgress = await listen('asset-download-progress', (e: any) => {
           const data = e.payload as AssetDownloadProgress;
           setDownloadProgress(data);
+          // Actualizar barra de progreso en la barra de tareas
+          const progress = data.percentage / 100;
+          getCurrentWindow().setProgressBar({ 
+            status: ProgressBarStatus.Normal, 
+            progress: progress 
+          }).catch(() => {});
         });
-        const unlistenCompleted = await listen('asset-download-completed', () => {
+        const unlistenCompleted = await listen('asset-download-completed', async () => {
           setDownloadProgress({ current: 100, total: 100, percentage: 100, current_file: '', status: 'Completed' });
+          try {
+            await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
+            // Mostrar notificación
+            await sendNotification({
+              title: 'Instancia lista',
+              body: `La instancia "${instance.name}" se ha descargado correctamente`,
+            });
+          } catch {}
+          unlistenProgress();
+          unlistenCompleted();
         });
 
         await invoke<string>('download_instance_assets', {
-          appHandle: undefined,
           instanceId: instance.id,
           minecraftVersion: instance.minecraft_version,
           baseUrl: baseUrl,
@@ -129,6 +169,7 @@ const launchInstance = async (
         unlistenCompleted();
       } catch (error) {
         console.error('Error downloading assets:', error);
+        try { await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None }); } catch {}
         addToast('Error descargando assets de la instancia', 'error');
         throw error;
       }
@@ -328,8 +369,18 @@ function App() {
   const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number | null>(null);
   const [updateDownloadVersion, setUpdateDownloadVersion] = useState<string | null>(null);
   const [updateReadyVersion, setUpdateReadyVersion] = useState<string | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
 
   useEffect(() => {}, [distributionLoaded]);
+  
+  // Manejar evento de cierre durante descarga
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen('close-requested-during-download', () => {
+      setCloseDialogOpen(true);
+    }).then((fn) => { unlisten = fn; }).catch(() => {});
+    return () => { if (unlisten) { try { unlisten(); } catch {} } };
+  }, []);
   
   useEffect(() => {
     if (!selectedInstance && !settingsOpen && !skinViewOpen && currentAccount) {
@@ -1237,6 +1288,48 @@ function App() {
                   </div>
                 </>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diálogo de confirmación de cierre durante descarga */}
+      {closeDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-orange-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-2">Descarga en progreso</h3>
+              <p className="text-white/80 mb-6">
+                Hay una descarga en progreso. Si cierras la aplicación ahora, la descarga se cancelará. ¿Estás seguro de que quieres cerrar?
+              </p>
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={async () => {
+                    setCloseDialogOpen(false);
+                    // Permitir cierre forzado
+                    await invoke('set_downloading_state', { isDownloading: false });
+                    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                    await getCurrentWindow().close();
+                  }}
+                  className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Cerrar de todas formas
+                </button>
+                
+                <button
+                  onClick={() => setCloseDialogOpen(false)}
+                  className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 border border-gray-500/30 rounded-lg transition-all duration-200 font-medium"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>

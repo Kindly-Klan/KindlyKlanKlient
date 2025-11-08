@@ -289,15 +289,63 @@ const InstanceView: React.FC<InstanceViewProps> = ({
             )}
           </div>
 
-          {/* Botón de jugar */}
-          <LaunchButton
-            onLaunch={() => onLaunch(instance)}
-            className="text-center"
-            isJavaInstalling={isJavaInstalling}
-            instanceId={instanceId}
-          />
+          <div className="flex flex-col items-center gap-2">
+            <LaunchButton
+              onLaunch={() => onLaunch(instance)}
+              className="text-center"
+              isJavaInstalling={isJavaInstalling}
+              instanceId={instanceId}
+            />
+            <PlayTimeStats instanceId={instanceId} />
+          </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+
+const PlayTimeStats: React.FC<{ instanceId: string }> = ({ instanceId }) => {
+  const [totalHours, setTotalHours] = React.useState<number>(0);
+  
+  React.useEffect(() => {
+    // Cargar horas totales desde localStorage o base de datos
+    const loadPlayTime = async () => {
+      try {
+        const saved = localStorage.getItem(`playtime_${instanceId}`);
+        if (saved) {
+          const hours = parseFloat(saved) || 0;
+          setTotalHours(hours);
+        }
+      } catch (error) {
+        console.error('Error loading play time:', error);
+      }
+    };
+    
+    loadPlayTime();
+    
+    // Escuchar cuando el juego termine para guardar el tiempo
+    const unlisten = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      return listen('minecraft_exited', () => {
+        // El tiempo ya se guarda en LaunchButton, solo actualizar aquí
+        loadPlayTime();
+      });
+    };
+    
+    unlisten().then(fn => {
+      return () => { try { fn(); } catch {} };
+    }).catch(() => {});
+  }, [instanceId]);
+  
+  if (totalHours < 1.0) return null;
+  
+  const hours = Math.floor(totalHours);
+  const displayText = `${hours}h`;
+  
+  return (
+    <div className="text-white/30 text-xs font-light opacity-50 transition-opacity hover:opacity-70">
+      {displayText} jugadas
     </div>
   );
 };

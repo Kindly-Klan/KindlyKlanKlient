@@ -5,10 +5,11 @@ use tokio::fs;
 use std::fs::File;
 use std::io::Write;
 use reqwest;
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 use tauri::Emitter;
 use crate::UpdateState;
 use crate::{DistributionManifest, InstanceManifest};
+use std::sync::{Arc, Mutex};
 
 #[tauri::command]
 pub async fn greet(name: String) -> String {
@@ -89,7 +90,23 @@ pub async fn check_java_version(version: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn download_java(version: String) -> Result<String, String> {
+pub async fn set_downloading_state(state: State<'_, Arc<Mutex<bool>>>, is_downloading: bool) -> Result<(), String> {
+    if let Ok(mut downloading) = state.lock() {
+        *downloading = is_downloading;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn download_java(version: String, app_handle: AppHandle, state: State<'_, Arc<Mutex<bool>>>) -> Result<String, String> {
+    // Establecer estado de descarga
+    if let Ok(mut downloading) = state.lock() {
+        *downloading = true;
+    }
+    
+    // Notificar que comenzó la descarga
+    let _ = app_handle.emit("java-download-started", serde_json::json!({ "version": version }));
+    
     let kindly_dir = std::env::var("USERPROFILE")
         .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
         .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
@@ -98,19 +115,68 @@ pub async fn download_java(version: String) -> Result<String, String> {
     fs::create_dir_all(&runtime_dir).await.map_err(|e| format!("Failed to create runtime directory: {}", e))?;
     let (os, arch, extension) = if cfg!(target_os = "windows") { ("windows", "x64", "zip") } else if cfg!(target_os = "macos") { ("mac", "x64", "tar.gz") } else { ("linux", "x64", "tar.gz") };
     let jre_url = format!("https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jdk/hotspot/normal/eclipse", version, os, arch);
+    
+    // Emitir progreso inicial
+    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+        "percentage": 0,
+        "status": "Descargando Java..."
+    }));
+    
     let client = reqwest::Client::new();
     let response = client.get(&jre_url).header("User-Agent", "KindlyKlanKlient/1.0").header("Accept", "application/octet-stream").send().await.map_err(|e| format!("Failed to download Java: {}", e))?;
     if !response.status().is_success() { return Err(format!("Download failed with status: {}", response.status())); }
-    let bytes = response.bytes().await.map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    // Obtener tamaño total si está disponible
+    let total_size = response.content_length().unwrap_or(0);
+    let mut downloaded = 0u64;
+    
+    // Emitir progreso durante descarga
+    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+        "percentage": 10,
+        "status": "Descargando Java..."
+    }));
+    
+    let mut bytes = Vec::new();
+    let mut stream = response.bytes_stream();
+    use futures_util::TryStreamExt;
+    loop {
+        match stream.try_next().await {
+            Ok(Some(chunk)) => {
+                downloaded += chunk.len() as u64;
+                bytes.extend_from_slice(&chunk);
+                
+                // Actualizar progreso cada 5%
+                if total_size > 0 {
+                    let percentage = ((downloaded * 100) / total_size).min(80);
+                    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+                        "percentage": percentage,
+                        "status": "Descargando Java..."
+                    }));
+                }
+            }
+            Ok(None) => break,
+            Err(e) => return Err(format!("Failed to read chunk: {}", e)),
+        }
+    }
+    
     let temp_file = runtime_dir.join(format!("java-{}.{}", version, extension));
     let mut file = File::create(&temp_file).map_err(|e| format!("Failed to create temp file: {}", e))?;
     file.write_all(&bytes).map_err(|e| format!("Failed to write temp file: {}", e))?;
-    file.flush().map_err(|e| format!("Failed to flush file: {}", e))?; drop(file);
+    file.flush().map_err(|e| format!("Failed to flush file: {}", e))?; 
+    drop(file);
+    
+    // Emitir progreso de extracción
+    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+        "percentage": 85,
+        "status": "Extrayendo Java..."
+    }));
+    
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     if java_dir.exists() { let _ = std::fs::remove_dir_all(&java_dir); }
     if temp_file.extension().map_or(false, |e| e == "zip") {
         let reader = std::fs::File::open(&temp_file).map_err(|e| format!("Open zip failed: {}", e))?;
         let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("Read zip failed: {}", e))?;
+        let total_files = archive.len();
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).map_err(|e| format!("Zip index failed: {}", e))?;
             let outpath = runtime_dir.join(file.mangled_name());
@@ -119,11 +185,24 @@ pub async fn download_java(version: String) -> Result<String, String> {
                 let mut outfile = std::fs::File::create(&outpath).map_err(|e| format!("Create file failed: {}", e))?;
                 std::io::copy(&mut file, &mut outfile).map_err(|e| format!("Write file failed: {}", e))?;
             }
+            // Actualizar progreso de extracción
+            let extraction_progress = 85 + ((i * 10) / total_files);
+            let _ = app_handle.emit("java-download-progress", serde_json::json!({
+                "percentage": extraction_progress,
+                "status": "Extrayendo Java..."
+            }));
         }
     } else {
         #[cfg(not(target_os = "windows"))]
         { return Err("Unsupported archive format on this OS without external tools".to_string()); }
     }
+    
+    // Emitir progreso final
+    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+        "percentage": 95,
+        "status": "Finalizando instalación..."
+    }));
+    
     let all_entries = std::fs::read_dir(&runtime_dir).map_err(|e| format!("Failed to read runtime directory: {}", e))?.collect::<Result<Vec<_>, _>>().map_err(|e| format!("Failed to read directory entries: {}", e))?;
     let extracted_dirs: Vec<_> = all_entries.into_iter().filter(|entry| { let path = entry.path(); path.is_dir() && path != java_dir }).map(|entry| entry.path()).collect();
     if let Some(extracted_dir) = extracted_dirs.first() {
@@ -132,6 +211,19 @@ pub async fn download_java(version: String) -> Result<String, String> {
         for dir in extracted_dirs.iter().skip(1) { let _ = std::fs::remove_dir_all(dir); }
     } else { return Err("No Java directory found after extraction".to_string()); }
     let _ = std::fs::remove_file(&temp_file);
+    
+    // Emitir progreso completado
+    let _ = app_handle.emit("java-download-progress", serde_json::json!({
+        "percentage": 100,
+        "status": "Completado"
+    }));
+    let _ = app_handle.emit("java-download-completed", serde_json::json!({ "version": version }));
+    
+    // Limpiar estado de descarga
+    if let Ok(mut downloading) = state.lock() {
+        *downloading = false;
+    }
+    
     Ok(format!("Java {} downloaded and installed successfully", version))
 }
 
@@ -364,12 +456,17 @@ pub async fn download_update_silent(app_handle: AppHandle, manual: Option<bool>)
 
 #[tauri::command]
 pub async fn download_instance_assets(
-    app_handle: AppHandle,
     instance_id: String,
     minecraft_version: String,
     base_url: Option<String>,
-    instance_url: Option<String>
+    instance_url: Option<String>,
+    app_handle: AppHandle,
+    state: State<'_, Arc<Mutex<bool>>>
 ) -> Result<String, String> {
+    // Establecer estado de descarga
+    if let Ok(mut downloading) = state.lock() {
+        *downloading = true;
+    }
     let base = std::env::var("USERPROFILE")
         .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
         .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
@@ -506,7 +603,20 @@ pub async fn download_instance_assets(
         if root_options.exists() && !expected_configs.contains("options.txt") { let _ = std::fs::remove_file(&root_options); }
     }
     
+    let _ = app_handle.emit("asset-download-progress", serde_json::json!({
+        "current": 100,
+        "total": 100,
+        "percentage": 100,
+        "current_file": "",
+        "status": "Completado"
+    }));
     let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "complete" }));
+    
+    // Limpiar estado de descarga
+    if let Ok(mut downloading) = state.lock() {
+        *downloading = false;
+    }
+    
     Ok("ok".to_string())
 }
 

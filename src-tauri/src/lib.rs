@@ -6,7 +6,7 @@ use std::env;
 use std::process::Command;
  
  
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -188,10 +188,30 @@ pub fn run() {
     
     log::info!("Starting KindlyKlanKlient...");
     
+    // Global state for tracking active downloads
+    use std::sync::{Arc, Mutex};
+    let is_downloading = Arc::new(Mutex::new(false));
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_updater::Builder::default().build())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .manage(is_downloading)
+        .on_window_event(move |window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app_handle = window.app_handle();
+                if let Some(state) = app_handle.try_state::<Arc<Mutex<bool>>>() {
+                    if let Ok(downloading) = state.lock() {
+                        if *downloading {
+                            // Emit event to frontend to show dialog
+                            let _ = window.emit("close-requested-during-download", ());
+                            api.prevent_close();
+                        }
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             get_versions,
@@ -206,6 +226,7 @@ pub fn run() {
             get_required_java_version_command,
             check_java_version,
             download_java,
+            set_downloading_state,
             get_java_path,
             stop_minecraft_instance,
             restart_application,

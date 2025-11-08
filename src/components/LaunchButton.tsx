@@ -62,6 +62,16 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		listen('minecraft_exited', () => {
+			// Guardar tiempo total jugado antes de resetear
+			const cached = launchStateCache.get(instanceId);
+			if (cached && cached.playTime > 0) {
+				const hours = cached.playTime / 3600;
+				const saved = localStorage.getItem(`playtime_${instanceId}`);
+				const previousHours = saved ? parseFloat(saved) || 0 : 0;
+				const totalHours = previousHours + hours;
+				localStorage.setItem(`playtime_${instanceId}`, totalHours.toString());
+			}
+			
 			setState('idle');
 			setPlayTime(0);
 			// Limpiar caché cuando el juego termina
