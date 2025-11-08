@@ -83,7 +83,7 @@ const ensureJavaInstalled = async (
       try {
         await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
         // Mostrar notificación
-        await sendNotification({
+        sendNotification({
           title: 'Java instalado',
           body: `Java ${e.payload.version || ''} se ha instalado correctamente`,
         });
@@ -148,8 +148,7 @@ const launchInstance = async (
           setDownloadProgress({ current: 100, total: 100, percentage: 100, current_file: '', status: 'Completed' });
           try {
             await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
-            // Mostrar notificación
-            await sendNotification({
+            sendNotification({
               title: 'Instancia lista',
               body: `La instancia "${instance.name}" se ha descargado correctamente`,
             });
