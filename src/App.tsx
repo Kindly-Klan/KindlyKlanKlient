@@ -856,9 +856,7 @@ function App() {
   // Handle creating a local instance
   const handleCreateLocalInstance = (instance: LocalInstance) => {
     setLocalInstances([...localInstances, instance]);
-    setCreatingInstanceId(instance.id);
-    addToast(`Instancia "${instance.name}" creada exitosamente`, 'success');
-    
+    setCreatingInstanceId(instance.id);    
     // Remove creating state after animation
     setTimeout(() => {
       setCreatingInstanceId(null);
@@ -883,8 +881,6 @@ function App() {
         remoteInstanceId: remoteId,
         distributionUrl: distribution.distribution.base_url,
       });
-
-      addToast('Mods sincronizados exitosamente', 'success');
       setSyncModsModalOpen(false);
       setSyncingLocalId(null);
     } catch (error) {

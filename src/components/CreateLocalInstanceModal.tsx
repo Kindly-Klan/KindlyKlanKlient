@@ -154,9 +154,16 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div 
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isCreating) {
+          onClose();
+        }
+      }}
+    >
       <div 
-        className="glass-card rounded-3xl border border-white/10 p-8 max-w-2xl w-full shadow-2xl"
+        className="glass-card rounded-3xl border border-white/10 p-8 max-w-2xl w-full shadow-2xl animate-slide-up"
         style={{
           background: 'rgba(10, 10, 10, 0.95)',
           backdropFilter: 'blur(24px)',
@@ -191,7 +198,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
         <div className="min-h-[300px]">
           {/* Step 1: Name */}
           {step === 1 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6 animate-fade-in-up">
               <div>
                 <label className="block text-white mb-2 font-medium">
                   Nombre de la instancia
@@ -217,7 +224,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
 
           {/* Step 2: Minecraft Version */}
           {step === 2 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6 animate-fade-in-up">
               <div>
                 <label className="block text-white mb-2 font-medium">
                   Versión de Minecraft
@@ -254,7 +261,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
 
           {/* Step 3: Fabric Version */}
           {step === 3 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6 animate-fade-in-up">
               <div>
                 <label className="block text-white mb-2 font-medium">
                   Versión de Fabric Loader
@@ -296,7 +303,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
 
           {/* Step 4: Summary */}
           {step === 4 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6 animate-fade-in-up">
               <div className="space-y-4">
                 <h3 className="text-xl font-bold text-white mb-4">Resumen de la instancia</h3>
                 

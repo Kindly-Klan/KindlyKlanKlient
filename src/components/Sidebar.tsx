@@ -61,6 +61,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLocalInstanceDeleted,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
+  const [localInstancesExpanded, setLocalInstancesExpanded] = useState(false);
+  
+  // Show max 3 local instances by default, then expand button
+  const MAX_VISIBLE_LOCAL_INSTANCES = 3;
+  const visibleLocalInstances = localInstancesExpanded 
+    ? localInstances 
+    : localInstances.slice(0, MAX_VISIBLE_LOCAL_INSTANCES);
+  const hasMoreLocalInstances = localInstances.length > MAX_VISIBLE_LOCAL_INSTANCES;
 
   const handleContextMenu = (e: React.MouseEvent, instanceId: string) => {
     e.preventDefault();
@@ -134,73 +142,94 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </Tooltip>
             ))}
-            
-            {/* Separator between remote and local instances (only if admin) */}
-            {isAdmin && (
-              <div className="my-4 relative">
-                <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
-                  <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
-                </div>
-              </div>
-            )}
-
-            {/* Local instances (only if admin) */}
-            {isAdmin && localInstances.map((localInstance) => {
-              const isCreating = creatingInstanceId === localInstance.id;
-              
-              return (
-                <Tooltip key={localInstance.id} content={localInstance.name} side="right">
-                  <div
-                    onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
-                    onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
-                    className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
-                      isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
-                    } ${
-                      selectedInstance === localInstance.id && !isCreating
-                        ? 'scale-105'
-                        : ''
-                    }`}
-                  >
-                    <div 
-                      className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                        selectedInstance === localInstance.id && !isCreating
-                          ? 'ring-2 ring-[#FFD700]'
-                          : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
-                      }`}
-                      style={selectedInstance === localInstance.id && !isCreating ? {
-                        boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
-                      } : {}}
-                    >
-                      {isCreating ? (
-                        <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#FFD700]"></div>
-                        </div>
-                      ) : localInstance.background ? (
-                        <img
-                          src={`file://${localInstance.background}`}
-                          alt={localInstance.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
-                          <span className="text-[#FFD700] font-bold text-xl">
-                            {localInstance.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </Tooltip>
-              );
-            })}
           </div>
 
           {/* Settings Button at bottom - Only Icon */}
           <div className="flex-shrink-0 space-y-3 px-2 pb-2">
-            {/* Add local instance button (only if admin) */}
+            {/* Local instances section (only if admin) - positioned above the + button */}
             {isAdmin && (
               <>
+                {/* Separator above local instances */}
+                {localInstances.length > 0 && (
+                  <div className="relative my-2">
+                    <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
+                      <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Local instances list */}
+                {localInstances.length > 0 && (
+                  <div className="space-y-2">
+                    {visibleLocalInstances.map((localInstance) => {
+                      const isCreating = creatingInstanceId === localInstance.id;
+                      
+                      return (
+                        <Tooltip key={localInstance.id} content={localInstance.name} side="right">
+                          <div
+                            onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
+                            onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
+                            className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
+                              isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                            } ${
+                              selectedInstance === localInstance.id && !isCreating
+                                ? 'scale-105'
+                                : ''
+                            }`}
+                          >
+                            <div 
+                              className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
+                                selectedInstance === localInstance.id && !isCreating
+                                  ? 'ring-2 ring-[#FFD700]'
+                                  : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
+                              }`}
+                              style={selectedInstance === localInstance.id && !isCreating ? {
+                                boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
+                              } : {}}
+                            >
+                              {isCreating ? (
+                                <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#FFD700]"></div>
+                                </div>
+                              ) : localInstance.background ? (
+                                <img
+                                  src={`file://${localInstance.background}`}
+                                  alt={localInstance.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                                  <span className="text-[#FFD700] font-bold text-xl">
+                                    {localInstance.name.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
+
+                    {/* Expand/Collapse button for more instances */}
+                    {hasMoreLocalInstances && (
+                      <Tooltip content={localInstancesExpanded ? "Mostrar menos" : `Mostrar ${localInstances.length - MAX_VISIBLE_LOCAL_INSTANCES} más`} side="right">
+                        <div
+                          onClick={() => setLocalInstancesExpanded(!localInstancesExpanded)}
+                          className="w-full aspect-square cursor-pointer transition-all duration-300 ease-out hover:scale-105 flex items-center justify-center"
+                        >
+                          <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50 bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center">
+                            <span className="text-[#FFD700] font-bold text-2xl">
+                              {localInstancesExpanded ? '−' : '⋯'}
+                            </span>
+                          </div>
+                        </div>
+                      </Tooltip>
+                    )}
+                  </div>
+                )}
+
+                {/* Add local instance button */}
                 <Tooltip content="Nueva Instancia Local" side="right">
                   <div
                     onClick={() => onCreateLocalInstance?.()}
@@ -306,12 +335,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Context menu for local instances */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-gray-900/95 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 glass-card rounded-xl border border-white/10 shadow-2xl overflow-hidden animate-scale-in"
+          style={{ 
+            top: contextMenu.y, 
+            left: contextMenu.x,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
         >
           <button
             onClick={handleDeleteInstance}
-            className="w-full px-4 py-3 text-left text-red-300 hover:bg-red-500/20 transition-colors duration-200 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-red-400 hover:bg-red-500/20 transition-all duration-200 flex items-center gap-2 text-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

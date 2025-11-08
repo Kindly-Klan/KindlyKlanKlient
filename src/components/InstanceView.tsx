@@ -7,6 +7,7 @@ import type { LocalInstance } from '@/types/local-instances';
 import minecraftIcon from '@/assets/icons/minecraft.svg';
 import fabricmcIcon from '@/assets/icons/fabricmc.svg';
 import neoforgeIcon from '@/assets/icons/neoforge.svg';
+import Tooltip from './ui/Tooltip';
 
 interface DistributionManifest {
   distribution: {
@@ -325,16 +326,17 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                 <button
                   onClick={() => onOpenFolder?.(instanceId)}
                   className="p-3 rounded-xl bg-white/5 border border-white/20 text-white hover:bg-white/10 hover:border-white/30 transition-all duration-200 group"
-                  title="Abrir carpeta de la instancia"
                 >
-                  <svg 
-                    className="w-6 h-6 group-hover:scale-110 transition-transform" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
+                  <Tooltip content="Abrir carpeta de la instancia" side="top">
+                    <svg 
+                      className="w-6 h-6 group-hover:scale-110 transition-transform" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                  </Tooltip>
                 </button>
 
                 {/* Play button */}
@@ -351,14 +353,18 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                   className="p-3 rounded-xl bg-[#00ffff]/10 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/20 hover:border-[#00ffff] transition-all duration-200 group neon-glow-cyan-hover"
                   title="Sincronizar mods desde instancia remota"
                 >
-                  <svg 
-                    className="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
+                  <Tooltip content="Sincronizar mods desde instancia remota" side="top">
+                    <div>
+                      <svg 
+                        className="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                  </Tooltip>
                 </button>
               </div>
             )}
