@@ -62,6 +62,17 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
   const [localInstancesExpanded, setLocalInstancesExpanded] = useState(false);
+  const [hoveredInstance, setHoveredInstance] = useState<{ id: string; top: number } | null>(null);
+  const [, setTooltipVisible] = useState(false);
+  
+  // Animate tooltip on hover
+  React.useEffect(() => {
+    if (hoveredInstance) {
+      setTooltipVisible(true);
+    } else {
+      setTooltipVisible(false);
+    }
+  }, [hoveredInstance]);
   
   // Show max 3 local instances by default, then expand button
   const MAX_VISIBLE_LOCAL_INSTANCES = 3;
@@ -103,7 +114,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {/* Remote instances */}
             {instances.map((instance) => (
-              <Tooltip key={instance.id} content={instance.name} side="right">
+              <div 
+                key={instance.id} 
+                className="relative group w-full "
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoveredInstance({ id: instance.id, top: rect.top + rect.height / 2 });
+                }}
+                onMouseLeave={() => setHoveredInstance(null)}
+              >
                 <div
                   onClick={() => onInstanceSelect(instance.id)}
                   className={`w-full aspect-square cursor-pointer transition-all duration-300 ease-out relative select-none ${
@@ -114,9 +133,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div 
                     className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                      selectedInstance === instance.id
+                    selectedInstance === instance.id
                         ? 'ring-2 ring-[#00ffff]'
-                        : 'ring-1 ring-white/10 hover:ring-white/20'
+                      : 'ring-1 ring-white/10 hover:ring-white/20'
                     }`}
                     style={selectedInstance === instance.id ? {
                       boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.6), 0 0 40px rgba(0, 255, 255, 0.4)'
@@ -140,9 +159,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
                 </div>
-              </Tooltip>
+              </div>
             ))}
           </div>
+          
+          {/* Tooltip for remote instances - rendered outside overflow container */}
+          {hoveredInstance && (
+            <div 
+              className="pointer-events-none fixed z-[9999] transition-opacity duration-200 opacity-0 animate-[fadeIn_0.2s_ease-out_forwards]"
+              style={{
+                left: '80px',
+                top: `${hoveredInstance.top}px`,
+                transform: 'translateY(-50%)',
+              }}
+            >
+              <div className="glass-card text-white text-xs px-2 py-1 rounded-xl whitespace-nowrap shadow-lg border border-white/10">
+                {instances.find(i => i.id === hoveredInstance.id)?.name}
+              </div>
+            </div>
+          )}
 
           {/* Settings Button at bottom - Only Icon */}
           <div className="flex-shrink-0 space-y-3 px-2 pb-2">
@@ -151,9 +186,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               <>
                 {/* Separator above local instances */}
                 {localInstances.length > 0 && (
-                  <div className="relative my-2">
-                    <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
+                  <div className="relative my-3">
+                    <div className="h-[2px] bg-gradient-to-r from-transparent via-[#FFD700]/80 to-transparent shadow-[0_0_8px_rgba(255,215,0,0.5)]" />
+                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 px-2 bg-black/90 backdrop-blur-sm">
                       <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
                     </div>
                   </div>
