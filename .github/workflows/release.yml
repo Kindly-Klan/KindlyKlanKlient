@@ -89,21 +89,3 @@ jobs:
           releaseDraft: false
           prerelease: false
 
-      - name: Generate updater artifacts
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: |
-          cd src-tauri
-          pnpm tauri build --no-bundle
-          mkdir -p ../dist/updates
-          # Move updater artifacts to a common location
-          find target/release/bundle -name "*.sig" -o -name "*.tar.gz" | head -10 | xargs -I {} cp {} ../dist/updates/
-
-      - name: Upload updater artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: updater-artifacts-${{ matrix.platform }}
-          path: dist/updates/
-          retention-days: 30
-
