@@ -389,10 +389,14 @@ pub async fn launch_local_instance(
     access_token: String,
     username: String,
     uuid: String,
-    _min_ram_gb: f64,
+    min_ram_gb: f64,
     max_ram_gb: f64,
     app_handle: AppHandle,
 ) -> Result<String, String> {
+    use std::process::Command;
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+    
     log::info!("🚀 Launching local instance: {}", instance_id);
     
     let local_instances_dir = get_local_instances_dir()?;
@@ -459,19 +463,90 @@ pub async fn launch_local_instance(
     
     log::info!("✅ All files verified, launching Minecraft...");
     
-    // Use the MinecraftLauncher to launch the game
-    let launcher = crate::launcher::MinecraftLauncher::new()
-        .map_err(|e| format!("Failed to create launcher: {}", e))?;
+    // Create mods directory if it doesn't exist
+    let _ = tokio::fs::create_dir_all(instance_dir.join("mods")).await;
     
-    let ram_mb = (max_ram_gb * 1024.0) as u32;
+    // Build classpath
+    let classpath = crate::launcher::build_minecraft_classpath(&instance_dir)?;
     
-    launcher.launch_minecraft(
-        &metadata.minecraft_version,
-        &username,
-        ram_mb,
-        Some(&access_token),
-        Some(&uuid),
-    ).await.map_err(|e| format!("Failed to launch Minecraft: {}", e))?;
+    // Check for lwjgl
+    {
+        let mut has_lwjgl = false;
+        if let Ok(entries) = std::fs::read_dir(instance_dir.join("libraries")) {
+            for entry in entries.flatten() {
+                if entry.path().to_string_lossy().contains("lwjgl") {
+                    has_lwjgl = true;
+                    break;
+                }
+            }
+        }
+        if !has_lwjgl {
+            crate::instances::ensure_minecraft_client_present(&instance_dir, &metadata.minecraft_version).await?;
+        }
+    }
+    
+    // Load advanced config
+    let (jvm_args_config, gc_config, window_width, window_height) = crate::commands::load_advanced_config()
+        .await
+        .unwrap_or((String::new(), "G1".to_string(), 1280, 720));
+    
+    // Build JVM args
+    let jvm_args = crate::launcher::build_minecraft_jvm_args(
+        &access_token,
+        min_ram_gb,
+        max_ram_gb,
+        &gc_config,
+        &jvm_args_config,
+    )?;
+    
+    // Get asset index
+    let asset_index_id = crate::instances::ensure_assets_present(&app_handle, &instance_dir, &metadata.minecraft_version).await?;
+    
+    // Build Minecraft arguments
+    let assets_dir = instance_dir.join("assets");
+    let mc_args = vec![
+        "--username".to_string(), username,
+        "--uuid".to_string(), uuid,
+        "--accessToken".to_string(), access_token,
+        "--version".to_string(), metadata.minecraft_version.clone(),
+        "--gameDir".to_string(), instance_dir.to_string_lossy().to_string(),
+        "--assetsDir".to_string(), assets_dir.to_string_lossy().to_string(),
+        "--assetIndex".to_string(), asset_index_id,
+        "--userType".to_string(), "msa".to_string(),
+        "--versionType".to_string(), "release".to_string(),
+        "--width".to_string(), window_width.to_string(),
+        "--height".to_string(), window_height.to_string(),
+    ];
+    
+    // Get main class
+    let main_class = crate::launcher::select_main_class(&instance_dir);
+    
+    // Find Java executable
+    let java_path = crate::launcher::find_java_executable().await?;
+    
+    // Launch Minecraft
+    let mut command = Command::new(&java_path);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let mut child = command
+        .args(&jvm_args)
+        .arg("-cp")
+        .arg(&classpath)
+        .arg(main_class)
+        .args(&mc_args)
+        .current_dir(&instance_dir)
+        .spawn()
+        .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
+    
+    let app = app_handle.clone();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        let _ = app.emit("minecraft_exited", serde_json::json!({ "status": "exited" }));
+    });
     
     log::info!("🎮 Minecraft launched successfully");
     

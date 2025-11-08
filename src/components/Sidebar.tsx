@@ -135,76 +135,72 @@ const Sidebar: React.FC<SidebarProps> = ({
               </Tooltip>
             ))}
             
-            {/* Local instances (only if admin) */}
-            {isAdmin && localInstances.length > 0 && (
-              <>
-                {/* Local instances */}
-                {localInstances.map((localInstance) => {
-                  const isCreating = creatingInstanceId === localInstance.id;
-                  
-                  return (
-                    <Tooltip key={localInstance.id} content={localInstance.name} side="right">
-                      <div
-                        onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
-                        onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
-                        className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
-                          isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
-                        } ${
-                          selectedInstance === localInstance.id && !isCreating
-                            ? 'scale-105'
-                            : ''
-                        }`}
-                      >
-                        <div 
-                          className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                            selectedInstance === localInstance.id && !isCreating
-                              ? 'ring-2 ring-[#FFD700]'
-                              : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
-                          }`}
-                          style={selectedInstance === localInstance.id && !isCreating ? {
-                            boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
-                          } : {}}
-                        >
-                          {isCreating ? (
-                            <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
-                              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#FFD700]"></div>
-                            </div>
-                          ) : localInstance.background ? (
-                            <img
-                              src={`file://${localInstance.background}`}
-                              alt={localInstance.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
-                              <span className="text-[#FFD700] font-bold text-xl">
-                                {localInstance.name.charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Tooltip>
-                  );
-                })}
-              </>
+            {/* Separator between remote and local instances (only if admin) */}
+            {isAdmin && (
+              <div className="my-4 relative">
+                <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent" />
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-black">
+                  <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
+                </div>
+              </div>
             )}
+
+            {/* Local instances (only if admin) */}
+            {isAdmin && localInstances.map((localInstance) => {
+              const isCreating = creatingInstanceId === localInstance.id;
+              
+              return (
+                <Tooltip key={localInstance.id} content={localInstance.name} side="right">
+                  <div
+                    onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
+                    onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
+                    className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
+                      isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
+                    } ${
+                      selectedInstance === localInstance.id && !isCreating
+                        ? 'scale-105'
+                        : ''
+                    }`}
+                  >
+                    <div 
+                      className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
+                        selectedInstance === localInstance.id && !isCreating
+                          ? 'ring-2 ring-[#FFD700]'
+                          : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
+                      }`}
+                      style={selectedInstance === localInstance.id && !isCreating ? {
+                        boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
+                      } : {}}
+                    >
+                      {isCreating ? (
+                        <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#FFD700]"></div>
+                        </div>
+                      ) : localInstance.background ? (
+                        <img
+                          src={`file://${localInstance.background}`}
+                          alt={localInstance.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FF8C00]/20 flex items-center justify-center">
+                          <span className="text-[#FFD700] font-bold text-xl">
+                            {localInstance.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Tooltip>
+              );
+            })}
           </div>
 
           {/* Settings Button at bottom - Only Icon */}
           <div className="flex-shrink-0 space-y-3 px-2 pb-2">
-            {/* Local instances section (only if admin) */}
+            {/* Add local instance button (only if admin) */}
             {isAdmin && (
               <>
-                {/* Separator above LOCAL text */}
-                <div className="mb-3">
-                  <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-2" />
-                  <div className="text-center">
-                    <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
-                  </div>
-                </div>
-
-                {/* Add button */}
                 <Tooltip content="Nueva Instancia Local" side="right">
                   <div
                     onClick={() => onCreateLocalInstance?.()}
@@ -223,10 +219,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </Tooltip>
 
-                {/* Separator below local button */}
-                <div className="my-3">
-                  <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                </div>
+                {/* Separator below add button */}
+                <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
               </>
             )}
 
