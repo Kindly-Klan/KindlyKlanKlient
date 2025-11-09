@@ -45,6 +45,15 @@
 
         <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
 
+        {{#if banner_path}}
+        <WixVariable Id="WixUIBannerBmp" Value="{{{banner_path}}}" />
+        {{/if}}
+        {{#if dialog_image_path}}
+        <WixVariable Id="WixUIDialogBmp" Value="{{{dialog_image_path}}}" />
+        {{/if}}
+        {{#if license}}
+        <WixVariable Id="WixUILicenseRtf" Value="{{{license}}}" />
+        {{/if}}
 
         <Icon Id="ProductIcon" SourceFile="{{{icon_path}}}"/>
         <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
@@ -110,7 +119,7 @@
                 </RegistryKey>
                 <!-- Change the Root to HKCU for perUser installations -->
 </Component>
-            <Component Id="Path" Guid="1a72efd8-cb41-59cf-b8c4-799d6b3c6246" Win64="$(var.Win64)">
+            <Component Id="Path" Guid="{{path_component_guid}}" Win64="$(var.Win64)">
                 <File Id="Path" Source="{{{app_exe_source}}}" KeyPath="yes" Checksum="yes"/>
 </Component>
             
