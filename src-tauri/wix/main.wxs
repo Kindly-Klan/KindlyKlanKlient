@@ -117,12 +117,10 @@
                 <RegistryKey Root="HKCU" Key="Software\{{manufacturer}}\{{product_name}}">
                     <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
                 </RegistryKey>
-                <!-- Change the Root to HKCU for perUser installations -->
-</Component>
-            <Component Id="Path" Guid="{{path_component_guid}}" Win64="$(var.Win64)">
+            </Component>
+            <Component Id="Path" Guid="*" Win64="$(var.Win64)">
                 <File Id="Path" Source="{{{app_exe_source}}}" KeyPath="yes" Checksum="yes"/>
-</Component>
-            
+            </Component>
             <Component Id="CMP_UninstallShortcut" Guid="*">
 
                 <Shortcut Id="UninstallShortcut"
