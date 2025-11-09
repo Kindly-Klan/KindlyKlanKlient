@@ -24,4 +24,3 @@ target/
 *.sw?
 .vscode/
 src-tauri/Cargo.lock
-src-tauri/Cargo.toml
