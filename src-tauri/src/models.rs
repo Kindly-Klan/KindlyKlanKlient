@@ -35,6 +35,42 @@ pub struct InstanceManifest {
     pub instance: InstanceInfo,
     pub files: InstanceFiles,
     pub launch_settings: LaunchSettings,
+    #[serde(default)]
+    pub ignored_files: Option<IgnoredFilesConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IgnoredFilesConfig {
+    #[serde(default)]
+    pub mods: Vec<String>,
+    #[serde(default)]
+    pub configs: Vec<String>,
+    #[serde(default)]
+    pub resourcepacks: Vec<String>,
+    #[serde(default)]
+    pub shaderpacks: Vec<String>,
+}
+
+/// Historial de archivos que estuvieron en el manifest anterior
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestHistory {
+    pub last_updated: String,
+    pub files: ManifestHistoryFiles,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestHistoryFiles {
+    #[serde(default)]
+    pub mods: Vec<String>,
+    #[serde(default)]
+    pub configs: Vec<String>,
+    #[serde(default)]
+    pub resourcepacks: Vec<String>,
+    #[serde(default)]
+    pub shaderpacks: Vec<String>,
+    /// Archivos en la raíz de la instancia que estaban en el manifest
+    #[serde(default)]
+    pub root_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

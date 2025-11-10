@@ -556,18 +556,39 @@ pub async fn download_instance_assets(
             }
             if needs_download { crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?; }
         }
-        let mods_dir = instance_dir.join("mods");
-        if mods_dir.exists() {
-            for entry in std::fs::read_dir(&mods_dir).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                if entry.file_type().map_err(|e| e.to_string())?.is_file() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if !expected_mods.contains(&name) { let _ = std::fs::remove_file(entry.path()); }
+        // Cargar historial de manifest anterior
+        let previous_history = crate::instances::load_manifest_history(&instance_dir)?;
+        
+        // Obtener patrones de archivos ignorados
+        let ignored_patterns = instance.ignored_files.as_ref();
+        let empty_vec = Vec::<String>::new();
+        let ignored_mods = ignored_patterns.map(|p| &p.mods).unwrap_or(&empty_vec);
+        let ignored_configs = ignored_patterns.map(|p| &p.configs).unwrap_or(&empty_vec);
+        let ignored_resourcepacks = ignored_patterns.map(|p| &p.resourcepacks).unwrap_or(&empty_vec);
+        let ignored_shaderpacks = ignored_patterns.map(|p| &p.shaderpacks).unwrap_or(&empty_vec);
+        
+        // Limpiar mods: solo borrar si estaba en el historial pero ya no está en el manifest actual
+        if let Some(history) = &previous_history {
+            let mods_dir = instance_dir.join("mods");
+            if mods_dir.exists() {
+                for entry in std::fs::read_dir(&mods_dir).map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        // Solo borrar si estaba en el historial pero ya no está en el manifest actual
+                        if history.files.mods.contains(&name) && !expected_mods.contains(&name) {
+                            let should_ignore = crate::utils::matches_glob_patterns(&name, ignored_mods);
+                            if !should_ignore {
+                                let _ = std::fs::remove_file(entry.path());
+                            }
+                        }
+                    }
                 }
             }
         }
 
         let mut expected_configs: HashSet<String> = HashSet::new();
+        let mut expected_root_files: HashSet<String> = HashSet::new();
         for config_file in &instance.files.configs {
             let file_url = if config_file.url.starts_with("http") { config_file.url.clone() } else { format!("{}/{}", base.trim_end_matches('/'), config_file.url.trim_start_matches('/')) };
             let mut rel = config_file.target.clone().unwrap_or(config_file.path.clone());
@@ -575,6 +596,12 @@ pub async fn download_instance_assets(
             if rel.starts_with("config/config/") { rel = rel.replacen("config/config/", "config/", 1); }
             else if rel.starts_with("config/") { rel = rel.replacen("config/", "config/", 1); }
             expected_configs.insert(rel.clone());
+            
+            // Si está en la raíz, también agregarlo a expected_root_files
+            if !rel.contains('/') {
+                expected_root_files.insert(rel.clone());
+            }
+            
             let target_path = instance_dir.join(&rel);
             if let Some(parent) = target_path.parent() { tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; }
             let mut needs_download = true;
@@ -588,19 +615,112 @@ pub async fn download_instance_assets(
                 }
             }
             if needs_download { crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?; }
-        }       
-        let config_dir = instance_dir.join("config");
-        if config_dir.exists() {
-            for entry in walkdir::WalkDir::new(&config_dir) {
-                let entry = entry.map_err(|e| e.to_string())?;
-                if entry.file_type().is_file() {
-                    let rel_path = entry.path().strip_prefix(&instance_dir).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
-                    if !expected_configs.contains(&rel_path) { let _ = std::fs::remove_file(entry.path()); }
+        }
+        
+        // Limpiar configs: solo borrar si estaba en el historial pero ya no está en el manifest actual
+        if let Some(history) = &previous_history {
+            let config_dir = instance_dir.join("config");
+            if config_dir.exists() {
+                for entry in walkdir::WalkDir::new(&config_dir) {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entry.file_type().is_file() {
+                        let rel_path = entry.path().strip_prefix(&instance_dir).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
+                        // Solo borrar si estaba en el historial pero ya no está en el manifest actual
+                        if history.files.configs.contains(&rel_path) && !expected_configs.contains(&rel_path) {
+                            let should_ignore = crate::utils::matches_glob_patterns(&rel_path, ignored_configs);
+                            if !should_ignore {
+                                let _ = std::fs::remove_file(entry.path());
+                            }
+                        }
+                    }
                 }
             }
         }
-        let root_options = instance_dir.join("options.txt");
-        if root_options.exists() && !expected_configs.contains("options.txt") { let _ = std::fs::remove_file(&root_options); }
+        
+        // Limpiar archivos en la raíz: solo borrar si estaban en el historial pero ya no están en el manifest actual
+        if let Some(history) = &previous_history {
+            if let Ok(entries) = std::fs::read_dir(&instance_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                            // Ignorar archivos del sistema (.manifest_history.json, etc.)
+                            if file_name.starts_with('.') {
+                                continue;
+                            }
+                            // Solo procesar archivos que estaban en el historial de root_files
+                            if history.files.root_files.contains(&file_name.to_string()) && !expected_root_files.contains(file_name) {
+                                let should_ignore = crate::utils::matches_glob_patterns(file_name, ignored_configs);
+                                if !should_ignore {
+                                    let _ = std::fs::remove_file(&path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Limpiar resourcepacks: solo borrar si estaban en el historial pero ya no están en el manifest actual
+        if let Some(history) = &previous_history {
+            let mut expected_resourcepacks: HashSet<String> = HashSet::new();
+            if let Some(resourcepacks) = &instance.files.resourcepacks {
+                for rp_file in resourcepacks {
+                    expected_resourcepacks.insert(rp_file.name.clone());
+                }
+            }
+            
+            let resourcepacks_dir = instance_dir.join("resourcepacks");
+            if resourcepacks_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&resourcepacks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                if history.files.resourcepacks.contains(&file_name.to_string()) && !expected_resourcepacks.contains(file_name) {
+                                    let should_ignore = crate::utils::matches_glob_patterns(file_name, ignored_resourcepacks);
+                                    if !should_ignore {
+                                        let _ = std::fs::remove_file(&path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Limpiar shaderpacks: solo borrar si estaban en el historial pero ya no están en el manifest actual
+        if let Some(history) = &previous_history {
+            let mut expected_shaderpacks: HashSet<String> = HashSet::new();
+            if let Some(shaderpacks) = &instance.files.shaderpacks {
+                for sp_file in shaderpacks {
+                    expected_shaderpacks.insert(sp_file.name.clone());
+                }
+            }
+            
+            let shaderpacks_dir = instance_dir.join("shaderpacks");
+            if shaderpacks_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&shaderpacks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                if history.files.shaderpacks.contains(&file_name.to_string()) && !expected_shaderpacks.contains(file_name) {
+                                    let should_ignore = crate::utils::matches_glob_patterns(file_name, ignored_shaderpacks);
+                                    if !should_ignore {
+                                        let _ = std::fs::remove_file(&path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Guardar el nuevo historial después de procesar todos los archivos
+        crate::instances::save_manifest_history(&instance_dir, &instance).await?;
     }
     
     let _ = app_handle.emit("asset-download-progress", serde_json::json!({

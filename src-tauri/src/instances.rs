@@ -256,6 +256,79 @@ pub fn verify_file_md5(file_path: &Path, expected_md5: &str) -> Result<(), Strin
     }
 }
 
+/// Carga el historial de manifest de una instancia
+pub fn load_manifest_history(instance_dir: &Path) -> Result<Option<crate::models::ManifestHistory>, String> {
+    let history_path = instance_dir.join(".manifest_history.json");
+    
+    if !history_path.exists() {
+        return Ok(None);
+    }
+    
+    let content = std::fs::read_to_string(&history_path)
+        .map_err(|e| format!("Failed to read manifest history: {}", e))?;
+    
+    let history: crate::models::ManifestHistory = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse manifest history: {}", e))?;
+    
+    Ok(Some(history))
+}
+
+/// Guarda el historial de manifest de una instancia
+pub async fn save_manifest_history(instance_dir: &Path, instance: &crate::models::InstanceManifest) -> Result<(), String> {
+    let mut history_files = crate::models::ManifestHistoryFiles {
+        mods: Vec::new(),
+        configs: Vec::new(),
+        resourcepacks: Vec::new(),
+        shaderpacks: Vec::new(),
+        root_files: Vec::new(),
+    };
+    
+    // Recopilar archivos del manifest actual
+    for mod_file in &instance.files.mods {
+        history_files.mods.push(mod_file.name.clone());
+    }
+    
+    for config_file in &instance.files.configs {
+        let mut rel = config_file.target.clone().unwrap_or(config_file.path.clone());
+        if rel == "config/options.txt" { rel = "options.txt".to_string(); }
+        if rel.starts_with("config/config/") { rel = rel.replacen("config/config/", "config/", 1); }
+        else if rel.starts_with("config/") { rel = rel.replacen("config/", "config/", 1); }
+        
+        // Si está en la raíz, agregarlo a root_files
+        if !rel.contains('/') {
+            history_files.root_files.push(rel.clone());
+        }
+        
+        history_files.configs.push(rel);
+    }
+    
+    if let Some(resourcepacks) = &instance.files.resourcepacks {
+        for rp_file in resourcepacks {
+            history_files.resourcepacks.push(rp_file.name.clone());
+        }
+    }
+    
+    if let Some(shaderpacks) = &instance.files.shaderpacks {
+        for sp_file in shaderpacks {
+            history_files.shaderpacks.push(sp_file.name.clone());
+        }
+    }
+    
+    let history = crate::models::ManifestHistory {
+        last_updated: chrono::Utc::now().to_rfc3339(),
+        files: history_files,
+    };
+    
+    let history_path = instance_dir.join(".manifest_history.json");
+    let history_json = serde_json::to_string_pretty(&history)
+        .map_err(|e| format!("Failed to serialize manifest history: {}", e))?;
+    
+    tokio::fs::write(&history_path, history_json).await
+        .map_err(|e| format!("Failed to write manifest history: {}", e))?;
+    
+    Ok(())
+}
+
 pub fn build_distribution_url(distribution_url: &str) -> String {
     if distribution_url.trim_end_matches('/').ends_with("/dist") {
         distribution_url.trim_end_matches('/').to_string()

@@ -1,4 +1,5 @@
 use crate::whitelist::get_supabase_config;
+use glob::Pattern;
 
 #[tauri::command]
 pub async fn open_url(url: String) -> Result<String, String> {
@@ -40,4 +41,15 @@ pub async fn debug_env_vars() -> Result<String, String> {
     Ok(result)
 }
 
+/// Verifica si un archivo coincide con alguno de los patrones glob proporcionados
+pub fn matches_glob_patterns(file_path: &str, patterns: &[String]) -> bool {
+    for pattern_str in patterns {
+        if let Ok(pattern) = Pattern::new(pattern_str) {
+            if pattern.matches(file_path) {
+                return true;
+            }
+        }
+    }
+    false
+}
 
