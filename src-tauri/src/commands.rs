@@ -537,9 +537,27 @@ pub async fn download_instance_assets(
             "current_file": "",
             "status": "Instance"
         }));
+        // Cargar historial de manifest anterior
+        let previous_history = crate::instances::load_manifest_history(&instance_dir)?;
+        
+        // Obtener patrones de archivos ignorados
+        let ignored_patterns = instance.ignored_files.as_ref();
+        let empty_vec = Vec::<String>::new();
+        let ignored_mods = ignored_patterns.map(|p| &p.mods).unwrap_or(&empty_vec);
+        let ignored_configs = ignored_patterns.map(|p| &p.configs).unwrap_or(&empty_vec);
+        let ignored_resourcepacks = ignored_patterns.map(|p| &p.resourcepacks).unwrap_or(&empty_vec);
+        let ignored_shaderpacks = ignored_patterns.map(|p| &p.shaderpacks).unwrap_or(&empty_vec);
+        
         use std::collections::HashSet;
         let mut expected_mods: HashSet<String> = HashSet::new();
         for mod_file in &instance.files.mods {
+            // Verificar si el archivo está en ignored_files - si está, NO descargarlo ni sobrescribirlo
+            let should_ignore = crate::utils::matches_glob_patterns(&mod_file.name, ignored_mods);
+            if should_ignore {
+                // Archivo ignorado: no descargar ni sobrescribir
+                continue;
+            }
+            
             let file_url = if mod_file.url.starts_with("http") { mod_file.url.clone() } else { format!("{}/{}", base.trim_end_matches('/'), mod_file.url.trim_start_matches('/')) };
             let target_path = instance_dir.join("mods").join(&mod_file.name);
             expected_mods.insert(mod_file.name.clone());
@@ -556,16 +574,6 @@ pub async fn download_instance_assets(
             }
             if needs_download { crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?; }
         }
-        // Cargar historial de manifest anterior
-        let previous_history = crate::instances::load_manifest_history(&instance_dir)?;
-        
-        // Obtener patrones de archivos ignorados
-        let ignored_patterns = instance.ignored_files.as_ref();
-        let empty_vec = Vec::<String>::new();
-        let ignored_mods = ignored_patterns.map(|p| &p.mods).unwrap_or(&empty_vec);
-        let ignored_configs = ignored_patterns.map(|p| &p.configs).unwrap_or(&empty_vec);
-        let ignored_resourcepacks = ignored_patterns.map(|p| &p.resourcepacks).unwrap_or(&empty_vec);
-        let ignored_shaderpacks = ignored_patterns.map(|p| &p.shaderpacks).unwrap_or(&empty_vec);
         
         // Limpiar mods: solo borrar si estaba en el historial pero ya no está en el manifest actual
         if let Some(history) = &previous_history {
@@ -600,6 +608,20 @@ pub async fn download_instance_assets(
             // Si está en la raíz, también agregarlo a expected_root_files
             if !rel.contains('/') {
                 expected_root_files.insert(rel.clone());
+            }
+            
+            // Verificar si el archivo está en ignored_files - si está, NO descargarlo ni sobrescribirlo
+            let file_name_for_check = if !rel.contains('/') {
+                rel.clone() // Para archivos en la raíz, usar solo el nombre
+            } else {
+                // Para archivos en subdirectorios, extraer solo el nombre del archivo
+                rel.split('/').last().unwrap_or(&rel).to_string()
+            };
+            let should_ignore = crate::utils::matches_glob_patterns(&file_name_for_check, ignored_configs);
+            
+            if should_ignore {
+                // Archivo ignorado: no descargar ni sobrescribir
+                continue;
             }
             
             let target_path = instance_dir.join(&rel);
