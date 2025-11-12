@@ -265,7 +265,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
 
                 {/* Add local instance button */}
-                <Tooltip content="Nueva Instancia Local" side="right">
+                <Tooltip content="Crear Instancia Local" side="right">
                   <div
                     onClick={() => onCreateLocalInstance?.()}
                     className="flex justify-center cursor-pointer transition-all duration-300 ease-out hover:scale-105 group"

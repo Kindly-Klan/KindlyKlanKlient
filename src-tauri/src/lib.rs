@@ -276,7 +276,12 @@ pub fn run() {
             sync_mods_from_remote,
             open_instance_folder,
             launch_local_instance,
-            delete_local_instance
+            delete_local_instance,
+            // Forge and NeoForge
+            get_forge_versions,
+            get_recommended_forge_version,
+            get_neoforge_versions,
+            get_recommended_neoforge_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

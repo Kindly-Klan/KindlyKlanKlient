@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { MinecraftVersionInfo, FabricLoaderVersion, LocalInstance } from '@/types/local-instances';
+import type { MinecraftVersionInfo, FabricLoaderVersion, ForgeVersion, NeoForgeVersion, LocalInstance } from '@/types/local-instances';
 
 interface CreateLocalInstanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInstanceCreated: (instance: LocalInstance) => void;
 }
+
+type ModLoaderType = 'vanilla' | 'fabric' | 'forge' | 'neoforge';
 
 const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   isOpen,
@@ -18,8 +20,11 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   const [generatedId, setGeneratedId] = useState('');
   const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersionInfo[]>([]);
   const [selectedMinecraftVersion, setSelectedMinecraftVersion] = useState('');
+  const [modLoaderType, setModLoaderType] = useState<ModLoaderType>('fabric');
   const [fabricVersions, setFabricVersions] = useState<FabricLoaderVersion[]>([]);
-  const [selectedFabricVersion, setSelectedFabricVersion] = useState('');
+  const [forgeVersions, setForgeVersions] = useState<ForgeVersion[]>([]);
+  const [neoforgeVersions, setNeoforgeVersions] = useState<NeoForgeVersion[]>([]);
+  const [selectedModLoaderVersion, setSelectedModLoaderVersion] = useState('');
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
@@ -31,9 +36,12 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
       setName('');
       setGeneratedId('');
       setSelectedMinecraftVersion('');
-      setSelectedFabricVersion('');
+      setModLoaderType('fabric');
+      setSelectedModLoaderVersion('');
       setMinecraftVersions([]);
       setFabricVersions([]);
+      setForgeVersions([]);
+      setNeoforgeVersions([]);
       setError('');
     }
   }, [isOpen]);
@@ -60,12 +68,12 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
     }
   }, [step]);
 
-  // Load Fabric versions when Minecraft version is selected
+  // Load mod loader versions when step 4 is reached
   useEffect(() => {
-    if (selectedMinecraftVersion && step === 3) {
-      loadFabricVersions();
+    if (selectedMinecraftVersion && step === 4 && modLoaderType !== 'vanilla') {
+      loadModLoaderVersions();
     }
-  }, [selectedMinecraftVersion, step]);
+  }, [selectedMinecraftVersion, step, modLoaderType]);
 
   const loadMinecraftVersions = async () => {
     setIsLoadingVersions(true);
@@ -82,20 +90,55 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
     }
   };
 
-  const loadFabricVersions = async () => {
+  const loadModLoaderVersions = async () => {
     setIsLoadingVersions(true);
     setError('');
+    setSelectedModLoaderVersion('');
+    
     try {
-      const versions = await invoke<FabricLoaderVersion[]>('get_fabric_loader_versions', {
-        minecraftVersion: selectedMinecraftVersion,
-      });
-      setFabricVersions(versions);
-      console.log('Loaded Fabric versions:', versions.length);
+      switch (modLoaderType) {
+        case 'fabric':
+          const fabricVers = await invoke<FabricLoaderVersion[]>('get_fabric_loader_versions', {
+            minecraftVersion: selectedMinecraftVersion,
+          });
+          setFabricVersions(fabricVers);
+          console.log('Loaded Fabric versions:', fabricVers.length);
+          break;
+          
+        case 'forge':
+          const forgeVers = await invoke<ForgeVersion[]>('get_forge_versions', {
+            minecraftVersion: selectedMinecraftVersion,
+          });
+          setForgeVersions(forgeVers);
+          console.log('Loaded Forge versions:', forgeVers.length);
+          break;
+          
+        case 'neoforge':
+          const neoforgeVers = await invoke<NeoForgeVersion[]>('get_neoforge_versions', {
+            minecraftVersion: selectedMinecraftVersion,
+          });
+          setNeoforgeVersions(neoforgeVers);
+          console.log('Loaded NeoForge versions:', neoforgeVers.length);
+          break;
+      }
     } catch (error) {
-      console.error('Error loading Fabric versions:', error);
-      setError('Error al cargar versiones de Fabric Loader');
+      console.error(`Error loading ${modLoaderType} versions:`, error);
+      setError(`Error al cargar versiones de ${modLoaderType}: ${error}`);
     } finally {
       setIsLoadingVersions(false);
+    }
+  };
+
+  const getModLoaderVersions = () => {
+    switch (modLoaderType) {
+      case 'fabric':
+        return fabricVersions.map(v => ({ version: v.loader.version, stable: v.loader.stable }));
+      case 'forge':
+        return forgeVersions.map(v => ({ version: v.version, recommended: v.recommended }));
+      case 'neoforge':
+        return neoforgeVersions.map(v => ({ version: v.version }));
+      default:
+        return [];
     }
   };
 
@@ -112,12 +155,19 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
       return;
     }
     
-    if (step === 3 && !selectedFabricVersion) {
-      setError('Debes seleccionar una versión de Fabric Loader');
+    if (step === 4 && modLoaderType !== 'vanilla' && !selectedModLoaderVersion) {
+      setError(`Debes seleccionar una versión de ${modLoaderType}`);
       return;
     }
     
-    if (step < 4) {
+    // Skip step 4 if vanilla is selected
+    if (step === 3 && modLoaderType === 'vanilla') {
+      setSelectedModLoaderVersion('');
+      setStep(5);
+      return;
+    }
+    
+    if (step < 5) {
       setStep(step + 1);
     }
   };
@@ -125,7 +175,12 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   const handleBack = () => {
     setError('');
     if (step > 1) {
-      setStep(step - 1);
+      // If coming back from step 5 and vanilla, skip step 4
+      if (step === 5 && modLoaderType === 'vanilla') {
+        setStep(3);
+      } else {
+        setStep(step - 1);
+      }
     }
   };
 
@@ -137,7 +192,8 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
       const instance = await invoke<LocalInstance>('create_local_instance', {
         name,
         minecraftVersion: selectedMinecraftVersion,
-        fabricVersion: selectedFabricVersion,
+        modLoaderType: modLoaderType,
+        modLoaderVersion: selectedModLoaderVersion || 'none',
       });
       
       console.log('Instance created successfully:', instance);
@@ -152,6 +208,9 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  const totalSteps = modLoaderType === 'vanilla' ? 4 : 5;
+  const displayStep = step === 5 && modLoaderType === 'vanilla' ? 4 : step;
 
   return (
     <div 
@@ -176,18 +235,18 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             Nueva Instancia Local
           </h2>
           <p className="text-white/60">
-            Crea una instancia personalizada para pruebas (Paso {step} de 4)
+            Crea una instancia personalizada para pruebas (Paso {displayStep} de {totalSteps})
           </p>
         </div>
 
         {/* Progress bar */}
         <div className="mb-8">
           <div className="flex items-center gap-2">
-            {[1, 2, 3, 4].map((s) => (
+            {Array.from({ length: totalSteps }).map((_, i) => (
               <div
-                key={s}
+                key={i}
                 className={`flex-1 h-2 rounded-full transition-all duration-300 ${
-                  s <= step ? 'bg-[#00ffff] neon-glow-cyan' : 'bg-white/10'
+                  i + 1 <= displayStep ? 'bg-[#00ffff] neon-glow-cyan' : 'bg-white/10'
                 }`}
               />
             ))}
@@ -259,12 +318,87 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             </div>
           )}
 
-          {/* Step 3: Fabric Version */}
+          {/* Step 3: Mod Loader Type */}
           {step === 3 && (
             <div className="space-y-6 animate-fade-in-up">
               <div>
                 <label className="block text-white mb-2 font-medium">
-                  Versión de Fabric Loader
+                  Tipo de Mod Loader
+                </label>
+                <p className="text-white/60 text-sm mb-4">
+                  Para Minecraft {selectedMinecraftVersion}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setModLoaderType('vanilla')}
+                    className={`p-6 rounded-xl text-left transition-all duration-200 ${
+                      modLoaderType === 'vanilla'
+                        ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] neon-glow-cyan'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className="text-4xl mb-2">🎮</div>
+                      <span className="text-white font-medium">Vanilla</span>
+                      <span className="text-white/60 text-xs mt-1">Sin mods</span>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => setModLoaderType('fabric')}
+                    className={`p-6 rounded-xl text-left transition-all duration-200 ${
+                      modLoaderType === 'fabric'
+                        ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] neon-glow-cyan'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <img src="/src/assets/icons/fabricmc.svg" alt="Fabric" className="w-12 h-12 mb-2" />
+                      <span className="text-white font-medium">Fabric</span>
+                      <span className="text-white/60 text-xs mt-1">Ligero y moderno</span>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => setModLoaderType('forge')}
+                    className={`p-6 rounded-xl text-left transition-all duration-200 ${
+                      modLoaderType === 'forge'
+                        ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] neon-glow-cyan'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className="text-4xl mb-2">⚒️</div>
+                      <span className="text-white font-medium">Forge</span>
+                      <span className="text-white/60 text-xs mt-1">Clásico y estable</span>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => setModLoaderType('neoforge')}
+                    className={`p-6 rounded-xl text-left transition-all duration-200 ${
+                      modLoaderType === 'neoforge'
+                        ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] neon-glow-cyan'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <img src="/src/assets/icons/neoforge.svg" alt="NeoForge" className="w-12 h-12 mb-2" />
+                      <span className="text-white font-medium">NeoForge</span>
+                      <span className="text-white/60 text-xs mt-1">Nueva generación</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Mod Loader Version */}
+          {step === 4 && modLoaderType !== 'vanilla' && (
+            <div className="space-y-6 animate-fade-in-up">
+              <div>
+                <label className="block text-white mb-2 font-medium">
+                  Versión de {modLoaderType === 'fabric' ? 'Fabric' : modLoaderType === 'forge' ? 'Forge' : 'NeoForge'}
                 </label>
                 <p className="text-white/60 text-sm mb-4">
                   Para Minecraft {selectedMinecraftVersion}
@@ -275,34 +409,47 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                   </div>
                 ) : (
                   <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                    {fabricVersions.map((version) => (
-                      <button
-                        key={version.loader.version}
-                        onClick={() => setSelectedFabricVersion(version.loader.version)}
-                        className={`w-full px-4 py-3 rounded-xl text-left transition-all duration-200 ${
-                          selectedFabricVersion === version.loader.version
-                            ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] text-white neon-glow-cyan'
-                            : 'bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{version.loader.version}</span>
-                          {version.loader.stable && (
-                            <span className="px-2 py-1 rounded-lg bg-green-500/20 text-green-300 text-xs">
-                              Estable
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                    {getModLoaderVersions().length === 0 ? (
+                      <div className="p-8 text-center">
+                        <p className="text-white/60">No hay versiones disponibles de {modLoaderType} para Minecraft {selectedMinecraftVersion}</p>
+                      </div>
+                    ) : (
+                      getModLoaderVersions().map((version: any) => (
+                        <button
+                          key={version.version}
+                          onClick={() => setSelectedModLoaderVersion(version.version)}
+                          className={`w-full px-4 py-3 rounded-xl text-left transition-all duration-200 ${
+                            selectedModLoaderVersion === version.version
+                              ? 'bg-[#00ffff]/20 border-2 border-[#00ffff] text-white neon-glow-cyan'
+                              : 'bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{version.version}</span>
+                            <div className="flex gap-2">
+                              {version.stable && (
+                                <span className="px-2 py-1 rounded-lg bg-green-500/20 text-green-300 text-xs">
+                                  Estable
+                                </span>
+                              )}
+                              {version.recommended && (
+                                <span className="px-2 py-1 rounded-lg bg-blue-500/20 text-blue-300 text-xs">
+                                  Recomendada
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Step 4: Summary */}
-          {step === 4 && (
+          {/* Step 5: Summary */}
+          {step === 5 && (
             <div className="space-y-6 animate-fade-in-up">
               <div className="space-y-4">
                 <h3 className="text-xl font-bold text-white mb-4">Resumen de la instancia</h3>
@@ -318,13 +465,19 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                 </div>
                 
                 <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                  <p className="text-white/60 text-sm mb-1">Versión de Fabric Loader:</p>
-                  <p className="text-white font-medium">{selectedFabricVersion}</p>
+                  <p className="text-white/60 text-sm mb-1">Mod Loader:</p>
+                  <p className="text-white font-medium">
+                    {modLoaderType === 'vanilla' ? 'Vanilla (Sin mods)' : 
+                     modLoaderType === 'fabric' ? 'Fabric' : 
+                     modLoaderType === 'forge' ? 'Forge' : 'NeoForge'}
+                    {modLoaderType !== 'vanilla' && ` ${selectedModLoaderVersion}`}
+                  </p>
                 </div>
 
                 <div className="mt-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
                   <p className="text-yellow-300 text-sm">
                     ⚠️ La creación puede tardar varios minutos mientras se descargan los archivos necesarios.
+                    {modLoaderType !== 'vanilla' && ' Java se descargará automáticamente si es necesario.'}
                   </p>
                 </div>
               </div>
@@ -350,7 +503,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
           </button>
           
           <div className="flex gap-4">
-            {step > 1 && step < 4 && (
+            {step > 1 && step < 5 && (
               <button
                 onClick={handleBack}
                 disabled={isCreating || isLoadingVersions}
@@ -360,10 +513,15 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
               </button>
             )}
             
-            {step < 4 ? (
+            {step < 5 ? (
               <button
                 onClick={handleNext}
-                disabled={isLoadingVersions || (step === 1 && !name.trim()) || (step === 2 && !selectedMinecraftVersion) || (step === 3 && !selectedFabricVersion)}
+                disabled={
+                  isLoadingVersions || 
+                  (step === 1 && !name.trim()) || 
+                  (step === 2 && !selectedMinecraftVersion) ||
+                  (step === 4 && modLoaderType !== 'vanilla' && !selectedModLoaderVersion)
+                }
                 className="px-6 py-3 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff] text-white hover:bg-[#00ffff]/30 transition-all duration-200 neon-glow-cyan-hover disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 Siguiente
@@ -392,4 +550,3 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
 };
 
 export default CreateLocalInstanceModal;
-

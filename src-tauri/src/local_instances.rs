@@ -56,10 +56,11 @@ fn get_local_instances_dir() -> Result<PathBuf, String> {
 pub async fn create_local_instance(
     name: String,
     minecraft_version: String,
-    fabric_version: String,
+    mod_loader_type: String,
+    mod_loader_version: String,
     app_handle: AppHandle,
 ) -> Result<LocalInstance, String> {
-    log::info!("🏗️  Creating local instance: {} (MC: {}, Fabric: {})", name, minecraft_version, fabric_version);
+    log::info!("🏗️  Creating local instance: {} (MC: {}, Loader: {} {})", name, minecraft_version, mod_loader_type, mod_loader_version);
     
     let instance_id = generate_instance_id(&name);
     log::info!("📝 Generated instance ID: {}", instance_id);
@@ -106,22 +107,33 @@ pub async fn create_local_instance(
     
     log::info!("✅ Minecraft libraries downloaded");
     
-    // Install Fabric Loader
-    let _ = app_handle.emit("local-instance-progress", serde_json::json!({
-        "instance_id": instance_id,
-        "stage": "fabric_loader",
-        "percentage": 50,
-        "message": "Instalando Fabric Loader..."
-    }));
-    
-    let mod_loader = crate::models::ModLoader {
-        r#type: "fabric".to_string(),
-        version: fabric_version.clone(),
-    };
-    
-    crate::instances::install_mod_loader(&minecraft_version, &mod_loader, &instance_dir).await?;
-    
-    log::info!("✅ Fabric Loader installed");
+    // Install Mod Loader (if not vanilla)
+    if mod_loader_type != "vanilla" {
+        let loader_display_name = match mod_loader_type.as_str() {
+            "fabric" => "Fabric",
+            "forge" => "Forge",
+            "neoforge" => "NeoForge",
+            _ => "Mod Loader",
+        };
+        
+        let _ = app_handle.emit("local-instance-progress", serde_json::json!({
+            "instance_id": instance_id,
+            "stage": "mod_loader",
+            "percentage": 50,
+            "message": format!("Instalando {} {}...", loader_display_name, mod_loader_version)
+        }));
+        
+        let mod_loader = crate::models::ModLoader {
+            r#type: mod_loader_type.clone(),
+            version: mod_loader_version.clone(),
+        };
+        
+        crate::instances::install_mod_loader(&minecraft_version, &mod_loader, &instance_dir).await?;
+        
+        log::info!("✅ {} {} installed", loader_display_name, mod_loader_version);
+    } else {
+        log::info!("✅ Vanilla instance, skipping mod loader installation");
+    }
     
     // Download Minecraft assets
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
@@ -148,11 +160,21 @@ pub async fn create_local_instance(
         "message": "Guardando metadata..."
     }));
     
+    let mod_loader_obj = if mod_loader_type != "vanilla" {
+        Some(crate::models::ModLoader {
+            r#type: mod_loader_type.clone(),
+            version: mod_loader_version.clone(),
+        })
+    } else {
+        None
+    };
+    
     let metadata = LocalInstanceMetadata {
         id: instance_id.clone(),
         name: name.clone(),
         minecraft_version: minecraft_version.clone(),
-        fabric_version: fabric_version.clone(),
+        fabric_version: mod_loader_version.clone(), // Mantener compatibilidad retroactiva
+        mod_loader: mod_loader_obj.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     
@@ -178,7 +200,8 @@ pub async fn create_local_instance(
         id: instance_id.clone(),
         name: name.clone(),
         minecraft_version: minecraft_version.clone(),
-        fabric_version: fabric_version.clone(),
+        fabric_version: mod_loader_version.clone(), // Mantener compatibilidad retroactiva
+        mod_loader: mod_loader_obj,
         created_at: metadata.created_at.clone(),
         is_local: true,
         background: None,
@@ -230,6 +253,7 @@ pub async fn get_local_instances() -> Result<Vec<LocalInstance>, String> {
                                     name: metadata.name,
                                     minecraft_version: metadata.minecraft_version,
                                     fabric_version: metadata.fabric_version,
+                                    mod_loader: metadata.mod_loader,
                                     created_at: metadata.created_at,
                                     is_local: true,
                                     background,
@@ -521,8 +545,10 @@ pub async fn launch_local_instance(
     // Get main class
     let main_class = crate::launcher::select_main_class(&instance_dir);
     
-    // Find Java executable
-    let java_path = crate::launcher::find_java_executable().await?;
+    // Find or install Java executable for this Minecraft version
+    log::info!("🔍 Buscando Java para Minecraft {}", metadata.minecraft_version);
+    let java_path = crate::launcher::find_or_install_java_for_minecraft(&metadata.minecraft_version).await?;
+    log::info!("☕ Usando Java en: {}", java_path);
     
     // Launch Minecraft
     let mut command = Command::new(&java_path);

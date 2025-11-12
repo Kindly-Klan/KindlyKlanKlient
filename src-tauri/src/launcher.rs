@@ -314,7 +314,41 @@ pub fn get_total_ram_mb() -> anyhow::Result<u32> {
     Ok(4096)
 }
 
+/// Determina la versión de Java requerida según la versión de Minecraft
+pub fn get_required_java_version_for_minecraft(mc_version: &str) -> u8 {
+    // Parsear la versión de Minecraft
+    let version_parts: Vec<&str> = mc_version.split('.').collect();
+    
+    if version_parts.len() < 2 {
+        return 8; // Por defecto Java 8
+    }
+    
+    let major = version_parts.get(0).and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
+    let minor = version_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let patch = version_parts.get(2).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    
+    // Minecraft 1.20.5+ requiere Java 21
+    if major == 1 && (minor > 20 || (minor == 20 && patch >= 5)) {
+        return 21;
+    }
+    
+    // Minecraft 1.18 - 1.20.4 requiere Java 17
+    if major == 1 && minor >= 18 && minor <= 20 {
+        return 17;
+    }
+    
+    // Minecraft 1.17.x requiere Java 16
+    if major == 1 && minor == 17 {
+        return 16;
+    }
+    
+    // Minecraft < 1.17 requiere Java 8
+    8
+}
+
+/// Busca o instala automáticamente el ejecutable de Java requerido para una versión de Minecraft
 pub async fn find_java_executable() -> Result<String, String> {
+    // Primero intentar encontrar Java en rutas comunes del sistema
     let common_paths = [
         "java",
         "/usr/bin/java",
@@ -336,7 +370,180 @@ pub async fn find_java_executable() -> Result<String, String> {
         return Ok(java_path);
     }
 
+    // Si no se encuentra, intentar usar Java 8 como fallback desde runtime
+    let kindly_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(|p| std::path::PathBuf::from(p))
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(".kindlyklanklient");
+    
+    let java_8_path = kindly_dir.join("runtime").join("java-8").join("bin").join(if cfg!(target_os = "windows") { "java.exe" } else { "java" });
+    
+    if java_8_path.exists() {
+        return Ok(java_8_path.to_string_lossy().to_string());
+    }
+
     Err("Java executable not found. Please ensure Java is installed.".to_string())
+}
+
+/// Busca o instala automáticamente el ejecutable de Java para una versión específica de Minecraft
+pub async fn find_or_install_java_for_minecraft(mc_version: &str) -> Result<String, String> {
+    let required_java_version = get_required_java_version_for_minecraft(mc_version);
+    
+    // Verificar si ya existe la versión requerida en runtime
+    let kindly_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(|p| std::path::PathBuf::from(p))
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(".kindlyklanklient");
+    
+    let java_path = kindly_dir
+        .join("runtime")
+        .join(format!("java-{}", required_java_version))
+        .join("bin")
+        .join(if cfg!(target_os = "windows") { "java.exe" } else { "java" });
+    
+    if java_path.exists() {
+        log::info!("✅ Java {} encontrado en: {}", required_java_version, java_path.display());
+        return Ok(java_path.to_string_lossy().to_string());
+    }
+    
+    log::warn!("⚠️  Java {} no encontrado, se requiere para Minecraft {}", required_java_version, mc_version);
+    log::info!("🔽 Descargando Java {} automáticamente...", required_java_version);
+    
+    // Descargar Java automáticamente sin UI
+    download_java_silent(required_java_version).await?;
+    
+    // Verificar que se instaló correctamente
+    if java_path.exists() {
+        log::info!("✅ Java {} descargado e instalado correctamente", required_java_version);
+        return Ok(java_path.to_string_lossy().to_string());
+    }
+    
+    Err(format!(
+        "Error al instalar Java {}. Por favor, intente instalarlo manualmente.",
+        required_java_version
+    ))
+}
+
+/// Descarga e instala Java sin interfaz de usuario
+async fn download_java_silent(java_version: u8) -> Result<(), String> {
+    let version_str = java_version.to_string();
+    
+    let kindly_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(|p| std::path::PathBuf::from(p))
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(".kindlyklanklient");
+    
+    let runtime_dir = kindly_dir.join("runtime");
+    let java_dir = runtime_dir.join(format!("java-{}", version_str));
+    
+    tokio::fs::create_dir_all(&runtime_dir).await
+        .map_err(|e| format!("Failed to create runtime directory: {}", e))?;
+    
+    let (os, arch, extension) = if cfg!(target_os = "windows") {
+        ("windows", "x64", "zip")
+    } else if cfg!(target_os = "macos") {
+        ("mac", "x64", "tar.gz")
+    } else {
+        ("linux", "x64", "tar.gz")
+    };
+    
+    let jre_url = format!(
+        "https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jdk/hotspot/normal/eclipse",
+        version_str, os, arch
+    );
+    
+    log::info!("📥 Descargando Java {} desde: {}", version_str, jre_url);
+    
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&jre_url)
+        .header("User-Agent", "KindlyKlanKlient/1.0")
+        .header("Accept", "application/octet-stream")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download Java: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+    
+    let bytes = response.bytes().await
+        .map_err(|e| format!("Failed to read Java download: {}", e))?;
+    
+    let temp_file = runtime_dir.join(format!("java-{}.{}", version_str, extension));
+    tokio::fs::write(&temp_file, &bytes).await
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    
+    log::info!("📦 Extrayendo Java {}...", version_str);
+    
+    // Extraer el archivo
+    if java_dir.exists() {
+        let _ = std::fs::remove_dir_all(&java_dir);
+    }
+    
+    if temp_file.extension().map_or(false, |e| e == "zip") {
+        let reader = std::fs::File::open(&temp_file)
+            .map_err(|e| format!("Open zip failed: {}", e))?;
+        let mut archive = zip::ZipArchive::new(reader)
+            .map_err(|e| format!("Read zip failed: {}", e))?;
+        
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)
+                .map_err(|e| format!("Zip index failed: {}", e))?;
+            let outpath = runtime_dir.join(file.mangled_name());
+            
+            if file.name().ends_with('/') {
+                std::fs::create_dir_all(&outpath)
+                    .map_err(|e| format!("Create dir failed: {}", e))?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    std::fs::create_dir_all(p)
+                        .map_err(|e| format!("Create parent failed: {}", e))?;
+                }
+                let mut outfile = std::fs::File::create(&outpath)
+                    .map_err(|e| format!("Create file failed: {}", e))?;
+                std::io::copy(&mut file, &mut outfile)
+                    .map_err(|e| format!("Write file failed: {}", e))?;
+            }
+        }
+    }
+    
+    // Renombrar el directorio extraído al nombre esperado
+    let all_entries = std::fs::read_dir(&runtime_dir)
+        .map_err(|e| format!("Failed to read runtime directory: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read directory entries: {}", e))?;
+    
+    let extracted_dirs: Vec<_> = all_entries
+        .into_iter()
+        .filter(|entry| {
+            let path = entry.path();
+            path.is_dir() && path != java_dir
+        })
+        .map(|entry| entry.path())
+        .collect();
+    
+    if let Some(extracted_dir) = extracted_dirs.first() {
+        if java_dir.exists() {
+            let _ = std::fs::remove_dir_all(&java_dir);
+        }
+        std::fs::rename(extracted_dir, &java_dir)
+            .map_err(|e| format!("Failed to move Java directory: {}", e))?;
+        
+        for dir in extracted_dirs.iter().skip(1) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    } else {
+        return Err("No Java directory found after extraction".to_string());
+    }
+    
+    let _ = std::fs::remove_file(&temp_file);
+    
+    log::info!("✅ Java {} instalado correctamente", version_str);
+    Ok(())
 }
 
 fn get_java_path_from_env() -> String {

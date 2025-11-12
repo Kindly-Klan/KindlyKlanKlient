@@ -226,7 +226,10 @@ pub struct LocalInstance {
     pub id: String,
     pub name: String,
     pub minecraft_version: String,
-    pub fabric_version: String,
+    #[serde(default)]
+    pub fabric_version: String, // Mantener para compatibilidad retroactiva
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mod_loader: Option<ModLoader>,
     pub created_at: String,
     pub is_local: bool,
     pub background: Option<String>,
@@ -237,7 +240,10 @@ pub struct LocalInstanceMetadata {
     pub id: String,
     pub name: String,
     pub minecraft_version: String,
-    pub fabric_version: String,
+    #[serde(default)]
+    pub fabric_version: String, // Mantener para compatibilidad retroactiva
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mod_loader: Option<ModLoader>,
     pub created_at: String,
 }
 
@@ -274,6 +280,22 @@ pub struct FabricLoaderVersion {
 pub struct FabricLoaderInfo {
     pub version: String,
     pub stable: bool,
+}
+
+// Forge version structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgeVersion {
+    pub version: String,
+    pub minecraft_version: String,
+    #[serde(default)]
+    pub recommended: bool,
+}
+
+// NeoForge version structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NeoForgeVersion {
+    pub version: String,
+    pub minecraft_version: String,
 }
 
 

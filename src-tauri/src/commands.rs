@@ -10,6 +10,7 @@ use tauri::Emitter;
 use crate::UpdateState;
 use crate::{DistributionManifest, InstanceManifest};
 use std::sync::{Arc, Mutex};
+use crate::models::{ForgeVersion, NeoForgeVersion};
 
 #[tauri::command]
 pub async fn greet(name: String) -> String {
@@ -981,6 +982,198 @@ pub async fn stop_minecraft_instance(instance_id: String) -> Result<String, Stri
 #[tauri::command]
 pub async fn restart_application() -> Result<String, String> {
     Ok("Application will be restarted".to_string())
+}
+
+// ============================================================================
+// Forge API Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn get_forge_versions(minecraft_version: String) -> Result<Vec<ForgeVersion>, String> {
+    log::info!("🔍 Obteniendo versiones de Forge para Minecraft {}", minecraft_version);
+    
+    let client = reqwest::Client::new();
+    
+    // Intentar obtener desde el API de maven-metadata.xml
+    let url = format!(
+        "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
+    );
+    
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let xml_text = response.text().await.map_err(|e| e.to_string())?;
+                
+                // Parsear XML simple para obtener versiones
+                let versions = parse_forge_versions_from_xml(&xml_text, &minecraft_version)?;
+                
+                if versions.is_empty() {
+                    log::warn!("⚠️  No se encontraron versiones de Forge para Minecraft {}", minecraft_version);
+                }
+                
+                Ok(versions)
+            } else {
+                Err(format!("Error HTTP al obtener versiones de Forge: {}", response.status()))
+            }
+        }
+        Err(e) => {
+            log::error!("❌ Error al obtener versiones de Forge: {}", e);
+            Err(format!("Error de red: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_recommended_forge_version(minecraft_version: String) -> Result<String, String> {
+    log::info!("🔍 Obteniendo versión recomendada de Forge para Minecraft {}", minecraft_version);
+    
+    let versions = get_forge_versions(minecraft_version.clone()).await?;
+    
+    // Buscar la primera versión recomendada
+    if let Some(recommended) = versions.iter().find(|v| v.recommended) {
+        return Ok(recommended.version.clone());
+    }
+    
+    // Si no hay recomendada, devolver la última
+    if let Some(latest) = versions.first() {
+        return Ok(latest.version.clone());
+    }
+    
+    Err(format!("No se encontró ninguna versión de Forge para Minecraft {}", minecraft_version))
+}
+
+fn parse_forge_versions_from_xml(xml: &str, mc_version: &str) -> Result<Vec<ForgeVersion>, String> {
+    let mut versions = Vec::new();
+    
+    // Buscar todas las versiones que coincidan con la versión de MC
+    for line in xml.lines() {
+        if line.contains("<version>") {
+            if let Some(version_str) = extract_xml_tag_content(line, "version") {
+                // Las versiones de Forge siguen el formato: {mc_version}-{forge_version}
+                // Ej: 1.20.1-47.2.0
+                if version_str.starts_with(mc_version) {
+                    versions.push(ForgeVersion {
+                        version: version_str.clone(),
+                        minecraft_version: mc_version.to_string(),
+                        recommended: false, // Por ahora, marcaremos la primera como recomendada después
+                    });
+                }
+            }
+        }
+    }
+    
+    // Marcar la última versión como recomendada
+    if let Some(first) = versions.first_mut() {
+        first.recommended = true;
+    }
+    
+    Ok(versions)
+}
+
+fn extract_xml_tag_content(line: &str, tag: &str) -> Option<String> {
+    let start_tag = format!("<{}>", tag);
+    let end_tag = format!("</{}>", tag);
+    
+    if let Some(start_idx) = line.find(&start_tag) {
+        if let Some(end_idx) = line.find(&end_tag) {
+            let content_start = start_idx + start_tag.len();
+            if content_start < end_idx {
+                return Some(line[content_start..end_idx].trim().to_string());
+            }
+        }
+    }
+    
+    None
+}
+
+// ============================================================================
+// NeoForge API Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn get_neoforge_versions(minecraft_version: String) -> Result<Vec<NeoForgeVersion>, String> {
+    log::info!("🔍 Obteniendo versiones de NeoForge para Minecraft {}", minecraft_version);
+    
+    // NeoForge solo está disponible para Minecraft 1.20.1+
+    let version_parts: Vec<&str> = minecraft_version.split('.').collect();
+    if version_parts.len() >= 2 {
+        let minor = version_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+        if minor < 20 {
+            return Err("NeoForge solo está disponible para Minecraft 1.20.1 o superior".to_string());
+        }
+    }
+    
+    let client = reqwest::Client::new();
+    
+    // Usar el maven-metadata.xml de NeoForge
+    let url = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
+    
+    match client.get(url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let xml_text = response.text().await.map_err(|e| e.to_string())?;
+                
+                let versions = parse_neoforge_versions_from_xml(&xml_text, &minecraft_version)?;
+                
+                if versions.is_empty() {
+                    log::warn!("⚠️  No se encontraron versiones de NeoForge para Minecraft {}", minecraft_version);
+                }
+                
+                Ok(versions)
+            } else {
+                Err(format!("Error HTTP al obtener versiones de NeoForge: {}", response.status()))
+            }
+        }
+        Err(e) => {
+            log::error!("❌ Error al obtener versiones de NeoForge: {}", e);
+            Err(format!("Error de red: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_recommended_neoforge_version(minecraft_version: String) -> Result<String, String> {
+    log::info!("🔍 Obteniendo versión recomendada de NeoForge para Minecraft {}", minecraft_version);
+    
+    let versions = get_neoforge_versions(minecraft_version.clone()).await?;
+    
+    // Devolver la primera (más reciente)
+    if let Some(latest) = versions.first() {
+        return Ok(latest.version.clone());
+    }
+    
+    Err(format!("No se encontró ninguna versión de NeoForge para Minecraft {}", minecraft_version))
+}
+
+fn parse_neoforge_versions_from_xml(xml: &str, mc_version: &str) -> Result<Vec<NeoForgeVersion>, String> {
+    let mut versions = Vec::new();
+    
+    // Las versiones de NeoForge tienen formato: 20.x.y para MC 1.20.x
+    // Necesitamos filtrar por la versión de MC correspondiente
+    let mc_parts: Vec<&str> = mc_version.split('.').collect();
+    let mc_minor = mc_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(20);
+    
+    for line in xml.lines() {
+        if line.contains("<version>") {
+            if let Some(version_str) = extract_xml_tag_content(line, "version") {
+                // NeoForge usa formato: 20.x.y para MC 1.20.x, 21.x.y para MC 1.21.x, etc.
+                let version_parts: Vec<&str> = version_str.split('.').collect();
+                if let Some(first_part) = version_parts.first() {
+                    if let Ok(nf_major) = first_part.parse::<u32>() {
+                        // Mapear versión de NeoForge a versión de MC
+                        if nf_major == mc_minor {
+                            versions.push(NeoForgeVersion {
+                                version: version_str.clone(),
+                                minecraft_version: mc_version.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(versions)
 }
 
 

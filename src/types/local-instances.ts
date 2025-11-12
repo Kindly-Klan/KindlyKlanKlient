@@ -1,10 +1,16 @@
 // Local instances types
 
+export interface ModLoader {
+  type: string;
+  version: string;
+}
+
 export interface LocalInstance {
   id: string;
   name: string;
   minecraft_version: string;
-  fabric_version: string;
+  fabric_version: string; // Mantener para compatibilidad
+  mod_loader?: ModLoader | null;
   created_at: string;
   is_local: boolean;
   background?: string | null;
@@ -14,7 +20,8 @@ export interface LocalInstanceMetadata {
   id: string;
   name: string;
   minecraft_version: string;
-  fabric_version: string;
+  fabric_version: string; // Mantener para compatibilidad
+  mod_loader?: ModLoader | null;
   created_at: string;
 }
 
@@ -47,10 +54,23 @@ export interface FabricLoaderInfo {
   stable: boolean;
 }
 
+// Forge version types
+export interface ForgeVersion {
+  version: string;
+  minecraft_version: string;
+  recommended: boolean;
+}
+
+// NeoForge version types
+export interface NeoForgeVersion {
+  version: string;
+  minecraft_version: string;
+}
+
 // Progress events
 export interface LocalInstanceProgress {
   instance_id: string;
-  stage: 'starting' | 'minecraft_client' | 'minecraft_libraries' | 'fabric_loader' | 'minecraft_assets' | 'saving_metadata' | 'completed';
+  stage: 'starting' | 'minecraft_client' | 'minecraft_libraries' | 'mod_loader' | 'minecraft_assets' | 'saving_metadata' | 'completed';
   percentage: number;
   message: string;
 }

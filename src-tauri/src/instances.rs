@@ -478,6 +478,7 @@ pub async fn ensure_version_libraries(instance_dir: &Path, mc_version: &str) -> 
 pub async fn install_mod_loader(minecraft_version: &str, mod_loader: &ModLoader, instance_dir: &Path) -> Result<(), String> {
     match mod_loader.r#type.as_str() {
         "fabric" => install_fabric(minecraft_version, &mod_loader.version, instance_dir).await,
+        "forge" => install_forge(minecraft_version, &mod_loader.version, instance_dir).await,
         "neoforge" => install_neoforge(minecraft_version, &mod_loader.version, instance_dir).await,
         "vanilla" => Ok(()),
         _ => Err(format!("Unsupported mod loader type: {}", mod_loader.r#type))
@@ -509,8 +510,159 @@ async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_
     Ok(())
 }
 
-pub async fn install_neoforge(_minecraft_version: &str, _neo_version: &str, _instance_dir: &Path) -> Result<(), String> {
-    // TODO: Implement NeoForge installation when supported
+async fn install_forge(minecraft_version: &str, forge_version: &str, instance_dir: &Path) -> Result<(), String> {
+    log::info!("🔨 Instalando Forge {} para Minecraft {}", forge_version, minecraft_version);
+    
+    // Verificar si ya está instalado
+    let forge_marker = instance_dir
+        .join("libraries")
+        .join("net")
+        .join("minecraftforge")
+        .join("forge")
+        .join(forge_version)
+        .join(format!("forge-{}.jar", forge_version));
+    
+    if forge_marker.exists() {
+        log::info!("✅ Forge {} ya está instalado", forge_version);
+        return Ok(());
+    }
+    
+    let libraries_dir = instance_dir.join("libraries");
+    tokio::fs::create_dir_all(&libraries_dir).await
+        .map_err(|e| format!("Failed to create libraries directory: {}", e))?;
+    
+    // Descargar el instalador de Forge
+    let installer_url = format!(
+        "https://maven.minecraftforge.net/net/minecraftforge/forge/{}/forge-{}-installer.jar",
+        forge_version, forge_version
+    );
+    
+    log::info!("📥 Descargando instalador de Forge desde: {}", installer_url);
+    
+    let installer_path = libraries_dir.join(format!("forge-installer-{}.jar", forge_version));
+    download_file_with_retry(&installer_url, &installer_path).await?;
+    
+    log::info!("✅ Instalador de Forge descargado");
+    
+    // Ejecutar el instalador de Forge
+    log::info!("🚀 Ejecutando instalador de Forge...");
+    run_forge_installer(&installer_path, instance_dir).await?;
+    
+    log::info!("✅ Forge {} instalado correctamente", forge_version);
+    
+    // Asegurar que el cliente de Minecraft esté presente
+    ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
+    
+    Ok(())
+}
+
+async fn run_forge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+    let java_path = crate::launcher::find_java_executable().await?;
+    let mut cmd = Command::new(&java_path);
+    
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let output = cmd
+        .args(&[
+            "-jar",
+            &installer.to_string_lossy(),
+            "--installClient",
+            instance_dir.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run Forge installer: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        log::error!("❌ Forge installer stderr: {}", stderr);
+        log::error!("❌ Forge installer stdout: {}", stdout);
+        return Err(format!("Forge installer failed: {}", stderr));
+    }
+    
+    log::info!("✅ Instalador de Forge ejecutado correctamente");
+    Ok(())
+}
+
+async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, instance_dir: &Path) -> Result<(), String> {
+    log::info!("🔨 Instalando NeoForge {} para Minecraft {}", neoforge_version, minecraft_version);
+    
+    // Verificar si ya está instalado
+    let neoforge_marker = instance_dir
+        .join("libraries")
+        .join("net")
+        .join("neoforged")
+        .join("neoforge")
+        .join(neoforge_version)
+        .join(format!("neoforge-{}.jar", neoforge_version));
+    
+    if neoforge_marker.exists() {
+        log::info!("✅ NeoForge {} ya está instalado", neoforge_version);
+        return Ok(());
+    }
+    
+    let libraries_dir = instance_dir.join("libraries");
+    tokio::fs::create_dir_all(&libraries_dir).await
+        .map_err(|e| format!("Failed to create libraries directory: {}", e))?;
+    
+    // Descargar el instalador de NeoForge
+    let installer_url = format!(
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/{}/neoforge-{}-installer.jar",
+        neoforge_version, neoforge_version
+    );
+    
+    log::info!("📥 Descargando instalador de NeoForge desde: {}", installer_url);
+    
+    let installer_path = libraries_dir.join(format!("neoforge-installer-{}.jar", neoforge_version));
+    download_file_with_retry(&installer_url, &installer_path).await?;
+    
+    log::info!("✅ Instalador de NeoForge descargado");
+    
+    // Ejecutar el instalador de NeoForge
+    log::info!("🚀 Ejecutando instalador de NeoForge...");
+    run_neoforge_installer(&installer_path, instance_dir).await?;
+    
+    log::info!("✅ NeoForge {} instalado correctamente", neoforge_version);
+    
+    // Asegurar que el cliente de Minecraft esté presente
+    ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
+    
+    Ok(())
+}
+
+async fn run_neoforge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+    let java_path = crate::launcher::find_java_executable().await?;
+    let mut cmd = Command::new(&java_path);
+    
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let output = cmd
+        .args(&[
+            "-jar",
+            &installer.to_string_lossy(),
+            "--installClient",
+            instance_dir.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run NeoForge installer: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        log::error!("❌ NeoForge installer stderr: {}", stderr);
+        log::error!("❌ NeoForge installer stdout: {}", stdout);
+        return Err(format!("NeoForge installer failed: {}", stderr));
+    }
+    
+    log::info!("✅ Instalador de NeoForge ejecutado correctamente");
     Ok(())
 }
 
