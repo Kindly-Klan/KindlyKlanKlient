@@ -546,7 +546,7 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
     
     // Ejecutar el instalador de Forge
     log::info!("🚀 Ejecutando instalador de Forge...");
-    run_forge_installer(&installer_path, instance_dir).await?;
+    run_forge_installer(&installer_path, instance_dir, minecraft_version).await?;
     
     log::info!("✅ Forge {} instalado correctamente", forge_version);
     
@@ -556,12 +556,14 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
     Ok(())
 }
 
-async fn run_forge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
     // Crear launcher_profiles.json si no existe
     ensure_launcher_profile(instance_dir)?;
     
-    // Obtener Java para la versión de Minecraft (necesitamos parsear del nombre del instalador)
-    let java_path = crate::launcher::find_java_executable().await?;
+    // Obtener Java para la versión de Minecraft correcta
+    log::info!("☕ Obteniendo Java para Minecraft {}", minecraft_version);
+    let java_path = crate::launcher::find_or_install_java_for_minecraft(minecraft_version).await?;
+    log::info!("✅ Usando Java en: {}", java_path);
     
     // Crear directorio temporal para el instalador
     let temp_dir = std::env::temp_dir().join("kindlyklanklient_forge_install");
@@ -642,7 +644,7 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
     
     // Ejecutar el instalador de NeoForge
     log::info!("🚀 Ejecutando instalador de NeoForge...");
-    run_neoforge_installer(&installer_path, instance_dir).await?;
+    run_neoforge_installer(&installer_path, instance_dir, minecraft_version).await?;
     
     log::info!("✅ NeoForge {} instalado correctamente", neoforge_version);
     
@@ -652,11 +654,14 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
     Ok(())
 }
 
-async fn run_neoforge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
     // Crear launcher_profiles.json si no existe
     ensure_launcher_profile(instance_dir)?;
     
-    let java_path = crate::launcher::find_java_executable().await?;
+    // Obtener Java para la versión de Minecraft correcta
+    log::info!("☕ Obteniendo Java para Minecraft {}", minecraft_version);
+    let java_path = crate::launcher::find_or_install_java_for_minecraft(minecraft_version).await?;
+    log::info!("✅ Usando Java en: {}", java_path);
     
     // Crear directorio temporal para el instalador
     let temp_dir = std::env::temp_dir().join("kindlyklanklient_neoforge_install");

@@ -458,7 +458,19 @@ pub async fn launch_local_instance(
     let metadata: LocalInstanceMetadata = serde_json::from_str(&metadata_content)
         .map_err(|e| format!("Failed to parse instance metadata: {}", e))?;
     
-    log::info!("📋 Instance metadata loaded: MC {}, Fabric {}", metadata.minecraft_version, metadata.fabric_version);
+    // Log metadata con información correcta del mod loader
+    if let Some(ref mod_loader) = metadata.mod_loader {
+        log::info!("📋 Instance metadata loaded: MC {}, {} {}", 
+            metadata.minecraft_version, 
+            mod_loader.r#type.to_uppercase(), 
+            mod_loader.version
+        );
+    } else {
+        log::info!("📋 Instance metadata loaded: MC {}, Vanilla (legacy: {})", 
+            metadata.minecraft_version, 
+            metadata.fabric_version
+        );
+    }
     
     // Verify all required files (emit progress events)
     let _ = app_handle.emit("asset-download-progress", serde_json::json!({

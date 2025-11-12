@@ -588,10 +588,66 @@ fn collect_jars_recursively(dir: &Path, out: &mut Vec<String>) -> Result<(), Str
 	Ok(())
 }
 
-pub fn select_main_class(instance_dir: &Path) -> &'static str {
+pub fn select_main_class(instance_dir: &Path) -> String {
+    // Intentar leer el mainClass del version JSON generado por el instalador
+    // Los instaladores de Forge/NeoForge/Fabric crean archivos JSON con el mainClass correcto
+    
+    // Buscar archivos JSON en versions/ que no sean versiones vanilla
+    let versions_dir = instance_dir.join("versions");
+    if versions_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Buscar archivo JSON en este directorio
+                    let dir_name = entry.file_name();
+                    let json_path = path.join(format!("{}.json", dir_name.to_string_lossy()));
+                    
+                    if json_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&json_path) {
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
+                                    // Detectar el tipo de mod loader por el mainClass
+                                    if main_class.contains("neoforge") || main_class.contains("neoforged") {
+                                        log::info!("🔨 Detected NeoForge mod loader: {}", main_class);
+                                        return main_class.to_string();
+                                    } else if main_class.contains("minecraftforge") || main_class.contains("forge") {
+                                        log::info!("⚒️  Detected Forge mod loader: {}", main_class);
+                                        return main_class.to_string();
+                                    } else if main_class.contains("fabricmc") || main_class.contains("fabric") {
+                                        log::info!("🧵 Detected Fabric mod loader: {}", main_class);
+                                        return main_class.to_string();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback: detectar por directorios de libraries
+    let neoforge_loader_dir = instance_dir.join("libraries").join("net").join("neoforged");
+    if neoforge_loader_dir.exists() { 
+        log::info!("🔨 Detected NeoForge mod loader (fallback)");
+        return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string(); 
+    }
+    
+    let forge_loader_dir = instance_dir.join("libraries").join("net").join("minecraftforge");
+    if forge_loader_dir.exists() { 
+        log::info!("⚒️  Detected Forge mod loader (fallback)");
+        return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string();
+    }
+    
 	let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
-    if fabric_loader_dir.exists() { return "net.fabricmc.loader.impl.launch.knot.KnotClient"; }
-    "net.minecraft.client.main.Main"
+    if fabric_loader_dir.exists() { 
+        log::info!("🧵 Detected Fabric mod loader (fallback)");
+        return "net.fabricmc.loader.impl.launch.knot.KnotClient".to_string();
+    }
+    
+    log::info!("🎮 Using vanilla Minecraft");
+    "net.minecraft.client.main.Main".to_string()
 }
 
 pub fn build_minecraft_jvm_args(
