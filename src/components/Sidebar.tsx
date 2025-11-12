@@ -188,8 +188,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {localInstances.length > 0 && (
                   <div className="relative my-3">
                     <div className="h-[2px] bg-gradient-to-r from-transparent via-[#FFD700]/80 to-transparent shadow-[0_0_8px_rgba(255,215,0,0.5)]" />
-                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 px-2 bg-black/90 backdrop-blur-sm">
-                      <span className="text-[#FFD700] text-[10px] font-bold tracking-wide">LOCAL</span>
+                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 px-1.5">
+                      <span className="text-[#FFD700] text-[10px] font-bold tracking-wide drop-shadow-[0_0_4px_rgba(255,215,0,0.8)]">LOCAL</span>
                     </div>
                   </div>
                 )}

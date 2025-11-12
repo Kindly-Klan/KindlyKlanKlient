@@ -640,7 +640,7 @@ pub fn select_main_class(instance_dir: &Path) -> String {
         return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string();
     }
     
-	let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
+    let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
     if fabric_loader_dir.exists() { 
         log::info!("🧵 Detected Fabric mod loader (fallback)");
         return "net.fabricmc.loader.impl.launch.knot.KnotClient".to_string();
@@ -648,6 +648,84 @@ pub fn select_main_class(instance_dir: &Path) -> String {
     
     log::info!("🎮 Using vanilla Minecraft");
     "net.minecraft.client.main.Main".to_string()
+}
+
+/// Extrae argumentos JVM adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
+pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
+    let mut additional_args = Vec::new();
+    
+    // Buscar el JSON del mod loader en versions/
+    let versions_dir = instance_dir.join("versions");
+    if !versions_dir.exists() {
+        return additional_args;
+    }
+    
+    if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let dir_name = entry.file_name();
+                let json_path = path.join(format!("{}.json", dir_name.to_string_lossy()));
+                
+                if json_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&json_path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            // Verificar si tiene mainClass de mod loader
+                            if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
+                                if main_class.contains("forge") || main_class.contains("neoforge") || main_class.contains("fabric") {
+                                    // Extraer argumentos JVM
+                                    if let Some(arguments) = json.get("arguments") {
+                                        if let Some(jvm_args) = arguments.get("jvm") {
+                                            if let Some(jvm_array) = jvm_args.as_array() {
+                                                for arg in jvm_array {
+                                                    if let Some(arg_str) = arg.as_str() {
+                                                        // Reemplazar placeholders comunes
+                                                        let processed_arg = arg_str
+                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                            .replace("${classpath_separator}", ";")
+                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                        additional_args.push(processed_arg);
+                                                    } else if let Some(obj) = arg.as_object() {
+                                                        // Argumentos condicionales - por ahora los agregamos todos
+                                                        if let Some(value) = obj.get("value") {
+                                                            if let Some(value_str) = value.as_str() {
+                                                                let processed_arg = value_str
+                                                                    .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                                    .replace("${classpath_separator}", ";")
+                                                                    .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                                additional_args.push(processed_arg);
+                                                            } else if let Some(value_arr) = value.as_array() {
+                                                                for v in value_arr {
+                                                                    if let Some(v_str) = v.as_str() {
+                                                                        let processed_arg = v_str
+                                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                                            .replace("${classpath_separator}", ";")
+                                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                                        additional_args.push(processed_arg);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                if !additional_args.is_empty() {
+                                                    log::info!("📋 Extracted {} JVM arguments from mod loader JSON", additional_args.len());
+                                                    return additional_args;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    additional_args
 }
 
 pub fn build_minecraft_jvm_args(

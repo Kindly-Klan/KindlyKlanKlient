@@ -810,7 +810,7 @@ async fn download_fabric_libraries(profile: &crate::models::FabricProfileJson, l
 }
 
 async fn run_fabric_installer(installer: &Path, instance_dir: &Path, mc: &str, fabric: &str) -> Result<(), String> {
-    let java_path = crate::launcher::find_java_executable().await?;
+    let java_path = crate::launcher::find_or_install_java_for_minecraft(mc).await?;
     let mut cmd = Command::new(&java_path);
     #[cfg(target_os = "windows")]
     {

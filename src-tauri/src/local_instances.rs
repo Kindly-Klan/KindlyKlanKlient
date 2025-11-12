@@ -546,13 +546,20 @@ pub async fn launch_local_instance(
         .unwrap_or((String::new(), "G1".to_string(), 1280, 720));
     
     // Build JVM args
-    let jvm_args = crate::launcher::build_minecraft_jvm_args(
+    let mut jvm_args = crate::launcher::build_minecraft_jvm_args(
         &access_token,
         min_ram_gb,
         max_ram_gb,
         &gc_config,
         &jvm_args_config,
     )?;
+    
+    // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
+    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir);
+    if !mod_loader_jvm_args.is_empty() {
+        log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
+        jvm_args.extend(mod_loader_jvm_args);
+    }
     
     // Get asset index
     let asset_index_id = crate::instances::ensure_assets_present(&app_handle, &instance_dir, &metadata.minecraft_version).await?;
