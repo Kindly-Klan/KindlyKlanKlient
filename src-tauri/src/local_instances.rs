@@ -107,6 +107,25 @@ pub async fn create_local_instance(
     
     log::info!("✅ Minecraft libraries downloaded");
     
+    // Ensure Java is installed BEFORE installing mod loader
+    let _ = app_handle.emit("local-instance-progress", serde_json::json!({
+        "instance_id": instance_id,
+        "stage": "java_check",
+        "percentage": 40,
+        "message": "Verificando Java..."
+    }));
+    
+    log::info!("🔍 Verificando Java para Minecraft {}", minecraft_version);
+    match crate::launcher::find_or_install_java_for_minecraft(&minecraft_version).await {
+        Ok(java_path) => {
+            log::info!("✅ Java disponible en: {}", java_path);
+        }
+        Err(e) => {
+            log::error!("❌ Error al instalar Java: {}", e);
+            return Err(format!("Error al instalar Java: {}", e));
+        }
+    }
+    
     // Install Mod Loader (if not vanilla)
     if mod_loader_type != "vanilla" {
         let loader_display_name = match mod_loader_type.as_str() {

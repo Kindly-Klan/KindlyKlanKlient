@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
- 
+use chrono;
  
 use tauri::Emitter;
 
@@ -557,7 +557,20 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
 }
 
 async fn run_forge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+    // Crear launcher_profiles.json si no existe
+    ensure_launcher_profile(instance_dir)?;
+    
+    // Obtener Java para la versión de Minecraft (necesitamos parsear del nombre del instalador)
     let java_path = crate::launcher::find_java_executable().await?;
+    
+    // Crear directorio temporal para el instalador
+    let temp_dir = std::env::temp_dir().join("kindlyklanklient_forge_install");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    
+    // Copiar instalador al directorio temporal
+    let temp_installer = temp_dir.join(installer.file_name().unwrap());
+    std::fs::copy(installer, &temp_installer).map_err(|e| format!("Failed to copy installer: {}", e))?;
+    
     let mut cmd = Command::new(&java_path);
     
     #[cfg(target_os = "windows")]
@@ -567,14 +580,19 @@ async fn run_forge_installer(installer: &Path, instance_dir: &Path) -> Result<()
     }
     
     let output = cmd
+        .current_dir(&temp_dir) // Ejecutar desde temp para que pueda escribir logs
         .args(&[
             "-jar",
-            &installer.to_string_lossy(),
+            &temp_installer.to_string_lossy(),
             "--installClient",
             instance_dir.to_string_lossy().as_ref(),
         ])
         .output()
         .map_err(|e| format!("Failed to run Forge installer: {}", e))?;
+    
+    // Limpiar archivos temporales
+    let _ = std::fs::remove_file(&temp_installer);
+    let _ = std::fs::remove_dir_all(&temp_dir);
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -635,7 +653,19 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
 }
 
 async fn run_neoforge_installer(installer: &Path, instance_dir: &Path) -> Result<(), String> {
+    // Crear launcher_profiles.json si no existe
+    ensure_launcher_profile(instance_dir)?;
+    
     let java_path = crate::launcher::find_java_executable().await?;
+    
+    // Crear directorio temporal para el instalador
+    let temp_dir = std::env::temp_dir().join("kindlyklanklient_neoforge_install");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    
+    // Copiar instalador al directorio temporal
+    let temp_installer = temp_dir.join(installer.file_name().unwrap());
+    std::fs::copy(installer, &temp_installer).map_err(|e| format!("Failed to copy installer: {}", e))?;
+    
     let mut cmd = Command::new(&java_path);
     
     #[cfg(target_os = "windows")]
@@ -645,14 +675,19 @@ async fn run_neoforge_installer(installer: &Path, instance_dir: &Path) -> Result
     }
     
     let output = cmd
+        .current_dir(&temp_dir) // Ejecutar desde temp para que pueda escribir logs
         .args(&[
             "-jar",
-            &installer.to_string_lossy(),
+            &temp_installer.to_string_lossy(),
             "--installClient",
             instance_dir.to_string_lossy().as_ref(),
         ])
         .output()
         .map_err(|e| format!("Failed to run NeoForge installer: {}", e))?;
+    
+    // Limpiar archivos temporales
+    let _ = std::fs::remove_file(&temp_installer);
+    let _ = std::fs::remove_dir_all(&temp_dir);
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -663,6 +698,40 @@ async fn run_neoforge_installer(installer: &Path, instance_dir: &Path) -> Result
     }
     
     log::info!("✅ Instalador de NeoForge ejecutado correctamente");
+    Ok(())
+}
+
+/// Crea un launcher_profiles.json dummy si no existe
+fn ensure_launcher_profile(instance_dir: &Path) -> Result<(), String> {
+    let profile_path = instance_dir.join("launcher_profiles.json");
+    
+    if !profile_path.exists() {
+        log::info!("📝 Creando launcher_profiles.json");
+        
+        let profile_content = serde_json::json!({
+            "profiles": {
+                "default": {
+                    "name": "KindlyKlanKlient",
+                    "type": "custom",
+                    "created": chrono::Utc::now().to_rfc3339(),
+                    "lastUsed": chrono::Utc::now().to_rfc3339(),
+                    "lastVersionId": "release",
+                    "gameDir": instance_dir.to_string_lossy()
+                }
+            },
+            "settings": {
+                "enableSnapshots": false,
+                "enableAdvanced": false
+            },
+            "version": 3
+        });
+        
+        std::fs::write(&profile_path, serde_json::to_string_pretty(&profile_content).unwrap())
+            .map_err(|e| format!("Failed to create launcher_profiles.json: {}", e))?;
+        
+        log::info!("✅ launcher_profiles.json creado");
+    }
+    
     Ok(())
 }
 

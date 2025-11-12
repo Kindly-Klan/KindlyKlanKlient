@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { MinecraftVersionInfo, FabricLoaderVersion, ForgeVersion, NeoForgeVersion, LocalInstance } from '@/types/local-instances';
+import fabricIcon from '@/assets/icons/fabricmc.svg';
+import neoforgeIcon from '@/assets/icons/neoforge.svg';
 
 interface CreateLocalInstanceModalProps {
   isOpen: boolean;
@@ -340,7 +342,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     <div className="flex flex-col items-center text-center">
                       <div className="text-4xl mb-2">🎮</div>
                       <span className="text-white font-medium">Vanilla</span>
-                      <span className="text-white/60 text-xs mt-1">Sin mods</span>
                     </div>
                   </button>
                   
@@ -353,9 +354,8 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <img src="/src/assets/icons/fabricmc.svg" alt="Fabric" className="w-12 h-12 mb-2" />
+                      <img src={fabricIcon} alt="Fabric" className="w-12 h-12 mb-2" />
                       <span className="text-white font-medium">Fabric</span>
-                      <span className="text-white/60 text-xs mt-1">Ligero y moderno</span>
                     </div>
                   </button>
                   
@@ -370,7 +370,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     <div className="flex flex-col items-center text-center">
                       <div className="text-4xl mb-2">⚒️</div>
                       <span className="text-white font-medium">Forge</span>
-                      <span className="text-white/60 text-xs mt-1">Clásico y estable</span>
                     </div>
                   </button>
                   
@@ -383,9 +382,8 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <img src="/src/assets/icons/neoforge.svg" alt="NeoForge" className="w-12 h-12 mb-2" />
+                      <img src={neoforgeIcon} alt="NeoForge" className="w-12 h-12 mb-2" />
                       <span className="text-white font-medium">NeoForge</span>
-                      <span className="text-white/60 text-xs mt-1">Nueva generación</span>
                     </div>
                   </button>
                 </div>
