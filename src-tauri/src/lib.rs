@@ -131,7 +131,8 @@ async fn launch_minecraft_with_auth(
     let mut jvm_args = crate::launcher::build_minecraft_jvm_args(access_token, min_ram, max_ram, &gc_config, &jvm_args_config)?;
     
     // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
-    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir);
+    // En lib.rs no tenemos el metadata, así que pasamos None y la función intentará detectar desde JSON
+    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, None, None);
     if !mod_loader_jvm_args.is_empty() {
         log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
         jvm_args.extend(mod_loader_jvm_args);

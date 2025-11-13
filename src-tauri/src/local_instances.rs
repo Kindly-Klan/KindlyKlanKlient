@@ -555,7 +555,9 @@ pub async fn launch_local_instance(
     )?;
     
     // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
-    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir);
+    let mod_loader_type = metadata.mod_loader.as_ref().map(|ml| ml.r#type.as_str());
+    let mod_loader_version = metadata.mod_loader.as_ref().map(|ml| ml.version.as_str());
+    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, mod_loader_type, mod_loader_version);
     if !mod_loader_jvm_args.is_empty() {
         log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
         jvm_args.extend(mod_loader_jvm_args);

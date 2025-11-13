@@ -471,13 +471,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     {modLoaderType !== 'vanilla' && ` ${selectedModLoaderVersion}`}
                   </p>
                 </div>
-
-                <div className="mt-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                  <p className="text-yellow-300 text-sm">
-                    ⚠️ La creación puede tardar varios minutos mientras se descargan los archivos necesarios.
-                    {modLoaderType !== 'vanilla' && ' Java se descargará automáticamente si es necesario.'}
-                  </p>
-                </div>
               </div>
             </div>
           )}

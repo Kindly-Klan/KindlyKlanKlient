@@ -651,23 +651,21 @@ pub fn select_main_class(instance_dir: &Path) -> String {
 }
 
 /// Extrae argumentos JVM adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
-pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
+/// mod_loader_type: Tipo de mod loader desde launcher_profiles.json ("neoforge", "forge", "fabric")
+/// mod_loader_version: Versión del mod loader desde launcher_profiles.json
+pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str>, mod_loader_version: Option<&str>) -> Vec<String> {
     let mut additional_args = Vec::new();
-    let mut detected_mod_loader: Option<&str> = None;
     
-    // Buscar el JSON del mod loader en versions/
+    // Usar el tipo de mod loader del metadata
+    let loader_type = mod_loader_type;
+    
+    if let Some(loader) = loader_type {
+        log::info!("📋 Using mod loader type from metadata: {}", loader);
+    }
+    
+    // Leer argumentos JVM del JSON de la versión que genera el instalador en versions/
     let versions_dir = instance_dir.join("versions");
-    if !versions_dir.exists() {
-        log::warn!("⚠️  Versions directory does not exist, using fallback detection");
-        // Fallback: detectar por directorios de libraries
-        let neoforge_loader_dir = instance_dir.join("libraries").join("net").join("neoforged");
-        let forge_loader_dir = instance_dir.join("libraries").join("net").join("minecraftforge");
-        if neoforge_loader_dir.exists() {
-            detected_mod_loader = Some("neoforge");
-        } else if forge_loader_dir.exists() {
-            detected_mod_loader = Some("forge");
-        }
-    } else {
+    if versions_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&versions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -678,70 +676,60 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
                     if json_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&json_path) {
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                                // Verificar si tiene mainClass de mod loader
-                                if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
-                                    if main_class.contains("neoforge") || main_class.contains("neoforged") {
-                                        detected_mod_loader = Some("neoforge");
-                                    } else if main_class.contains("minecraftforge") || main_class.contains("forge") {
-                                        detected_mod_loader = Some("forge");
-                                    } else if main_class.contains("fabricmc") || main_class.contains("fabric") {
-                                        detected_mod_loader = Some("fabric");
-                                    }
+                                // Verificar que sea un mod loader (tiene mainClass de mod loader o arguments.jvm)
+                                let is_mod_loader = json.get("mainClass")
+                                    .and_then(|v| v.as_str())
+                                    .map(|mc| mc.contains("forge") || mc.contains("neoforge") || mc.contains("fabric"))
+                                    .unwrap_or(false)
+                                    || json.get("arguments")
+                                        .and_then(|a| a.get("jvm"))
+                                        .is_some();
+                                
+                                if is_mod_loader {
+                                    log::info!("📋 Found mod loader version JSON: {}", dir_name.to_string_lossy());
                                     
-                                    if detected_mod_loader.is_some() {
-                                        log::info!("🔍 Detected mod loader: {:?} from mainClass: {}", detected_mod_loader, main_class);
-                                        
-                                        // Extraer argumentos JVM
-                                        if let Some(arguments) = json.get("arguments") {
-                                            if let Some(jvm_args) = arguments.get("jvm") {
-                                                if let Some(jvm_array) = jvm_args.as_array() {
-                                                    log::info!("📋 Found {} JVM arguments in JSON", jvm_array.len());
-                                                    for arg in jvm_array {
-                                                        if let Some(arg_str) = arg.as_str() {
-                                                            // Reemplazar placeholders comunes
-                                                            let processed_arg = arg_str
-                                                                .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                                .replace("${classpath_separator}", ";")
-                                                                .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                            additional_args.push(processed_arg);
-                                                        } else if let Some(obj) = arg.as_object() {
-                                                            // Argumentos condicionales - por ahora los agregamos todos
-                                                            if let Some(value) = obj.get("value") {
-                                                                if let Some(value_str) = value.as_str() {
-                                                                    let processed_arg = value_str
-                                                                        .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                                        .replace("${classpath_separator}", ";")
-                                                                        .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                                    additional_args.push(processed_arg);
-                                                                } else if let Some(value_arr) = value.as_array() {
-                                                                    for v in value_arr {
-                                                                        if let Some(v_str) = v.as_str() {
-                                                                            let processed_arg = v_str
-                                                                                .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                                                .replace("${classpath_separator}", ";")
-                                                                                .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                                            additional_args.push(processed_arg);
-                                                                        }
+                                    // Extraer argumentos JVM del JSON
+                                    if let Some(arguments) = json.get("arguments") {
+                                        if let Some(jvm_args) = arguments.get("jvm") {
+                                            if let Some(jvm_array) = jvm_args.as_array() {
+                                                log::info!("📋 Found {} JVM arguments in version JSON", jvm_array.len());
+                                                for arg in jvm_array {
+                                                    if let Some(arg_str) = arg.as_str() {
+                                                        // Reemplazar placeholders comunes
+                                                        let processed_arg = arg_str
+                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                            .replace("${classpath_separator}", ";")
+                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                        additional_args.push(processed_arg);
+                                                    } else if let Some(obj) = arg.as_object() {
+                                                        // Argumentos condicionales - procesar value
+                                                        if let Some(value) = obj.get("value") {
+                                                            if let Some(value_str) = value.as_str() {
+                                                                let processed_arg = value_str
+                                                                    .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                                    .replace("${classpath_separator}", ";")
+                                                                    .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                                additional_args.push(processed_arg);
+                                                            } else if let Some(value_arr) = value.as_array() {
+                                                                for v in value_arr {
+                                                                    if let Some(v_str) = v.as_str() {
+                                                                        let processed_arg = v_str
+                                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
+                                                                            .replace("${classpath_separator}", ";")
+                                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
+                                                                        additional_args.push(processed_arg);
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                    
-                                                    if !additional_args.is_empty() {
-                                                        log::info!("✅ Extracted {} JVM arguments from mod loader JSON", additional_args.len());
-                                                        return additional_args;
-                                                    } else {
-                                                        log::warn!("⚠️  JVM arguments array was empty in JSON");
-                                                    }
-                                                } else {
-                                                    log::warn!("⚠️  JVM arguments is not an array in JSON");
                                                 }
-                                            } else {
-                                                log::warn!("⚠️  No 'jvm' key found in arguments object");
+                                                
+                                                if !additional_args.is_empty() {
+                                                    log::info!("✅ Extracted {} JVM arguments from version JSON", additional_args.len());
+                                                    return additional_args;
+                                                }
                                             }
-                                        } else {
-                                            log::warn!("⚠️  No 'arguments' key found in JSON");
                                         }
                                     }
                                 }
@@ -753,9 +741,9 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
         }
     }
     
-    // Si no se encontraron argumentos en el JSON, usar argumentos por defecto según el mod loader
+    // Tercero: Si no se encontraron argumentos, usar argumentos por defecto según el mod loader
     if additional_args.is_empty() {
-        if let Some(loader) = detected_mod_loader {
+        if let Some(loader) = loader_type {
             log::info!("📦 Using default JVM arguments for {}", loader);
             match loader {
                 "neoforge" | "forge" => {
@@ -796,7 +784,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
                     ]);
                 }
                 "fabric" => {
-                    // Fabric generalmente no necesita tantos --add-opens, pero algunos son útiles
                     additional_args.extend(vec![
                         "--add-opens".to_string(),
                         "java.base/java.lang.invoke=ALL-UNNAMED".to_string(),
@@ -805,15 +792,12 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path) -> Vec<String> {
                 _ => {}
             }
         } else {
-            log::warn!("⚠️  Could not detect mod loader type, no JVM arguments added");
+            log::warn!("⚠️  No mod loader type available, no JVM arguments added");
         }
     }
     
     if !additional_args.is_empty() {
-        log::info!("✅ Using {} JVM arguments ({} from JSON, {} defaults)", 
-            additional_args.len(),
-            if detected_mod_loader.is_some() { "some" } else { "0" },
-            additional_args.len());
+        log::info!("✅ Using {} JVM arguments", additional_args.len());
     }
     
     additional_args
