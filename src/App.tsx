@@ -23,6 +23,7 @@ import CreateLocalInstanceModal from "@/components/CreateLocalInstanceModal";
 import type { LocalInstance } from "@/types/local-instances";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
+import { logger } from "@/utils/logger";
 type AssetDownloadProgress = {
   current: number;
   total: number;

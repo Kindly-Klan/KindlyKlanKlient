@@ -589,6 +589,12 @@ pub async fn launch_local_instance(
     log::info!("☕ Usando Java en: {}", java_path);
     
     // Launch Minecraft
+    log::info!("🎮 Launching with main class: {}", main_class);
+    log::info!("☕ Java path: {}", java_path);
+    log::info!("📦 Classpath length: {} bytes", classpath.len());
+    log::info!("🔧 JVM args: {:?}", jvm_args);
+    log::info!("🎯 MC args: {:?}", mc_args);
+    
     let mut command = Command::new(&java_path);
     #[cfg(target_os = "windows")]
     {
@@ -596,23 +602,62 @@ pub async fn launch_local_instance(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     
-    let mut child = command
+    command
         .args(&jvm_args)
         .arg("-cp")
         .arg(&classpath)
-        .arg(main_class)
+        .arg(&main_class)
         .args(&mc_args)
         .current_dir(&instance_dir)
-        .spawn()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    
+    let mut child = command.spawn()
         .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
+    
+    // Capturar stdout
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::{BufRead, BufReader};
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                log::info!("[MC] {}", line);
+            }
+        });
+    }
+    
+    // Capturar stderr
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::{BufRead, BufReader};
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                log::error!("[MC] {}", line);
+            }
+        });
+    }
     
     let app = app_handle.clone();
     std::thread::spawn(move || {
-        let _ = child.wait();
-        let _ = app.emit("minecraft_exited", serde_json::json!({ "status": "exited" }));
+        match child.wait() {
+            Ok(status) => {
+                log::info!("🎮 Minecraft exited with status: {:?}", status);
+                let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "status": "exited",
+                    "code": status.code()
+                }));
+            }
+            Err(e) => {
+                log::error!("❌ Error waiting for Minecraft: {}", e);
+                let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "status": "error",
+                    "error": e.to_string()
+                }));
+            }
+        }
     });
     
-    log::info!("🎮 Minecraft launched successfully");
+    log::info!("🎮 Minecraft process spawned successfully");
     
     Ok(format!("Local instance {} launched successfully", instance_id))
 }

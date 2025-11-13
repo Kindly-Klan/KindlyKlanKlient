@@ -163,26 +163,73 @@ async fn launch_minecraft_with_auth(
     mc_args.push(window_height.to_string());
 
     let main_class = crate::launcher::select_main_class(&instance_dir);
+    
+    log::info!("🎮 Launching with main class: {}", main_class);
+    log::info!("📦 Classpath length: {} bytes", classpath.len());
+    log::info!("🔧 JVM args: {:?}", jvm_args);
+    log::info!("🎯 MC args: {:?}", mc_args);
+    
     let mut command = Command::new(java_path);
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let mut child = command
+    
+    // Capturar stdout y stderr para debugging
+    command
         .args(&jvm_args)
         .arg("-cp")
         .arg(&classpath)
-        .arg(main_class)
+        .arg(&main_class)
         .args(&mc_args)
         .current_dir(&instance_dir)
-        .spawn()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    
+    let mut child = command.spawn()
         .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
+    
+    // Capturar stdout
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::{BufRead, BufReader};
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                log::info!("[MC] {}", line);
+            }
+        });
+    }
+    
+    // Capturar stderr
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::{BufRead, BufReader};
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                log::error!("[MC] {}", line);
+            }
+        });
+    }
 
     let app = app_handle.clone();
     std::thread::spawn(move || {
-        let _ = child.wait();
-        let _ = app.emit("minecraft_exited", serde_json::json!({ "status": "exited" }));
+        match child.wait() {
+            Ok(status) => {
+                log::info!("🎮 Minecraft exited with status: {:?}", status);
+                let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "status": "exited",
+                    "code": status.code()
+                }));
+            }
+            Err(e) => {
+                log::error!("❌ Error waiting for Minecraft: {}", e);
+                let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "status": "error",
+                    "error": e.to_string()
+                }));
+            }
+        }
     });
 
     Ok("Minecraft launched".to_string())
@@ -288,7 +335,12 @@ pub fn run() {
             get_forge_versions,
             get_recommended_forge_version,
             get_neoforge_versions,
-            get_recommended_neoforge_version
+            get_recommended_neoforge_version,
+            // Frontend logging
+            log_frontend_error,
+            get_frontend_logs,
+            clear_frontend_logs,
+            open_frontend_log_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

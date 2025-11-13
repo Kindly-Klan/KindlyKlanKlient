@@ -1176,4 +1176,105 @@ fn parse_neoforge_versions_from_xml(xml: &str, mc_version: &str) -> Result<Vec<N
     Ok(versions)
 }
 
+// ==================== FRONTEND LOGGING ====================
+
+/// Obtiene la ruta del archivo de logs del frontend
+fn get_frontend_log_path() -> Result<std::path::PathBuf, String> {
+    let base = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(|p| std::path::PathBuf::from(p))
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    
+    let log_dir = base.join(".kindlyklanklient").join("logs");
+    std::fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create log directory: {}", e))?;
+    
+    Ok(log_dir.join("frontend.log"))
+}
+
+#[tauri::command]
+pub async fn log_frontend_error(level: String, message: String, context: Option<String>) -> Result<(), String> {
+    let log_path = get_frontend_log_path()?;
+    
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let context_str = context.map(|c| format!(" [{}]", c)).unwrap_or_default();
+    let log_line = format!("[{}] {}{}: {}\n", timestamp, level.to_uppercase(), context_str, message);
+    
+    // Escribir al archivo
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| format!("Failed to open log file: {}", e))?;
+    
+    file.write_all(log_line.as_bytes())
+        .map_err(|e| format!("Failed to write to log file: {}", e))?;
+    
+    // También loggear en el sistema de logs de Rust
+    match level.to_lowercase().as_str() {
+        "error" => log::error!("[Frontend]{} {}", context_str, message),
+        "warn" => log::warn!("[Frontend]{} {}", context_str, message),
+        "info" => log::info!("[Frontend]{} {}", context_str, message),
+        _ => log::debug!("[Frontend]{} {}", context_str, message),
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_frontend_logs() -> Result<String, String> {
+    let log_path = get_frontend_log_path()?;
+    
+    if !log_path.exists() {
+        return Ok(String::from("No logs available yet."));
+    }
+    
+    std::fs::read_to_string(&log_path)
+        .map_err(|e| format!("Failed to read log file: {}", e))
+}
+
+#[tauri::command]
+pub async fn clear_frontend_logs() -> Result<(), String> {
+    let log_path = get_frontend_log_path()?;
+    
+    if log_path.exists() {
+        std::fs::remove_file(&log_path)
+            .map_err(|e| format!("Failed to clear log file: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_frontend_log_folder() -> Result<(), String> {
+    let log_path = get_frontend_log_path()?;
+    let log_dir = log_path.parent()
+        .ok_or_else(|| "Failed to get log directory".to_string())?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    Ok(())
+}
 
