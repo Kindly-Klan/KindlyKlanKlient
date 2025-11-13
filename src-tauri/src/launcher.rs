@@ -688,39 +688,71 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str
                                 if is_mod_loader {
                                     log::info!("📋 Found mod loader version JSON: {}", dir_name.to_string_lossy());
                                     
+                                    // Preparar valores para reemplazar placeholders
+                                    let library_directory = instance_dir.join("libraries").to_string_lossy().to_string();
+                                    let natives_directory = path.join("natives").to_string_lossy().to_string();
+                                    let version_name = dir_name.to_string_lossy().to_string();
+                                    let classpath_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+                                    
                                     // Extraer argumentos JVM del JSON
                                     if let Some(arguments) = json.get("arguments") {
                                         if let Some(jvm_args) = arguments.get("jvm") {
                                             if let Some(jvm_array) = jvm_args.as_array() {
                                                 log::info!("📋 Found {} JVM arguments in version JSON", jvm_array.len());
                                                 for arg in jvm_array {
-                                                    if let Some(arg_str) = arg.as_str() {
-                                                        // Reemplazar placeholders comunes
-                                                        let processed_arg = arg_str
-                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                            .replace("${classpath_separator}", ";")
-                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                        additional_args.push(processed_arg);
+                                                    let arg_str_opt = if let Some(arg_str) = arg.as_str() {
+                                                        Some(arg_str.to_string())
                                                     } else if let Some(obj) = arg.as_object() {
                                                         // Argumentos condicionales - procesar value
                                                         if let Some(value) = obj.get("value") {
                                                             if let Some(value_str) = value.as_str() {
-                                                                let processed_arg = value_str
-                                                                    .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                                    .replace("${classpath_separator}", ";")
-                                                                    .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                                additional_args.push(processed_arg);
+                                                                Some(value_str.to_string())
                                                             } else if let Some(value_arr) = value.as_array() {
-                                                                for v in value_arr {
-                                                                    if let Some(v_str) = v.as_str() {
-                                                                        let processed_arg = v_str
-                                                                            .replace("${library_directory}", &instance_dir.join("libraries").to_string_lossy())
-                                                                            .replace("${classpath_separator}", ";")
-                                                                            .replace("${version_name}", dir_name.to_string_lossy().as_ref());
-                                                                        additional_args.push(processed_arg);
-                                                                    }
-                                                                }
+                                                                // Si es un array, tomar el primer valor o concatenar
+                                                                value_arr.first()
+                                                                    .and_then(|v| v.as_str())
+                                                                    .map(|s| s.to_string())
+                                                            } else {
+                                                                None
                                                             }
+                                                        } else {
+                                                            None
+                                                        }
+                                                    } else {
+                                                        None
+                                                    };
+                                                    
+                                                    if let Some(arg_str) = arg_str_opt {
+                                                        // Reemplazar TODOS los placeholders
+                                                        let processed_arg = arg_str
+                                                            .replace("${library_directory}", &library_directory)
+                                                            .replace("${natives_directory}", &natives_directory)
+                                                            .replace("${classpath_separator}", classpath_separator)
+                                                            .replace("${version_name}", &version_name)
+                                                            .replace("${launcher_name}", "KindlyKlanKlient")
+                                                            .replace("${launcher_version}", "1.0.0")
+                                                            .replace("${classpath}", ""); // Se pasa por separado, eliminar
+                                                        
+                                                        // Filtrar argumentos incompatibles
+                                                        #[cfg(target_os = "windows")]
+                                                        {
+                                                            // Eliminar argumentos específicos de macOS/Unix
+                                                            if processed_arg == "-XstartOnFirstThread" {
+                                                                continue;
+                                                            }
+                                                        }
+                                                        
+                                                        // Eliminar -cp y classpath ya que se pasa por separado
+                                                        if processed_arg == "-cp" || processed_arg.starts_with("-cp ") {
+                                                            continue;
+                                                        }
+                                                        if processed_arg.contains("${classpath}") || processed_arg == "${classpath}" {
+                                                            continue;
+                                                        }
+                                                        
+                                                        // Solo agregar si no está vacío después del procesamiento
+                                                        if !processed_arg.trim().is_empty() {
+                                                            additional_args.push(processed_arg);
                                                         }
                                                     }
                                                 }
