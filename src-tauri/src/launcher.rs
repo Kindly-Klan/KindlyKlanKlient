@@ -758,6 +758,32 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str
                                                 }
                                                 
                                                 if !additional_args.is_empty() {
+                                                    // Verificar si falta --add-opens java.base/java.lang.invoke=ALL-UNNAMED
+                                                    // NeoForge lo necesita además de los específicos del módulo
+                                                    let mut has_all_unnamed_invoke = false;
+                                                    let mut has_invoke_opens = false;
+                                                    
+                                                    // Buscar pares --add-opens seguido de java.base/java.lang.invoke=...
+                                                    for i in 0..additional_args.len().saturating_sub(1) {
+                                                        if additional_args[i] == "--add-opens" {
+                                                            let next_arg = &additional_args[i + 1];
+                                                            if next_arg.contains("java.base/java.lang.invoke") {
+                                                                has_invoke_opens = true;
+                                                                if next_arg.contains("ALL-UNNAMED") {
+                                                                    has_all_unnamed_invoke = true;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // Si hay opens de java.lang.invoke pero no ALL-UNNAMED, agregarlo
+                                                    if has_invoke_opens && !has_all_unnamed_invoke {
+                                                        log::info!("🔧 Adding missing --add-opens java.base/java.lang.invoke=ALL-UNNAMED");
+                                                        additional_args.push("--add-opens".to_string());
+                                                        additional_args.push("java.base/java.lang.invoke=ALL-UNNAMED".to_string());
+                                                    }
+                                                    
                                                     log::info!("✅ Extracted {} JVM arguments from version JSON", additional_args.len());
                                                     return additional_args;
                                                 }
