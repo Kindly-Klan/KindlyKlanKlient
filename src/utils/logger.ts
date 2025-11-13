@@ -97,7 +97,6 @@ class FrontendLogger {
     let errorData: Record<string, any> | undefined;
 
     if (error instanceof Error) {
-      const errorAny = error as Record<string, unknown>;
       errorData = {
         message: error.message,
         stack: error.stack,
@@ -105,7 +104,8 @@ class FrontendLogger {
 
       // Incluir propiedades adicionales del error si existen
       const enumerableProps: Record<string, unknown> = {};
-      for (const key of Object.getOwnPropertyNames(errorAny)) {
+      const errorAny = error as unknown as Record<string, unknown>;
+      for (const key of Object.getOwnPropertyNames(error)) {
         if (key !== 'message' && key !== 'stack') {
           enumerableProps[key] = errorAny[key];
         }
