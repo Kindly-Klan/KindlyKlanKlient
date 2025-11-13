@@ -43,6 +43,7 @@ interface SidebarProps {
   onCreateLocalInstance?: () => void;
   creatingInstanceId?: string | null;
   onLocalInstanceDeleted?: (instanceId: string) => void;
+  addToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -59,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateLocalInstance,
   creatingInstanceId = null,
   onLocalInstanceDeleted,
+  addToast,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
   const [localInstancesExpanded, setLocalInstancesExpanded] = useState(false);
@@ -93,9 +95,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       await invoke('delete_local_instance', { instanceId: contextMenu.instanceId });
       onLocalInstanceDeleted?.(contextMenu.instanceId);
       setContextMenu(null);
+      if (addToast) {
+        addToast('Instancia eliminada correctamente', 'success');
+      }
     } catch (error) {
       console.error('Error deleting instance:', error);
-      alert(`Error al eliminar instancia: ${error}`);
+      if (addToast) {
+        addToast(`Error al eliminar instancia: ${error}`, 'error');
+      }
     }
   };
 

@@ -138,24 +138,51 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             )}
             <div className="flex space-x-2">
-              <Button
+              <button
                 onClick={handleCheckUpdates}
                 disabled={isChecking}
-                variant="outline"
-                size="sm"
-                className="text-xs border-white/20 text-white hover:bg-white/10 disabled:opacity-50"
+                className="text-xs px-3 py-2 rounded-xl border-2 border-cyan-400/60 text-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+                style={{
+                  background: isChecking 
+                    ? 'linear-gradient(135deg, rgba(34, 211, 238, 0.1) 0%, rgba(0, 0, 0, 0.3) 100%)'
+                    : 'linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                }}
               >
-                {isChecking ? 'Verificando...' : 'Verificar'}
-              </Button>
+                {isChecking ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin"></div>
+                    Verificando...
+                  </>
+                ) : (
+                  'Verificar'
+                )}
+              </button>
               {updateInfo?.available && (
-                <Button
+                <button
                   onClick={handleInstallUpdate}
                   disabled={isInstalling}
-                  size="sm"
-                  className="text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                  className="text-xs px-3 py-2 rounded-xl border-2 border-green-400/60 text-green-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+                  style={{
+                    background: isInstalling
+                      ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(0, 0, 0, 0.3) 100%)'
+                      : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                  }}
                 >
-                  {isInstalling ? 'Instalando...' : 'Instalar'}
-                </Button>
+                  {isInstalling ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-green-300 border-t-transparent rounded-full animate-spin"></div>
+                      Instalando...
+                    </>
+                  ) : (
+                    'Instalar'
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -163,15 +190,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="bg-black/20 rounded-lg p-3 border border-white/10">
             <h3 className="text-sm font-medium text-white mb-2">Debugging</h3>
             <div className="space-y-2">
-              <Button
+              <button
                 onClick={handleTestManifestUrl}
                 disabled={isTestingUrl}
-                variant="outline"
-                size="sm"
-                className="text-xs border-white/20 text-white hover:bg-white/10 disabled:opacity-50 w-full"
+                className="text-xs px-3 py-2 rounded-xl border-2 border-purple-400/60 text-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 w-full flex items-center justify-center gap-2"
+                style={{
+                  background: isTestingUrl
+                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(0, 0, 0, 0.3) 100%)'
+                    : 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                }}
               >
-                {isTestingUrl ? 'Probando...' : 'Probar URL del Manifest'}
-              </Button>
+                {isTestingUrl ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
+                    Probando...
+                  </>
+                ) : (
+                  'Probar URL del Manifest'
+                )}
+              </button>
 
               {debugResult && (
                 <div className="bg-black/40 rounded p-2 border border-white/10">
@@ -195,19 +235,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             
           <div className="flex space-x-3 pt-4">
-            <Button
+            <button
               onClick={handleReload}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-1 px-4 py-2 rounded-xl border-2 border-blue-400/60 text-blue-200 transition-all duration-200"
+              style={{
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
+                e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(59, 130, 246, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
+                e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+              }}
             >
               Recargar Distribución
-            </Button>
-            <Button
+            </button>
+            <button
               onClick={onClose}
-              variant="outline"
-              className="flex-1 border-white/20 text-white hover:bg-white/10"
+              className="flex-1 px-4 py-2 rounded-xl border-2 border-gray-400/60 text-gray-200 transition-all duration-200"
+              style={{
+                background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
+                e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(156, 163, 175, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
+                e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+              }}
             >
               Cerrar
-            </Button>
+            </button>
           </div>
         </div>
       </div>
