@@ -22,7 +22,8 @@ class FrontendLogger {
   private setupGlobalErrorHandlers() {
     // Capturar errores no manejados
     window.addEventListener('error', (event) => {
-      this.error('Unhandled Error', event.error?.message || event.message, {
+      const errorObject = event.error ?? { message: event.message };
+      void this.error('Unhandled Error', errorObject, 'window.error', {
         stack: event.error?.stack,
         filename: event.filename,
         lineno: event.lineno,
@@ -32,7 +33,7 @@ class FrontendLogger {
     
     // Capturar promesas rechazadas
     window.addEventListener('unhandledrejection', (event) => {
-      this.error('Unhandled Promise Rejection', event.reason?.message || String(event.reason), {
+      void this.error('Unhandled Promise Rejection', event.reason, 'unhandledrejection', {
         reason: event.reason,
       });
     });
@@ -92,13 +93,38 @@ class FrontendLogger {
   /**
    * Registra un error
    */
-  async error(message: string, error?: any, context?: string) {
-    const errorData = error ? {
-      message: error.message || String(error),
-      stack: error.stack,
-      ...error,
-    } : undefined;
-    
+  async error(message: string, error?: any, context?: string, extraData?: any) {
+    let errorData: Record<string, any> | undefined;
+
+    if (error instanceof Error) {
+      const errorAny = error as Record<string, unknown>;
+      errorData = {
+        message: error.message,
+        stack: error.stack,
+      };
+
+      // Incluir propiedades adicionales del error si existen
+      const enumerableProps: Record<string, unknown> = {};
+      for (const key of Object.getOwnPropertyNames(errorAny)) {
+        if (key !== 'message' && key !== 'stack') {
+          enumerableProps[key] = errorAny[key];
+        }
+      }
+      if (Object.keys(enumerableProps).length > 0) {
+        errorData = { ...errorData, ...enumerableProps };
+      }
+    } else if (error !== undefined) {
+      if (typeof error === 'object') {
+        errorData = { ...error };
+      } else {
+        errorData = { value: error };
+      }
+    }
+
+    if (extraData) {
+      errorData = { ...(errorData || {}), ...extraData };
+    }
+
     return this.log('error', message, context, errorData);
   }
   

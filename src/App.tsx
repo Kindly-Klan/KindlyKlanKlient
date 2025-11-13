@@ -382,6 +382,10 @@ function App() {
   const [syncModsModalOpen, setSyncModsModalOpen] = useState(false);
   const [syncingLocalId, setSyncingLocalId] = useState<string | null>(null);
 
+  useEffect(() => {
+    void logger.info('Aplicación iniciada', 'APP');
+  }, []);
+  
   useEffect(() => {}, [distributionLoaded]);
   
   // Manejar evento de cierre durante descarga
