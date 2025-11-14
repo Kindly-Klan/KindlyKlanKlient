@@ -1244,7 +1244,7 @@ function App() {
                ) : skinViewOpen ? (
                  <SkinManager
                    currentUser={currentAccount?.user}
-                   onClose={() => setSkinViewOpen(false)}
+                   addToast={addToast}
                  />
                ) : settingsOpen ? (
                  <SettingsView

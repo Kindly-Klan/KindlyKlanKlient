@@ -337,6 +337,14 @@ pub fn run() {
             get_recommended_forge_version,
             get_neoforge_versions,
             get_recommended_neoforge_version,
+            // Skin management
+            upload_skin_to_mojang,
+            set_skin_variant,
+            create_temp_file,
+            save_skin_file,
+            load_skin_file,
+            delete_skin_file,
+            list_skin_files,
             // Frontend logging
             log_frontend_error,
             get_frontend_logs,

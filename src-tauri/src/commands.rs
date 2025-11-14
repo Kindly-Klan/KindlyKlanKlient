@@ -280,13 +280,91 @@ pub async fn set_skin_variant(file_path: String, variant: String, access_token: 
 
 #[tauri::command]
 pub async fn create_temp_file(file_name: String, file_data: Vec<u8>) -> Result<String, String> {
-    use std::fs::File;
+use std::fs::File;
     use std::io::Write;
     let temp_dir = std::env::temp_dir();
     let file_path = temp_dir.join(&file_name);
     let mut file = File::create(&file_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
     file.write_all(&file_data).map_err(|e| format!("Failed to write temp file: {}", e))?;
     Ok(file_path.to_string_lossy().to_string())
+}
+
+// ============================================================================
+// Skin File Management Cmds
+// ============================================================================
+
+fn get_skins_directory() -> std::path::PathBuf {
+    std::env::var("USERPROFILE")
+        .map(|p| std::path::Path::new(&p).join(".kindlyklanklient").join("skins"))
+        .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient").join("skins"))
+}
+
+#[tauri::command]
+pub async fn save_skin_file(skin_id: String, file_data: Vec<u8>) -> Result<String, String> {
+    let skins_dir = get_skins_directory();
+    fs::create_dir_all(&skins_dir).await
+        .map_err(|e| format!("Failed to create skins directory: {}", e))?;
+    
+    let file_path = skins_dir.join(format!("{}.png", skin_id));
+    fs::write(&file_path, &file_data).await
+        .map_err(|e| format!("Failed to save skin file: {}", e))?;
+    
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn load_skin_file(skin_id: String) -> Result<Vec<u8>, String> {
+    let skins_dir = get_skins_directory();
+    let file_path = skins_dir.join(format!("{}.png", skin_id));
+    
+    if !file_path.exists() {
+        return Err(format!("Skin file not found: {}", skin_id));
+    }
+    
+    let file_data = fs::read(&file_path).await
+        .map_err(|e| format!("Failed to read skin file: {}", e))?;
+    
+    Ok(file_data)
+}
+
+#[tauri::command]
+pub async fn delete_skin_file(skin_id: String) -> Result<String, String> {
+    let skins_dir = get_skins_directory();
+    let file_path = skins_dir.join(format!("{}.png", skin_id));
+    
+    if file_path.exists() {
+        fs::remove_file(&file_path).await
+            .map_err(|e| format!("Failed to delete skin file: {}", e))?;
+    }
+    
+    Ok("Skin file deleted".to_string())
+}
+
+#[tauri::command]
+pub async fn list_skin_files() -> Result<Vec<String>, String> {
+    let skins_dir = get_skins_directory();
+    
+    if !skins_dir.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let mut skin_ids = Vec::new();
+    let mut entries = fs::read_dir(&skins_dir).await
+        .map_err(|e| format!("Failed to read skins directory: {}", e))?;
+    
+    while let Some(entry) = entries.next_entry().await
+        .map_err(|e| format!("Failed to read directory entry: {}", e))? {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(file_name) = path.file_stem() {
+                if let Some(id) = file_name.to_str() {
+                    skin_ids.push(id.to_string());
+                }
+            }
+        }
+    }
+    
+    Ok(skin_ids)
 }
 
 #[tauri::command]

@@ -52,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedInstance,
   onInstanceSelect,
   handleSettingsToggle,
-  //handleSkinToggle,
+  handleSkinToggle,
   distributionBaseUrl,
   currentUser,
   settingsOpen = false,
@@ -297,36 +297,33 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Skin Management Button */}
             {currentUser && (
-              <div className="flex justify-center">
-                <div
-                  onClick={() => {}}
-                  className="relative group"
-                >
-                  <div className="w-14 h-14 rounded-2xl overflow-hidden ring-1 ring-white/10 cursor-not-allowed transition-all duration-300 ease-out opacity-50 select-none">
-                    <img
-                      src={`https://crafatar.com/avatars/${currentUser.uuid}?size=64&overlay=true`}
-                      alt={`${currentUser.username}'s avatar`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Fallback to default avatar if Crafatar fails
-                        e.currentTarget.src = `data:image/svg+xml;base64,${btoa(`
-                          <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                            <rect width="64" height="64" rx="12" fill="#4A90E2"/>
-                            <text x="32" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="white">
-                              ${currentUser.username.charAt(0).toUpperCase()}
-                            </text>
-                          </svg>
-                        `)}`;
-                      }}
-                    />
-                  </div>
-
-                  {/* Tooltip on hover */}
-                  <div className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
-                    <div className="glass-card text-white text-xs px-2 py-1 rounded-xl whitespace-nowrap shadow-lg border border-white/10">Cambiar Skin (Próximamente)</div>
+              <Tooltip content="Cambiar Skin" side="right">
+                <div className="flex justify-center">
+                  <div
+                    onClick={() => handleSkinToggle()}
+                    className="relative group cursor-pointer transition-all duration-300 ease-out hover:scale-105"
+                  >
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden ring-1 ring-white/10 hover:ring-white/20 transition-all duration-300 ease-out select-none">
+                      <img
+                        src={`https://crafatar.com/avatars/${currentUser.uuid}?size=64&overlay=true`}
+                        alt={`${currentUser.username}'s avatar`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback to default avatar if Crafatar fails
+                          e.currentTarget.src = `data:image/svg+xml;base64,${btoa(`
+                            <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                              <rect width="64" height="64" rx="12" fill="#4A90E2"/>
+                              <text x="32" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="white">
+                                ${currentUser.username.charAt(0).toUpperCase()}
+                              </text>
+                            </svg>
+                          `)}`;
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </Tooltip>
             )}
 
             <div className="relative group flex items-center justify-center">

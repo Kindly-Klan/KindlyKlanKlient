@@ -9,6 +9,7 @@ export interface SkinData {
   variant: 'classic' | 'slim';
   uploadedAt: Date;
   isActive: boolean;
+  isMojangSynced?: boolean; // Indica si la skin proviene de Mojang
 }
 
 export interface SkinUploadResponse {
