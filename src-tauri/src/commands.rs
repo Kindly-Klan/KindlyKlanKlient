@@ -492,6 +492,7 @@ pub async fn download_instance_assets(
     
     let mut instance_manifest_for_assets: Option<crate::models::InstanceManifest> = None;
     let mut base_url_for_assets: Option<String> = None;
+    let mut installed_mod_loader_version_id: Option<String> = None;
     if let (Some(base_ml), Some(inst_url_ml)) = (base_url.clone(), instance_url.clone()) {
         base_url_for_assets = Some(base_ml.clone());
         let full_url = if inst_url_ml.starts_with("http") { inst_url_ml } else { format!("{}/{}", base_ml.trim_end_matches('/'), inst_url_ml.trim_start_matches('/')) };
@@ -508,7 +509,7 @@ pub async fn download_instance_assets(
                 "current_file": "",
                 "status": "ModLoader"
             }));
-            crate::instances::install_mod_loader(&minecraft_version, mod_loader, &instance_dir).await?;
+            installed_mod_loader_version_id = crate::instances::install_mod_loader(&minecraft_version, mod_loader, &instance_dir).await?;
         }
     }
 
@@ -529,6 +530,11 @@ pub async fn download_instance_assets(
         "status": "Libraries"
     }));
     crate::instances::ensure_version_libraries(&instance_dir, &minecraft_version).await?;
+    
+    // Download mod loader libraries if applicable (using the version_id returned by install_mod_loader)
+    if let Some(version_id) = &installed_mod_loader_version_id {
+        crate::instances::ensure_mod_loader_libraries(&instance_dir, version_id).await?;
+    }
     
     if let (Some(instance), Some(base)) = (instance_manifest_for_assets, base_url_for_assets) {
         let _ = app_handle.emit("asset-download-progress", serde_json::json!({
@@ -1148,20 +1154,44 @@ pub async fn get_recommended_neoforge_version(minecraft_version: String) -> Resu
 fn parse_neoforge_versions_from_xml(xml: &str, mc_version: &str) -> Result<Vec<NeoForgeVersion>, String> {
     let mut versions = Vec::new();
     
-    // Las versiones de NeoForge tienen formato: 20.x.y para MC 1.20.x
-    // Necesitamos filtrar por la versión de MC correspondiente
+    // NeoForge usa formato específico: 20.x.y para MC 1.20.1, 21.0.x para MC 1.21, 21.1.x para MC 1.21.1, etc.
+    // CRITICAL: Mapeo exacto de versiones NeoForge a Minecraft
+    // https://neoforged.net/ - Verificar este mapeo regularmente
     let mc_parts: Vec<&str> = mc_version.split('.').collect();
     let mc_minor = mc_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(20);
+    let mc_patch = mc_parts.get(2).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
     
     for line in xml.lines() {
         if line.contains("<version>") {
             if let Some(version_str) = extract_xml_tag_content(line, "version") {
-                // NeoForge usa formato: 20.x.y para MC 1.20.x, 21.x.y para MC 1.21.x, etc.
+                // Parse NeoForge version format: major.minor.patch
                 let version_parts: Vec<&str> = version_str.split('.').collect();
-                if let Some(first_part) = version_parts.first() {
-                    if let Ok(nf_major) = first_part.parse::<u32>() {
-                        // Mapear versión de NeoForge a versión de MC
-                        if nf_major == mc_minor {
+                if version_parts.len() >= 2 {
+                    if let (Ok(nf_major), Ok(nf_minor)) = (
+                        version_parts[0].parse::<u32>(),
+                        version_parts[1].parse::<u32>()
+                    ) {
+                        // Mapeo exacto de NeoForge a Minecraft:
+                        // NeoForge 20.x.y → MC 1.20.1
+                        // NeoForge 21.0.x → MC 1.21
+                        // NeoForge 21.1.x → MC 1.21.1
+                        // NeoForge 21.2.x → MC 1.21.2
+                        // NeoForge 21.3.x → MC 1.21.3
+                        // NeoForge 21.4.x → MC 1.21.4
+                        // etc.
+                        
+                        let matches = if nf_major == 20 && mc_minor == 20 && mc_patch == 1 {
+                            // NeoForge 20.x es solo para MC 1.20.1
+                            true
+                        } else if nf_major == 21 {
+                            // NeoForge 21.x.y mapea a MC 1.21.x donde x = nf_minor
+                            mc_minor == 21 && mc_patch == nf_minor
+                        } else {
+                            // Para versiones futuras, verificar que major coincida con minor de MC
+                            nf_major == mc_minor && mc_patch == nf_minor
+                        };
+                        
+                        if matches {
                             versions.push(NeoForgeVersion {
                                 version: version_str.clone(),
                                 minecraft_version: mc_version.to_string(),

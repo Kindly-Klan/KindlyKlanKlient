@@ -347,6 +347,7 @@ pub fn get_required_java_version_for_minecraft(mc_version: &str) -> u8 {
 }
 
 /// Busca o instala automáticamente el ejecutable de Java requerido para una versión de Minecraft
+#[allow(dead_code)]
 pub async fn find_java_executable() -> Result<String, String> {
     // Primero intentar encontrar Java en rutas comunes del sistema
     let common_paths = [
@@ -546,6 +547,7 @@ async fn download_java_silent(java_version: u8) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn get_java_path_from_env() -> String {
     std::env::var("JAVA_HOME")
         .map(|java_home| format!("{}/bin/java", java_home))
@@ -565,41 +567,304 @@ fn get_java_path_from_env() -> String {
         })
 }
 
+/// Builds the classpath FROM THE VERSION JSON, respecting `include_in_classpath` field
+/// This is the CORRECT way to build the classpath, like Modrinth does it
+/// IMPORTANT: Handles `inheritsFrom` to include base Minecraft libraries (like LWJGL)
+/// IMPORTANT: Deduplicates by artifact ID (groupId:artifactId:classifier) to prevent version conflicts
+/// Example: Fabric's asm-9.9 overrides vanilla MC's asm-9.6 (same artifact ID without classifier)
+/// Example: lwjgl-tinyfd:natives-windows and lwjgl-tinyfd are kept separate (different classifiers)
+pub fn build_minecraft_classpath_from_json(instance_dir: &Path, version_json_path: &Path) -> Result<String, String> {
+    let json_content = std::fs::read_to_string(version_json_path)
+        .map_err(|e| format!("Failed to read version JSON: {}", e))?;
+    let version_info: serde_json::Value = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Failed to parse version JSON: {}", e))?;
+    
+    // Use HashMap to deduplicate by artifact (not by full path)
+    // Key = "groupId:artifactId:classifier" to allow different versions but keep classifiers separate
+    // This ensures Fabric's asm-9.9 overrides vanilla's asm-9.6, but lwjgl:natives-windows != lwjgl
+    let mut jar_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let libs_dir = instance_dir.join("libraries");
+    let classpath_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+    
+    // Check if this JSON inherits from another (e.g., NeoForge inherits from vanilla MC)
+    if let Some(inherits_from) = version_info.get("inheritsFrom").and_then(|v| v.as_str()) {
+        // Parse the base JSON first (e.g., 1.21.8.json) to get LWJGL and other base libraries
+        let base_json_path = instance_dir
+            .join("versions")
+            .join(inherits_from)
+            .join(format!("{}.json", inherits_from));
+        
+        if base_json_path.exists() {
+            let base_json_content = std::fs::read_to_string(&base_json_path)
+                .map_err(|e| format!("Failed to read base version JSON: {}", e))?;
+            let base_version_info: serde_json::Value = serde_json::from_str(&base_json_content)
+                .map_err(|e| format!("Failed to parse base version JSON: {}", e))?;
+            
+            // Parse libraries from base JSON
+            if let Some(libraries) = base_version_info.get("libraries").and_then(|v| v.as_array()) {
+                for lib in libraries {
+                    add_library_to_classpath(lib, &libs_dir, &mut jar_map)?;
+                }
+            }
+        }
+    }
+    
+    // Parse libraries from the mod loader JSON (NeoForge/Forge/Fabric specific libraries)
+    // These OVERRIDE base libraries with same artifact ID (e.g., asm-9.9 overrides asm-9.6)
+    if let Some(libraries) = version_info.get("libraries").and_then(|v| v.as_array()) {
+        for lib in libraries {
+            add_library_to_classpath(lib, &libs_dir, &mut jar_map)?;
+        }
+    }
+    
+    // Add client JAR (from versions directory)
+    // CRITICAL: NeoForge/Forge DON'T need the client JAR in classpath because BootstrapLauncher loads it specially
+    // Only Fabric (and vanilla) need the client JAR in the classpath
+    // Detect NeoForge/Forge by checking if mainClass is BootstrapLauncher
+    let main_class = version_info.get("mainClass").and_then(|v| v.as_str()).unwrap_or("");
+    let is_neoforge_or_forge = main_class.contains("bootstraplauncher.BootstrapLauncher");
+    
+    if !is_neoforge_or_forge {
+        // For Fabric/Vanilla: Add the client JAR
+        // For Fabric with inheritsFrom, use the vanilla MC client JAR (inheritsFrom value)
+        // Example: Fabric JSON has id="fabric-loader-0.17.3-1.21.8" and inheritsFrom="1.21.8"
+        //          The client JAR is at versions/1.21.8/1.21.8.jar
+        let client_version = version_info.get("inheritsFrom")
+            .and_then(|v| v.as_str())
+            .or_else(|| version_info.get("id").and_then(|v| v.as_str()))
+            .ok_or("Version ID not found in JSON")?;
+        
+        let client_jar = instance_dir.join("versions").join(client_version).join(format!("{}.jar", client_version));
+        if client_jar.exists() {
+            let normalized = dunce::canonicalize(&client_jar)
+                .unwrap_or(client_jar.clone());
+            let normalized_str = if cfg!(target_os = "windows") {
+                normalized.to_string_lossy()
+                    .strip_prefix("\\\\?\\").unwrap_or(&normalized.to_string_lossy())
+                    .replace("/", "\\")
+            } else {
+                normalized.to_string_lossy().to_string()
+            };
+            jar_map.insert("minecraft:client".to_string(), normalized_str);
+        }
+    }
+    
+    if jar_map.is_empty() {
+        return Err("No jars found for classpath".to_string());
+    }
+    
+    // Convert HashMap values to Vec
+    let jars: Vec<String> = jar_map.into_values().collect();
+    Ok(jars.join(classpath_separator))
+}
+
+/// Helper function to add a library to the classpath, respecting `include_in_classpath`
+/// Uses HashMap with key = "groupId:artifactId:classifier" for proper deduplication
+/// This allows Fabric's asm-9.9 to override vanilla's asm-9.6, while keeping lwjgl:natives-windows separate
+fn add_library_to_classpath(lib: &serde_json::Value, libs_dir: &Path, jars: &mut std::collections::HashMap<String, String>) -> Result<(), String> {
+    // Check `include_in_classpath` field (default true if not present)
+    let include_in_classpath = lib.get("include_in_classpath")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    
+    if !include_in_classpath {
+        return Ok(());
+    }
+    
+    // Get library name (Maven coordinates: groupId:artifactId:version[:classifier][:extension])
+    if let Some(name) = lib.get("name").and_then(|v| v.as_str()) {
+        // Extract key = "groupId:artifactId:classifier" (without version)
+        // Examples:
+        //   "org.ow2.asm:asm:9.6" -> key = "org.ow2.asm:asm"
+        //   "org.lwjgl:lwjgl-tinyfd:3.3.1:natives-windows" -> key = "org.lwjgl:lwjgl-tinyfd:natives-windows"
+        let parts: Vec<&str> = name.split(':').collect();
+        let key = if parts.len() >= 4 {
+            // Has classifier: groupId:artifactId:classifier
+            format!("{}:{}:{}", parts[0], parts[1], parts[3])
+        } else if parts.len() >= 2 {
+            // No classifier: groupId:artifactId
+            format!("{}:{}", parts[0], parts[1])
+        } else {
+            // Invalid format, use full name as key
+            name.to_string()
+        };
+        
+        // Check if library has downloads.artifact (main JAR)
+        if let Some(artifact) = lib.get("downloads")
+            .and_then(|d| d.get("artifact"))
+            .and_then(|a| a.get("path"))
+            .and_then(|p| p.as_str())
+        {
+            // Use the path from JSON (already in correct format)
+            let full_path = libs_dir.join(artifact);
+            if full_path.exists() {
+                let normalized = dunce::canonicalize(&full_path)
+                    .unwrap_or(full_path.clone());
+                let normalized_str = if cfg!(target_os = "windows") {
+                    normalized.to_string_lossy()
+                        .strip_prefix("\\\\?\\").unwrap_or(&normalized.to_string_lossy())
+                        .replace("/", "\\")
+                } else {
+                    normalized.to_string_lossy().to_string()
+                };
+                jars.insert(key, normalized_str);
+            }
+        } else {
+            // Fallback: Convert Maven coordinates to path
+            let lib_path = maven_to_path(name)?;
+            let full_path = libs_dir.join(&lib_path);
+            
+            if full_path.exists() {
+                let normalized = dunce::canonicalize(&full_path)
+                    .unwrap_or(full_path.clone());
+                let normalized_str = if cfg!(target_os = "windows") {
+                    normalized.to_string_lossy()
+                        .strip_prefix("\\\\?\\").unwrap_or(&normalized.to_string_lossy())
+                        .replace("/", "\\")
+                } else {
+                    normalized.to_string_lossy().to_string()
+                };
+                jars.insert(key, normalized_str);
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Converts Maven coordinates to file path
+/// Example: org.example:artifact:1.0 -> org/example/artifact/1.0/artifact-1.0.jar
+fn maven_to_path(maven_coords: &str) -> Result<String, String> {
+    let parts: Vec<&str> = maven_coords.split(':').collect();
+    if parts.len() < 3 {
+        return Err(format!("Invalid Maven coordinates: {}", maven_coords));
+    }
+    
+    let group = parts[0].replace('.', "/");
+    let artifact = parts[1];
+    let version = parts[2];
+    let classifier = if parts.len() > 3 { format!("-{}", parts[3]) } else { String::new() };
+    
+    Ok(format!("{}/{}/{}/{}-{}{}.jar", group, artifact, version, artifact, version, classifier))
+}
+
+/// Legacy function for backward compatibility - DO NOT USE FOR NEW CODE
 pub fn build_minecraft_classpath(instance_dir: &Path) -> Result<String, String> {
+	build_minecraft_classpath_excluding(instance_dir, &std::collections::HashSet::new())
+}
+
+/// Legacy function for backward compatibility - DO NOT USE FOR NEW CODE
+pub fn build_minecraft_classpath_excluding(instance_dir: &Path, exclude_jars: &std::collections::HashSet<String>) -> Result<String, String> {
 	let mut jars: Vec<String> = Vec::new();
+	
 	let libs_dir = instance_dir.join("libraries");
-	if libs_dir.exists() { collect_jars_recursively(&libs_dir, &mut jars)?; }
+	if libs_dir.exists() { collect_jars_recursively_excluding(&libs_dir, &mut jars, exclude_jars)?; }
 	let versions_dir = instance_dir.join("versions");
-	if versions_dir.exists() { collect_jars_recursively(&versions_dir, &mut jars)?; }
+	if versions_dir.exists() { collect_jars_recursively_excluding(&versions_dir, &mut jars, exclude_jars)?; }
 	let mods_dir = instance_dir.join("mods");
-	if mods_dir.exists() { collect_jars_recursively(&mods_dir, &mut jars)?; }
+	if mods_dir.exists() { collect_jars_recursively_excluding(&mods_dir, &mut jars, exclude_jars)?; }
 	if jars.is_empty() { return Err("No jars found for classpath".to_string()); }
+	
 	Ok(jars.join(if cfg!(target_os = "windows") { ";" } else { ":" }))
 }
 
-fn collect_jars_recursively(dir: &Path, out: &mut Vec<String>) -> Result<(), String> {
+
+fn collect_jars_recursively_excluding(dir: &Path, out: &mut Vec<String>, exclude_jars: &std::collections::HashSet<String>) -> Result<(), String> {
 	for entry in walkdir::WalkDir::new(dir) {
 		let entry = entry.map_err(|e| e.to_string())?;
 		if entry.file_type().is_file() {
 			let p = entry.into_path();
-			if p.extension().map_or(false, |e| e == "jar") { out.push(p.to_string_lossy().to_string()); }
+			if p.extension().map_or(false, |e| e == "jar") {
+				// Normalizar la ruta para comparar con exclude_jars
+				let canonical_opt = p.canonicalize().ok();
+				let canonical_str = canonical_opt.as_ref()
+					.map(|c| c.to_string_lossy().to_string());
+				let path_str = p.to_string_lossy().to_string();
+				
+				// Remover prefijo \\?\ de Windows si está presente
+				let canonical_clean = canonical_str.as_ref()
+					.map(|s| s.strip_prefix("\\\\?\\").unwrap_or(s).to_string());
+				let path_clean = path_str.strip_prefix("\\\\?\\").unwrap_or(&path_str).to_string();
+				
+				// Normalizar separadores de ruta para comparación
+				let normalized_canonical = canonical_clean.as_ref()
+					.map(|s| s.replace("\\", "/"));
+				let normalized_path = path_clean.replace("\\", "/");
+				
+				// Verificar si está excluido (comparar con todas las variantes posibles)
+				let is_excluded = {
+					let mut excluded = false;
+					if let Some(ref canonical) = canonical_str {
+						excluded = excluded || exclude_jars.contains(canonical);
+					}
+					if let Some(ref canonical_clean_str) = canonical_clean {
+						excluded = excluded || exclude_jars.contains(canonical_clean_str);
+					}
+					excluded = excluded || exclude_jars.contains(&path_str);
+					excluded = excluded || exclude_jars.contains(&path_clean);
+					if let Some(ref norm_canonical) = normalized_canonical {
+						excluded = excluded || exclude_jars.contains(norm_canonical);
+					}
+					excluded = excluded || exclude_jars.contains(&normalized_path);
+					excluded
+				};
+				
+				if !is_excluded {
+					// Usar dunce::canonicalize para normalizar el path correctamente en Windows
+					// Esto convierte automáticamente separadores a \ y remueve el prefijo \\?\
+					let normalized_path = dunce::canonicalize(&p)
+						.unwrap_or_else(|_| p.clone())
+						.to_string_lossy()
+						.to_string();
+					
+					out.push(normalized_path);
+				} else {
+					log::debug!("🚫 Excluding JAR from classpath: {}", p.display());
+				}
+			}
 		}
 	}
 	Ok(())
 }
 
-pub fn select_main_class(instance_dir: &Path) -> String {
-    // Intentar leer el mainClass del version JSON generado por el instalador
-    // Los instaladores de Forge/NeoForge/Fabric crean archivos JSON con el mainClass correcto
+
+pub fn select_main_class(instance_dir: &Path, version_id: Option<&str>) -> String {
+    // Si tenemos el version_id exacto, usarlo directamente
+    if let Some(vid) = version_id {
+        let versions_dir = instance_dir.join("versions");
+        let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
+        
+        log::info!("🔍 Buscando mainClass en JSON: {}", json_path.display());
+        
+        if json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
+                        log::info!("✅ Main class encontrada en {}: {}", vid, main_class);
+                        return main_class.to_string();
+                    } else {
+                        log::warn!("⚠️  mainClass no encontrado en JSON: {}", json_path.display());
+                    }
+                } else {
+                    log::warn!("⚠️  Error al parsear JSON: {}", json_path.display());
+                }
+            } else {
+                log::warn!("⚠️  Error al leer JSON: {}", json_path.display());
+            }
+        } else {
+            log::warn!("⚠️  JSON no encontrado: {}", json_path.display());
+        }
+    } else {
+        log::info!("ℹ️  No hay version_id, usando fallback para buscar mainClass");
+    }
     
-    // Buscar archivos JSON en versions/ que no sean versiones vanilla
+    // Fallback: buscar archivos JSON en versions/ que no sean versiones vanilla
     let versions_dir = instance_dir.join("versions");
     if versions_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&versions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    // Buscar archivo JSON en este directorio
                     let dir_name = entry.file_name();
                     let json_path = path.join(format!("{}.json", dir_name.to_string_lossy()));
                     
@@ -627,7 +892,7 @@ pub fn select_main_class(instance_dir: &Path) -> String {
         }
     }
     
-    // Fallback: detectar por directorios de libraries
+    // Último fallback: detectar por directorios de libraries
     let neoforge_loader_dir = instance_dir.join("libraries").join("net").join("neoforged");
     if neoforge_loader_dir.exists() { 
         log::info!("🔨 Detected NeoForge mod loader (fallback)");
@@ -640,7 +905,7 @@ pub fn select_main_class(instance_dir: &Path) -> String {
         return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string();
     }
     
-    let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
+	let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
     if fabric_loader_dir.exists() { 
         log::info!("🧵 Detected Fabric mod loader (fallback)");
         return "net.fabricmc.loader.impl.launch.knot.KnotClient".to_string();
@@ -651,27 +916,59 @@ pub fn select_main_class(instance_dir: &Path) -> String {
 }
 
 /// Extrae argumentos JVM adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
-/// mod_loader_type: Tipo de mod loader desde launcher_profiles.json ("neoforge", "forge", "fabric")
-/// mod_loader_version: Versión del mod loader desde launcher_profiles.json
-pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str>, mod_loader_version: Option<&str>) -> Vec<String> {
+/// version_id: ID exacto del JSON generado por el instalador (ej. "neoforge-21.8.51")
+/// mod_loader_type: Tipo de mod loader desde metadata ("neoforge", "forge", "fabric")
+pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mod_loader_type: Option<&str>, _mod_loader_version: Option<&str>) -> Vec<String> {
     let mut additional_args = Vec::new();
-    
-    // Usar el tipo de mod loader del metadata
     let loader_type = mod_loader_type;
     
-    if let Some(loader) = loader_type {
-        log::info!("📋 Using mod loader type from metadata: {}", loader);
-    }
+    // Si tenemos el version_id exacto, usarlo directamente
+    let selected_json = if let Some(vid) = version_id {
+        let versions_dir = instance_dir.join("versions");
+        let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
+        
+        log::info!("🔍 Buscando JSON del mod loader en: {}", json_path.display());
+        
+        if json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    log::info!("✅ JSON del mod loader cargado: {} (id: {})", vid, json.get("id").and_then(|v| v.as_str()).unwrap_or("unknown"));
+                    Some((json_path, json))
+                } else {
+                    log::warn!("⚠️  Error al parsear JSON: {}", json_path.display());
+                    None
+                }
+            } else {
+                log::warn!("⚠️  Error al leer JSON: {}", json_path.display());
+                None
+            }
+        } else {
+            log::warn!("⚠️  JSON del mod loader no encontrado: {}", json_path.display());
+            None
+        }
+    } else {
+        log::info!("ℹ️  No hay version_id, usando fallback para buscar JSON");
+        None
+    };
     
-    // Leer argumentos JVM del JSON de la versión que genera el instalador en versions/
-    let versions_dir = instance_dir.join("versions");
-    if versions_dir.exists() {
+    // Si no encontramos el JSON con version_id, buscar en el directorio (fallback)
+    let selected_json = selected_json.or_else(|| {
+        let versions_dir = instance_dir.join("versions");
+        if !versions_dir.exists() {
+            return None;
+        }
+        
+        // Buscar el JSON específico del mod loader
+        let mut candidate_json: Option<(std::path::PathBuf, serde_json::Value)> = None;
+        let mut fallback_json: Option<(std::path::PathBuf, serde_json::Value)> = None;
+        
         if let Ok(entries) = std::fs::read_dir(&versions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     let dir_name = entry.file_name();
-                    let json_path = path.join(format!("{}.json", dir_name.to_string_lossy()));
+                    let dir_name_str = dir_name.to_string_lossy();
+                    let json_path = path.join(format!("{}.json", dir_name_str));
                     
                     if json_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&json_path) {
@@ -686,83 +983,25 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str
                                         .is_some();
                                 
                                 if is_mod_loader {
-                                    log::info!("📋 Found mod loader version JSON: {}", dir_name.to_string_lossy());
+                                    // Verificar si este JSON coincide con el mod loader esperado
+                                    let json_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                    let matches_loader = if let Some(loader) = loader_type {
+                                        match loader {
+                                            "neoforge" => json_id.starts_with("neoforge-") || dir_name_str.starts_with("neoforge-"),
+                                            "forge" => (json_id.starts_with("forge-") && !json_id.starts_with("neoforge-")) || (dir_name_str.starts_with("forge-") && !dir_name_str.starts_with("neoforge-")),
+                                            "fabric" => json_id.starts_with("fabric-loader-") || dir_name_str.starts_with("fabric-loader-"),
+                                            _ => false,
+                                        }
+                                    } else {
+                                        false
+                                    };
                                     
-                                    // Preparar valores para reemplazar placeholders
-                                    let library_directory = instance_dir.join("libraries").to_string_lossy().to_string();
-                                    let natives_directory = path.join("natives").to_string_lossy().to_string();
-                                    let version_name = dir_name.to_string_lossy().to_string();
-                                    let classpath_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
-                                    
-                                    // Extraer argumentos JVM del JSON
-                                    if let Some(arguments) = json.get("arguments") {
-                                        if let Some(jvm_args) = arguments.get("jvm") {
-                                            if let Some(jvm_array) = jvm_args.as_array() {
-                                                log::info!("📋 Found {} JVM arguments in version JSON", jvm_array.len());
-                                                for arg in jvm_array {
-                                                    let arg_str_opt = if let Some(arg_str) = arg.as_str() {
-                                                        Some(arg_str.to_string())
-                                                    } else if let Some(obj) = arg.as_object() {
-                                                        // Argumentos condicionales - procesar value
-                                                        if let Some(value) = obj.get("value") {
-                                                            if let Some(value_str) = value.as_str() {
-                                                                Some(value_str.to_string())
-                                                            } else if let Some(value_arr) = value.as_array() {
-                                                                // Si es un array, tomar el primer valor o concatenar
-                                                                value_arr.first()
-                                                                    .and_then(|v| v.as_str())
-                                                                    .map(|s| s.to_string())
-                                                            } else {
-                                                                None
-                                                            }
-                                                        } else {
-                                                            None
-                                                        }
-                                                    } else {
-                                                        None
-                                                    };
-                                                    
-                                                    if let Some(arg_str) = arg_str_opt {
-                                                        // Reemplazar TODOS los placeholders
-                                                        let processed_arg = arg_str
-                                                            .replace("${library_directory}", &library_directory)
-                                                            .replace("${natives_directory}", &natives_directory)
-                                                            .replace("${classpath_separator}", classpath_separator)
-                                                            .replace("${version_name}", &version_name)
-                                                            .replace("${launcher_name}", "KindlyKlanKlient")
-                                                            .replace("${launcher_version}", "1.0.0")
-                                                            .replace("${classpath}", ""); // Se pasa por separado, eliminar
-                                                        
-                                                        // Filtrar argumentos incompatibles
-                                                        #[cfg(target_os = "windows")]
-                                                        {
-                                                            // Eliminar argumentos específicos de macOS/Unix
-                                                            if processed_arg == "-XstartOnFirstThread" {
-                                                                continue;
-                                                            }
-                                                        }
-                                                        
-                                                        // Eliminar -cp y classpath ya que se pasa por separado
-                                                        if processed_arg == "-cp" || processed_arg.starts_with("-cp ") {
-                                                            continue;
-                                                        }
-                                                        if processed_arg.contains("${classpath}") || processed_arg == "${classpath}" {
-                                                            continue;
-                                                        }
-                                                        
-                                                        // Solo agregar si no está vacío después del procesamiento
-                                                        if !processed_arg.trim().is_empty() {
-                                                            additional_args.push(processed_arg);
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                if !additional_args.is_empty() {
-                                                    ensure_required_add_opens(loader_type, &mut additional_args);
-                                                    log::info!("✅ Extracted {} JVM arguments from version JSON", additional_args.len());
-                                                    return additional_args;
-                                                }
-                                            }
+                                    if matches_loader {
+                                        candidate_json = Some((json_path.clone(), json));
+                                        break;
+                                    } else {
+                                        if fallback_json.is_none() {
+                                            fallback_json = Some((json_path.clone(), json));
                                         }
                                     }
                                 }
@@ -772,12 +1011,132 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str
                 }
             }
         }
+        
+        candidate_json.or(fallback_json)
+    });
+    
+    if let Some((json_path, json)) = selected_json {
+        let path = json_path.parent().unwrap();
+        let dir_name = path.file_name().unwrap();
+        let library_directory = instance_dir.join("libraries").to_string_lossy().to_string();
+        let natives_directory = path.join("natives").to_string_lossy().to_string();
+        let version_name = dir_name.to_string_lossy().to_string();
+        let classpath_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+        
+        if let Some(arguments) = json.get("arguments") {
+            if let Some(jvm_args) = arguments.get("jvm") {
+                if let Some(jvm_array) = jvm_args.as_array() {
+                    for arg in jvm_array {
+                        let arg_str_opt = if let Some(arg_str) = arg.as_str() {
+                            Some(arg_str.to_string())
+                        } else if let Some(obj) = arg.as_object() {
+                            // Argumentos condicionales - procesar value
+                            if let Some(value) = obj.get("value") {
+                                if let Some(value_str) = value.as_str() {
+                                    Some(value_str.to_string())
+                                } else if let Some(value_arr) = value.as_array() {
+                                    // Si es un array, tomar el primer valor o concatenar
+                                    value_arr.first()
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        
+                        if let Some(arg_str) = arg_str_opt {
+                            // Reemplazar TODOS los placeholders
+                            let processed_arg = arg_str
+                                .replace("${library_directory}", &library_directory)
+                                .replace("${natives_directory}", &natives_directory)
+                                .replace("${classpath_separator}", classpath_separator)
+                                .replace("${version_name}", &version_name)
+                                .replace("${launcher_name}", "KindlyKlanKlient")
+                                .replace("${launcher_version}", "1.0.0")
+                                .replace("${classpath}", ""); // Se pasa por separado, eliminar
+                            
+                            // NO MODIFICAR NADA - usar el JSON tal cual lo proporciona NeoForge
+                            // Filtrar argumentos incompatibles
+                            #[cfg(target_os = "windows")]
+                            {
+                                if processed_arg == "-XstartOnFirstThread" {
+                                    continue;
+                                }
+                            }
+                            
+                            // Eliminar -cp y classpath ya que se pasa por separado
+                            if processed_arg == "-cp" || processed_arg.starts_with("-cp ") {
+                                continue;
+                            }
+                            if processed_arg.contains("${classpath}") || processed_arg == "${classpath}" {
+                                continue;
+                            }
+                            
+                            // Validar rutas de módulos si es -p (module path)
+                            if processed_arg == "-p" {
+                                additional_args.push(processed_arg);
+                                continue;
+                            }
+                            
+                            // Si el argumento anterior era -p, validar que los JARs existan y normalizar rutas
+                            if !additional_args.is_empty() && additional_args.last() == Some(&"-p".to_string()) {
+                                let module_paths: Vec<&str> = processed_arg.split(classpath_separator).collect();
+                                let mut valid_paths = Vec::new();
+                                
+                                for jar_path in module_paths {
+                                    let jar_path_trimmed = jar_path.trim();
+                                    // Normalizar la ruta: reemplazar / por \ en Windows y quitar prefijo \\?\
+                                    let normalized_path = if cfg!(target_os = "windows") {
+                                        jar_path_trimmed
+                                            .strip_prefix("\\\\?\\").unwrap_or(jar_path_trimmed)
+                                            .replace("/", "\\")
+                                    } else {
+                                        jar_path_trimmed.to_string()
+                                    };
+                                    
+                                    let path = std::path::Path::new(&normalized_path);
+                                    if path.exists() {
+                                        valid_paths.push(normalized_path);
+                                    } else {
+                                        log::warn!("⚠️  Module path JAR not found: {}", normalized_path);
+                                    }
+                                }
+                                
+                                if !valid_paths.is_empty() {
+                                    additional_args.pop();
+                                    additional_args.push("-p".to_string());
+                                    let final_module_path = valid_paths.join(classpath_separator);
+                                    log::info!("📦 Normalized module path: {}", final_module_path);
+                                    additional_args.push(final_module_path);
+                                }
+                                continue;
+                            }
+                            
+                            // Solo agregar si no está vacío después del procesamiento
+                            if !processed_arg.trim().is_empty() {
+                                additional_args.push(processed_arg);
+                            }
+                        }
+                    }
+                    
+                    if !additional_args.is_empty() {
+                        ensure_required_add_opens(loader_type, &mut additional_args);
+                        // NO reemplazamos ALL-MODULE-PATH, lo dejamos tal cual
+                        // Esto es lo que hace Modrinth y otros launchers
+                        return additional_args;
+                    }
+                }
+            }
+        }
     }
     
-    // Tercero: Si no se encontraron argumentos, usar argumentos por defecto según el mod loader
     if additional_args.is_empty() {
         if let Some(loader) = loader_type {
-            log::info!("📦 Using default JVM arguments for {}", loader);
             match loader {
                 "neoforge" | "forge" => {
                     // Argumentos JVM críticos para Forge/NeoForge con Java 17+
@@ -831,11 +1190,58 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, mod_loader_type: Option<&str
     
     if !additional_args.is_empty() {
         ensure_required_add_opens(loader_type, &mut additional_args);
-        log::info!("✅ Using {} JVM arguments", additional_args.len());
     }
     
     additional_args
 }
+
+/// Extrae argumentos de juego adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
+pub fn get_mod_loader_game_args(instance_dir: &Path, version_id: Option<&str>) -> Vec<String> {
+    let mut game_args = Vec::new();
+    
+    // Si tenemos el version_id exacto, usarlo directamente
+    let selected_json = if let Some(vid) = version_id {
+        let versions_dir = instance_dir.join("versions");
+        let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
+        
+        if json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    Some(json)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    if let Some(json) = selected_json {
+        if let Some(arguments) = json.get("arguments") {
+            if let Some(game_args_json) = arguments.get("game") {
+                if let Some(game_array) = game_args_json.as_array() {
+                    for arg in game_array {
+                        if let Some(arg_str) = arg.as_str() {
+                            game_args.push(arg_str.to_string());
+                        }
+                    }
+                    
+                    if !game_args.is_empty() {
+                        log::info!("✅ Extracted {} game arguments from mod loader JSON", game_args.len());
+                    }
+                }
+            }
+        }
+    }
+    
+    game_args
+}
+
 
 fn ensure_required_add_opens(loader_type: Option<&str>, args: &mut Vec<String>) {
     if let Some(loader) = loader_type {
@@ -851,7 +1257,6 @@ fn ensure_required_add_opens(loader_type: Option<&str>, args: &mut Vec<String>) 
                 }
             }
             if !has_all_unnamed {
-                log::info!("🔧 Ensuring --add-opens java.base/java.lang.invoke=ALL-UNNAMED");
                 args.push("--add-opens".to_string());
                 args.push("java.base/java.lang.invoke=ALL-UNNAMED".to_string());
             }

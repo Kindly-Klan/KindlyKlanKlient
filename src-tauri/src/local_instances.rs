@@ -127,7 +127,7 @@ pub async fn create_local_instance(
     }
     
     // Install Mod Loader (if not vanilla)
-    if mod_loader_type != "vanilla" {
+    let version_id = if mod_loader_type != "vanilla" {
         let loader_display_name = match mod_loader_type.as_str() {
             "fabric" => "Fabric",
             "forge" => "Forge",
@@ -147,12 +147,18 @@ pub async fn create_local_instance(
             version: mod_loader_version.clone(),
         };
         
-        crate::instances::install_mod_loader(&minecraft_version, &mod_loader, &instance_dir).await?;
+        // Instalar mod loader y obtener el version_id creado
+        let vid = crate::instances::install_mod_loader(&minecraft_version, &mod_loader, &instance_dir).await?;
         
         log::info!("✅ {} {} installed", loader_display_name, mod_loader_version);
+        if let Some(ref v) = vid {
+            log::info!("📋 Version ID creado: {}", v);
+        }
+        vid
     } else {
         log::info!("✅ Vanilla instance, skipping mod loader installation");
-    }
+        None
+    };
     
     // Download Minecraft assets
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
@@ -194,6 +200,7 @@ pub async fn create_local_instance(
         minecraft_version: minecraft_version.clone(),
         fabric_version: mod_loader_version.clone(), // Mantener compatibilidad retroactiva
         mod_loader: mod_loader_obj.clone(),
+        version_id: version_id.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     
@@ -455,8 +462,29 @@ pub async fn launch_local_instance(
         .await
         .map_err(|e| format!("Failed to read instance metadata: {}", e))?;
     
-    let metadata: LocalInstanceMetadata = serde_json::from_str(&metadata_content)
+    let mut metadata: LocalInstanceMetadata = serde_json::from_str(&metadata_content)
         .map_err(|e| format!("Failed to parse instance metadata: {}", e))?;
+    
+    // Si no hay version_id (instancias antiguas), intentar detectarlo
+    if metadata.version_id.is_none() && metadata.mod_loader.is_some() {
+        if let Some(ref mod_loader) = metadata.mod_loader {
+            let detected_version_id = crate::instances::find_version_id_in_versions_dir(
+                &instance_dir, 
+                &mod_loader.r#type
+            );
+            
+            if let Some(ref vid) = detected_version_id {
+                log::info!("🔍 Detectado version_id para instancia antigua: {}", vid);
+                metadata.version_id = detected_version_id.clone();
+                
+                // Guardar el metadata actualizado
+                if let Ok(updated_metadata_json) = serde_json::to_string_pretty(&metadata) {
+                    let _ = tokio::fs::write(&metadata_path, updated_metadata_json).await;
+                    log::info!("✅ Metadata actualizado con version_id");
+                }
+            }
+        }
+    }
     
     // Log metadata con información correcta del mod loader
     if let Some(ref mod_loader) = metadata.mod_loader {
@@ -465,6 +493,9 @@ pub async fn launch_local_instance(
             mod_loader.r#type.to_uppercase(), 
             mod_loader.version
         );
+        if let Some(ref vid) = metadata.version_id {
+            log::info!("📋 Version ID: {}", vid);
+        }
     } else {
         log::info!("📋 Instance metadata loaded: MC {}, Vanilla (legacy: {})", 
             metadata.minecraft_version, 
@@ -492,8 +523,13 @@ pub async fn launch_local_instance(
         "status": "Verificando librerías..."
     }));
     
-    // Ensure libraries are present
+    // Ensure libraries are present (vanilla MC)
     crate::instances::ensure_version_libraries(&instance_dir, &metadata.minecraft_version).await?;
+    
+    // Ensure mod loader libraries are present (Fabric/NeoForge/Forge specific libraries)
+    if let Some(version_id) = &metadata.version_id {
+        crate::instances::ensure_mod_loader_libraries(&instance_dir, version_id).await?;
+    }
     
     let _ = app_handle.emit("asset-download-progress", serde_json::json!({
         "current": 66,
@@ -521,8 +557,21 @@ pub async fn launch_local_instance(
     // Create mods directory if it doesn't exist
     let _ = tokio::fs::create_dir_all(instance_dir.join("mods")).await;
     
-    // Build classpath
-    let classpath = crate::launcher::build_minecraft_classpath(&instance_dir)?;
+    // Get mod loader JVM args usando el version_id del metadata
+    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(
+        &instance_dir,
+        metadata.version_id.as_deref(),
+        metadata.mod_loader.as_ref().map(|ml| ml.r#type.as_str()),
+        metadata.mod_loader.as_ref().map(|ml| ml.version.as_str()),
+    );
+    
+    // Build classpath FROM JSON, respecting include_in_classpath field (como Modrinth)
+    let version_json_path = instance_dir
+        .join("versions")
+        .join(metadata.version_id.as_ref().unwrap_or(&metadata.minecraft_version))
+        .join(format!("{}.json", metadata.version_id.as_ref().unwrap_or(&metadata.minecraft_version)));
+    
+    let classpath = crate::launcher::build_minecraft_classpath_from_json(&instance_dir, &version_json_path)?;
     
     // Check for lwjgl
     {
@@ -555,48 +604,86 @@ pub async fn launch_local_instance(
     )?;
     
     // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
-    let mod_loader_type = metadata.mod_loader.as_ref().map(|ml| ml.r#type.as_str());
-    let mod_loader_version = metadata.mod_loader.as_ref().map(|ml| ml.version.as_str());
-    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, mod_loader_type, mod_loader_version);
     if !mod_loader_jvm_args.is_empty() {
-        log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
         jvm_args.extend(mod_loader_jvm_args);
     }
     
     // Get asset index
     let asset_index_id = crate::instances::ensure_assets_present(&app_handle, &instance_dir, &metadata.minecraft_version).await?;
     
-    // Build Minecraft arguments
+    let user_properties = {
+        let client = reqwest::Client::new();
+        let uuid_no_dashes = uuid.replace("-", "");
+        let profile_url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}?unsigned=false", uuid_no_dashes);
+        
+        match client.get(&profile_url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.json::<serde_json::Value>().await {
+                        Ok(profile) => {
+                            if let Some(properties) = profile.get("properties").and_then(|p| p.as_array()) {
+                                let mut props_map = serde_json::Map::new();
+                                for prop in properties {
+                                    if let (Some(name), Some(value), Some(signature)) = (
+                                        prop.get("name").and_then(|n| n.as_str()),
+                                        prop.get("value").and_then(|v| v.as_str()),
+                                        prop.get("signature").and_then(|s| s.as_str())
+                                    ) {
+                                        let mut prop_obj = serde_json::Map::new();
+                                        prop_obj.insert("value".to_string(), serde_json::Value::String(value.to_string()));
+                                        prop_obj.insert("signature".to_string(), serde_json::Value::String(signature.to_string()));
+                                        props_map.insert(name.to_string(), serde_json::Value::Object(prop_obj));
+                                    }
+                                }
+                                serde_json::to_string(&serde_json::Value::Object(props_map)).unwrap_or_else(|_| "{}".to_string())
+                            } else {
+                                "{}".to_string()
+                            }
+                        }
+                        Err(_) => "{}".to_string()
+                    }
+                } else {
+                    log::warn!("Failed to get profile with properties: HTTP {}", response.status());
+                    "{}".to_string()
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to fetch profile with properties: {}", e);
+                "{}".to_string()
+            }
+        }
+    };
+    
     let assets_dir = instance_dir.join("assets");
-    let mc_args = vec![
+    let mut mc_args = vec![
         "--username".to_string(), username,
         "--uuid".to_string(), uuid,
         "--accessToken".to_string(), access_token,
+        "--clientId".to_string(), "c4502edb-87c6-40cb-b595-64a280cf8906".to_string(),
+        "--xuid".to_string(), "0".to_string(),
         "--version".to_string(), metadata.minecraft_version.clone(),
         "--gameDir".to_string(), instance_dir.to_string_lossy().to_string(),
         "--assetsDir".to_string(), assets_dir.to_string_lossy().to_string(),
         "--assetIndex".to_string(), asset_index_id,
         "--userType".to_string(), "msa".to_string(),
+        "--userProperties".to_string(), user_properties,
         "--versionType".to_string(), "release".to_string(),
         "--width".to_string(), window_width.to_string(),
         "--height".to_string(), window_height.to_string(),
     ];
     
-    // Get main class
-    let main_class = crate::launcher::select_main_class(&instance_dir);
+    let mod_loader_game_args = crate::launcher::get_mod_loader_game_args(&instance_dir, metadata.version_id.as_deref());
+    if !mod_loader_game_args.is_empty() {
+        mc_args.extend(mod_loader_game_args);
+    }
+    
+    // Get main class usando el version_id del metadata
+    let main_class = crate::launcher::select_main_class(&instance_dir, metadata.version_id.as_deref());
     
     // Find or install Java executable for this Minecraft version
-    log::info!("🔍 Buscando Java para Minecraft {}", metadata.minecraft_version);
     let java_path = crate::launcher::find_or_install_java_for_minecraft(&metadata.minecraft_version).await?;
-    log::info!("☕ Usando Java en: {}", java_path);
     
     // Launch Minecraft
-    log::info!("🎮 Launching with main class: {}", main_class);
-    log::info!("☕ Java path: {}", java_path);
-    log::info!("📦 Classpath length: {} bytes", classpath.len());
-    log::info!("🔧 JVM args: {:?}", jvm_args);
-    log::info!("🎯 MC args: {:?}", mc_args);
-    
     let mut command = Command::new(&java_path);
     #[cfg(target_os = "windows")]
     {
@@ -604,31 +691,28 @@ pub async fn launch_local_instance(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     
-    command
-        .args(&jvm_args)
-        .arg("-cp")
-        .arg(&classpath)
-        .arg(&main_class)
-        .args(&mc_args)
-        .current_dir(&instance_dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    command.args(&jvm_args);
+    command.arg("-cp").arg(&classpath);
+    command.arg(&main_class).args(&mc_args);
+    command.current_dir(&instance_dir);
+    command.stdout(std::process::Stdio::piped());
+    command.stderr(std::process::Stdio::piped());
     
     let mut child = command.spawn()
         .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
     
-    // Capturar stdout
     if let Some(stdout) = child.stdout.take() {
         use std::io::{BufRead, BufReader};
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().flatten() {
-                log::info!("[MC] {}", line);
+                if line.contains("ERROR") || line.contains("FATAL") || line.contains("Exception") {
+                    log::error!("[MC] {}", line);
+                }
             }
         });
     }
     
-    // Capturar stderr
     if let Some(stderr) = child.stderr.take() {
         use std::io::{BufRead, BufReader};
         std::thread::spawn(move || {

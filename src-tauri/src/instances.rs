@@ -475,17 +475,64 @@ pub async fn ensure_version_libraries(instance_dir: &Path, mc_version: &str) -> 
     Ok(())
 }
 
-pub async fn install_mod_loader(minecraft_version: &str, mod_loader: &ModLoader, instance_dir: &Path) -> Result<(), String> {
+/// Descarga las bibliotecas del JSON del mod loader (NeoForge/Fabric/Forge)
+/// Esto es CRÍTICO porque mod loaders como Fabric/NeoForge agregan sus propias versiones de bibliotecas
+/// Ejemplo: Fabric usa asm-9.9 en lugar del asm-9.6 de vanilla MC
+pub async fn ensure_mod_loader_libraries(instance_dir: &Path, version_id: &str) -> Result<(), String> {
+    let version_dir = instance_dir.join("versions").join(version_id);
+    let json_path = version_dir.join(format!("{}.json", version_id));
+    
+    if !json_path.exists() {
+        // No hay JSON de mod loader, no hacer nada (vanilla)
+        return Ok(());
+    }
+    
+    let version_data = tokio::fs::read_to_string(&json_path).await.map_err(|e| e.to_string())?;
+    
+    #[derive(serde::Deserialize)]
+    struct VersionJson {
+        libraries: Vec<crate::versions::Library>
+    }
+    
+    let vj: VersionJson = serde_json::from_str(&version_data).map_err(|e| e.to_string())?;
+    let os_name = if cfg!(target_os = "windows") { "windows" } else { "linux" };
+    
+    for lib in vj.libraries.iter() {
+        if !crate::versions::is_library_allowed(lib, os_name) {
+            continue;
+        }
+        
+        if let Some(downloads) = &lib.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                let lib_path = instance_dir.join("libraries").join(&artifact.path);
+                
+                if let Some(parent) = lib_path.parent() {
+                    tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+                }
+                
+                if !lib_path.exists() {
+                    log::info!("📥 Downloading mod loader library: {}", artifact.path);
+                    download_file_with_retry(&artifact.url, &lib_path).await?;
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+pub async fn install_mod_loader(minecraft_version: &str, mod_loader: &ModLoader, instance_dir: &Path) -> Result<Option<String>, String> {
+    // Retorna el version_id exacto creado por el instalador (ej. "neoforge-21.8.51")
     match mod_loader.r#type.as_str() {
         "fabric" => install_fabric(minecraft_version, &mod_loader.version, instance_dir).await,
         "forge" => install_forge(minecraft_version, &mod_loader.version, instance_dir).await,
         "neoforge" => install_neoforge(minecraft_version, &mod_loader.version, instance_dir).await,
-        "vanilla" => Ok(()),
+        "vanilla" => Ok(None),
         _ => Err(format!("Unsupported mod loader type: {}", mod_loader.r#type))
     }
 }
 
-async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_dir: &Path) -> Result<(), String> {
+async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_dir: &Path) -> Result<Option<String>, String> {
     let loader_jar = instance_dir
         .join("libraries")
         .join("net")
@@ -494,7 +541,8 @@ async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_
         .join(fabric_version)
         .join(format!("fabric-loader-{}.jar", fabric_version));
     if loader_jar.exists() {
-        return Ok(());
+        // Si ya está instalado, buscar el version_id existente
+        return Ok(find_version_id_in_versions_dir(instance_dir, "fabric"));
     }
 
     let libraries_dir = instance_dir.join("libraries");
@@ -507,10 +555,12 @@ async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_
     download_fabric_libraries(&profile_json, &libraries_dir).await?;
     run_fabric_installer(&installer_path, instance_dir, minecraft_version, fabric_version).await?;
     ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
-    Ok(())
+    
+    // Buscar el version_id creado por el instalador
+    Ok(find_version_id_in_versions_dir(instance_dir, "fabric"))
 }
 
-async fn install_forge(minecraft_version: &str, forge_version: &str, instance_dir: &Path) -> Result<(), String> {
+async fn install_forge(minecraft_version: &str, forge_version: &str, instance_dir: &Path) -> Result<Option<String>, String> {
     log::info!("🔨 Instalando Forge {} para Minecraft {}", forge_version, minecraft_version);
     
     // Verificar si ya está instalado
@@ -524,7 +574,8 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
     
     if forge_marker.exists() {
         log::info!("✅ Forge {} ya está instalado", forge_version);
-        return Ok(());
+        // Si ya está instalado, buscar el version_id existente
+        return Ok(find_version_id_in_versions_dir(instance_dir, "forge"));
     }
     
     let libraries_dir = instance_dir.join("libraries");
@@ -553,7 +604,8 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
     // Asegurar que el cliente de Minecraft esté presente
     ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
     
-    Ok(())
+    // Buscar el version_id creado por el instalador
+    Ok(find_version_id_in_versions_dir(instance_dir, "forge"))
 }
 
 async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
@@ -608,7 +660,7 @@ async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_ve
     Ok(())
 }
 
-async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, instance_dir: &Path) -> Result<(), String> {
+async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, instance_dir: &Path) -> Result<Option<String>, String> {
     log::info!("🔨 Instalando NeoForge {} para Minecraft {}", neoforge_version, minecraft_version);
     
     // Verificar si ya está instalado
@@ -622,7 +674,8 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
     
     if neoforge_marker.exists() {
         log::info!("✅ NeoForge {} ya está instalado", neoforge_version);
-        return Ok(());
+        // Si ya está instalado, buscar el version_id existente
+        return Ok(find_version_id_in_versions_dir(instance_dir, "neoforge"));
     }
     
     let libraries_dir = instance_dir.join("libraries");
@@ -651,7 +704,8 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
     // Asegurar que el cliente de Minecraft esté presente
     ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
     
-    Ok(())
+    // Buscar el version_id creado por el instalador
+    Ok(find_version_id_in_versions_dir(instance_dir, "neoforge"))
 }
 
 async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
@@ -704,6 +758,47 @@ async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft
     
     log::info!("✅ Instalador de NeoForge ejecutado correctamente");
     Ok(())
+}
+
+/// Busca el version_id en el directorio versions/ basándose en el tipo de mod loader
+pub fn find_version_id_in_versions_dir(instance_dir: &Path, loader_type: &str) -> Option<String> {
+    let versions_dir = instance_dir.join("versions");
+    if !versions_dir.exists() {
+        return None;
+    }
+    
+    if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let dir_name = entry.file_name();
+                let dir_name_str = dir_name.to_string_lossy();
+                let json_path = path.join(format!("{}.json", dir_name_str));
+                
+                if json_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&json_path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            // Verificar que sea un mod loader del tipo correcto
+                            let json_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            let matches_loader = match loader_type {
+                                "neoforge" => json_id.starts_with("neoforge-") || dir_name_str.starts_with("neoforge-"),
+                                "forge" => (json_id.starts_with("forge-") && !json_id.starts_with("neoforge-")) || 
+                                          (dir_name_str.starts_with("forge-") && !dir_name_str.starts_with("neoforge-")),
+                                "fabric" => json_id.starts_with("fabric-loader-") || dir_name_str.starts_with("fabric-loader-"),
+                                _ => false,
+                            };
+                            
+                            if matches_loader {
+                                return Some(json_id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
 }
 
 /// Crea un launcher_profiles.json dummy si no existe

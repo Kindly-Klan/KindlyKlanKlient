@@ -1,6 +1,6 @@
 [package]
 name = "kindlyklanklient"
-version = "0.1.65"
+version = "0.1.66"
 description = "Client for Kindly Klan's events."
 authors = ["Kindly Klan"]
 edition = "2024"
@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
+dotenv = "0.15"
 
 [dependencies]
 tauri = { version = "2.0.0", features = ["protocol-asset"] }
@@ -48,4 +49,5 @@ tauri-plugin-notification = "2.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 rand = "0.8"
 glob = "0.3"
+dunce = "1.0"
 

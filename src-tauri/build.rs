@@ -1,7 +1,14 @@
 fn main() {
+    // Cargar variables de entorno desde archivos .env
+    // Intenta cargar .env.local primero (tiene prioridad), luego .env
+    let _ = dotenv::from_filename(".env.local").ok();
+    let _ = dotenv::dotenv().ok();
+    
     // Embed environment variables at compile time
     println!("cargo:rerun-if-env-changed=SUPABASE_URL");
     println!("cargo:rerun-if-env-changed=SUPABASE_ANON_KEY");
+    println!("cargo:rerun-if-changed=.env");
+    println!("cargo:rerun-if-changed=.env.local");
     
     // Set compile-time environment variables
     if let Ok(url) = std::env::var("SUPABASE_URL") {

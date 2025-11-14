@@ -2462,12 +2462,13 @@ dependencies = [
 
 [[package]]
 name = "kindlyklanklient"
-version = "0.1.55"
+version = "0.1.65"
 dependencies = [
  "anyhow",
  "chrono",
  "dirs 5.0.1",
  "dotenv",
+ "dunce",
  "env_logger",
  "futures-util",
  "glob",

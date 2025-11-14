@@ -244,6 +244,8 @@ pub struct LocalInstanceMetadata {
     pub fabric_version: String, // Mantener para compatibilidad retroactiva
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mod_loader: Option<ModLoader>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>, // ID exacto del JSON generado por el instalador (ej. "neoforge-21.8.51")
     pub created_at: String,
 }
 

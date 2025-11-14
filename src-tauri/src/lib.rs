@@ -132,7 +132,7 @@ async fn launch_minecraft_with_auth(
     
     // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
     // En lib.rs no tenemos el metadata, así que pasamos None y la función intentará detectar desde JSON
-    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, None, None);
+    let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, None, None, None);
     if !mod_loader_jvm_args.is_empty() {
         log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
         jvm_args.extend(mod_loader_jvm_args);
@@ -163,7 +163,7 @@ async fn launch_minecraft_with_auth(
     mc_args.push("--height".to_string());
     mc_args.push(window_height.to_string());
 
-    let main_class = crate::launcher::select_main_class(&instance_dir);
+    let main_class = crate::launcher::select_main_class(&instance_dir, None);
     
     log::info!("🎮 Launching with main class: {}", main_class);
     log::info!("📦 Classpath length: {} bytes", classpath.len());

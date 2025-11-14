@@ -913,7 +913,6 @@ function App() {
     if (selectedInstance === instanceId) {
       setSelectedInstance(null);
     }
-    addToast('Instancia local eliminada', 'success');
   };
 
   // Effect to check admin status when user changes
