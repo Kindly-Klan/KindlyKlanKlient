@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { MojangSkinApiService } from '@/services/skin/mineSkinApi';
 import { SkinData } from '@/types/skin';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -20,14 +19,7 @@ export const SkinUploader: React.FC<SkinUploaderProps> = ({
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
-
     
-    const validation = MojangSkinApiService.validateSkinFile(file);
-    if (!validation.valid) {
-      onUploadError(validation.error || 'Archivo no válido');
-      return;
-    }
-
     setIsProcessing(true);
 
     try {
