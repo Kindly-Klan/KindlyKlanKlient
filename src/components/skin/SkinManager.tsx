@@ -17,11 +17,6 @@ interface MojangSkin {
   variant: 'CLASSIC' | 'SLIM';
 }
 
-interface MojangProfile {
-  id: string;
-  name: string;
-  skins?: MojangSkin[];
-}
 
 interface EnsureSessionResponse {
   status: string;
