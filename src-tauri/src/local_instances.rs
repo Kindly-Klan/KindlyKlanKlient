@@ -449,6 +449,30 @@ pub async fn launch_local_instance(
     
     log::info!("🚀 Launching local instance: {}", instance_id);
     
+    // Validate and refresh token before launching
+    log::info!("🔐 Validating and refreshing token for user: {}", username);
+    let (validated_access_token, validated_uuid) = match crate::sessions_api::validate_and_refresh_token(app_handle.clone(), username.clone()).await {
+        Ok(crate::EnsureSessionResponse::Ok { session, refreshed }) => {
+            if refreshed {
+                log::info!("✅ Token refreshed successfully");
+            } else {
+                log::info!("✅ Token is still valid");
+            }
+            // Use the validated/refreshed token and UUID from session
+            (session.access_token, session.uuid)
+        }
+        Ok(crate::EnsureSessionResponse::Err { code, message }) => {
+            log::warn!("⚠️  Token validation failed: {} - {}, using provided token", code, message);
+            // Fallback to provided token if validation fails
+            (access_token, uuid)
+        }
+        Err(e) => {
+            log::warn!("⚠️  Token validation error: {}, using provided token", e);
+            // Fallback to provided token if validation fails
+            (access_token, uuid)
+        }
+    };
+    
     let local_instances_dir = get_local_instances_dir()?;
     let instance_dir = local_instances_dir.join(&instance_id);
     
@@ -594,9 +618,9 @@ pub async fn launch_local_instance(
         .await
         .unwrap_or((String::new(), "G1".to_string(), 1280, 720));
     
-    // Build JVM args
+    // Build JVM args using validated token
     let mut jvm_args = crate::launcher::build_minecraft_jvm_args(
-        &access_token,
+        &validated_access_token,
         min_ram_gb,
         max_ram_gb,
         &gc_config,
@@ -608,65 +632,23 @@ pub async fn launch_local_instance(
         jvm_args.extend(mod_loader_jvm_args);
     }
     
-    // Get asset index
     let asset_index_id = crate::instances::ensure_assets_present(&app_handle, &instance_dir, &metadata.minecraft_version).await?;
-    
-    let user_properties = {
-        let client = reqwest::Client::new();
-        let uuid_no_dashes = uuid.replace("-", "");
-        let profile_url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}?unsigned=false", uuid_no_dashes);
-        
-        match client.get(&profile_url).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(profile) => {
-                            if let Some(properties) = profile.get("properties").and_then(|p| p.as_array()) {
-                                let mut props_map = serde_json::Map::new();
-                                for prop in properties {
-                                    if let (Some(name), Some(value), Some(signature)) = (
-                                        prop.get("name").and_then(|n| n.as_str()),
-                                        prop.get("value").and_then(|v| v.as_str()),
-                                        prop.get("signature").and_then(|s| s.as_str())
-                                    ) {
-                                        let mut prop_obj = serde_json::Map::new();
-                                        prop_obj.insert("value".to_string(), serde_json::Value::String(value.to_string()));
-                                        prop_obj.insert("signature".to_string(), serde_json::Value::String(signature.to_string()));
-                                        props_map.insert(name.to_string(), serde_json::Value::Object(prop_obj));
-                                    }
-                                }
-                                serde_json::to_string(&serde_json::Value::Object(props_map)).unwrap_or_else(|_| "{}".to_string())
-                            } else {
-                                "{}".to_string()
-                            }
-                        }
-                        Err(_) => "{}".to_string()
-                    }
-                } else {
-                    log::warn!("Failed to get profile with properties: HTTP {}", response.status());
-                    "{}".to_string()
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to fetch profile with properties: {}", e);
-                "{}".to_string()
-            }
-        }
-    };
+    let user_properties = "{}".to_string();
     
     let assets_dir = instance_dir.join("assets");
+    
+    let uuid_simple = validated_uuid.replace("-", "");
+    
     let mut mc_args = vec![
         "--username".to_string(), username,
-        "--uuid".to_string(), uuid,
-        "--accessToken".to_string(), access_token,
-        "--clientId".to_string(), "c4502edb-87c6-40cb-b595-64a280cf8906".to_string(),
-        "--xuid".to_string(), "0".to_string(),
+        "--uuid".to_string(), uuid_simple,
+        "--accessToken".to_string(), validated_access_token,
         "--version".to_string(), metadata.minecraft_version.clone(),
         "--gameDir".to_string(), instance_dir.to_string_lossy().to_string(),
         "--assetsDir".to_string(), assets_dir.to_string_lossy().to_string(),
         "--assetIndex".to_string(), asset_index_id,
         "--userType".to_string(), "msa".to_string(),
-        "--userProperties".to_string(), user_properties,
+        "--userProperties".to_string(), user_properties.clone(),
         "--versionType".to_string(), "release".to_string(),
         "--width".to_string(), window_width.to_string(),
         "--height".to_string(), window_height.to_string(),
@@ -677,19 +659,18 @@ pub async fn launch_local_instance(
         mc_args.extend(mod_loader_game_args);
     }
     
-    // Get main class usando el version_id del metadata
     let main_class = crate::launcher::select_main_class(&instance_dir, metadata.version_id.as_deref());
-    
-    // Find or install Java executable for this Minecraft version
     let java_path = crate::launcher::find_or_install_java_for_minecraft(&metadata.minecraft_version).await?;
     
-    // Launch Minecraft
     let mut command = Command::new(&java_path);
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
+    
+    log::info!("📋 userProperties being passed: {}", user_properties);
+    log::info!("📋 userProperties length: {} chars", user_properties.len());
     
     command.args(&jvm_args);
     command.arg("-cp").arg(&classpath);
@@ -759,7 +740,6 @@ pub async fn delete_local_instance(instance_id: String) -> Result<String, String
         return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
     }
     
-    // Delete the entire instance directory
     tokio::fs::remove_dir_all(&instance_dir)
         .await
         .map_err(|e| format!("Failed to delete instance directory: {}", e))?;

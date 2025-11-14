@@ -1117,7 +1117,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                                 continue;
                             }
                             
-                            // Solo agregar si no está vacío después del procesamiento
                             if !processed_arg.trim().is_empty() {
                                 additional_args.push(processed_arg);
                             }
@@ -1126,8 +1125,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                     
                     if !additional_args.is_empty() {
                         ensure_required_add_opens(loader_type, &mut additional_args);
-                        // NO reemplazamos ALL-MODULE-PATH, lo dejamos tal cual
-                        // Esto es lo que hace Modrinth y otros launchers
                         return additional_args;
                     }
                 }
@@ -1139,7 +1136,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
         if let Some(loader) = loader_type {
             match loader {
                 "neoforge" | "forge" => {
-                    // Argumentos JVM críticos para Forge/NeoForge con Java 17+
                     additional_args.extend(vec![
                         "--add-opens".to_string(),
                         "java.base/java.lang.invoke=ALL-UNNAMED".to_string(),
@@ -1286,8 +1282,9 @@ pub fn build_minecraft_jvm_args(
 		let additional_args: Vec<&str> = additional_jvm_args.split_whitespace().collect();
 		for arg in additional_args { if !arg.is_empty() { args.push(arg.to_string()); } }
 	}
-	args.push("-Dminecraft.api.auth.host=https://api.minecraftservices.com".to_string());
-	args.push("-Dminecraft.api.session.host=https://api.minecraftservices.com".to_string());
+	args.push("-Dminecraft.api.auth.host=https://authserver.mojang.com".to_string());
+	args.push("-Dminecraft.api.account.host=https://api.mojang.com".to_string());
+	args.push("-Dminecraft.api.session.host=https://sessionserver.mojang.com".to_string());
 	args.push("-Dminecraft.api.services.host=https://api.minecraftservices.com".to_string());
 	args.push(format!("-Dminecraft.api.accessToken={}", access_token));
 	Ok(args)

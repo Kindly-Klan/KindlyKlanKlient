@@ -860,7 +860,8 @@ function App() {
 
   // Handle creating a local instance
   const handleCreateLocalInstance = (instance: LocalInstance) => {
-    setLocalInstances([...localInstances, instance]);
+    // No agregar la instancia al estado aquí, dejar que loadLocalInstances() lo haga
+    // para evitar conflictos y duplicados
     setCreatingInstanceId(instance.id);    
     // Remove creating state after animation
     setTimeout(() => {
@@ -928,18 +929,29 @@ function App() {
   // Listen to local instance creation progress
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let isUnmounted = false;
     
     listen('local-instance-progress', (event: any) => {
+      if (isUnmounted) return;
+      
       const progress = event.payload;
       console.log('Local instance progress:', progress);
       
       if (progress.stage === 'completed') {
         addToast(progress.message, 'success');
-        loadLocalInstances(); // Reload local instances
+        // Recargar instancias después de un pequeño delay para asegurar que la instancia esté completamente creada
+        setTimeout(() => {
+          if (!isUnmounted) {
+            loadLocalInstances();
+          }
+        }, 500);
       }
     }).then((fn) => { unlisten = fn; }).catch(() => {});
     
-    return () => { if (unlisten) { try { unlisten(); } catch {} } };
+    return () => { 
+      isUnmounted = true;
+      if (unlisten) { try { unlisten(); } catch {} } 
+    };
   }, []);
 
   // Listen to mod sync progress
