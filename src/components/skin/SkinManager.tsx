@@ -168,27 +168,15 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     return requestPromise;
   }, []);
 
-  // Sincronización simplificada: solo actualizar URLs/textureIds si están disponibles
-  // Ya no forzamos sincronización automática - las skins locales tienen prioridad
-  const syncWithMojang = useCallback(async (localSkins: SkinData[]): Promise<void> => {
-    // Sincronización deshabilitada - las skins locales tienen prioridad
-    // Esto evita problemas con rate limits y tokens expirados
-    return;
-  }, []);
-
-  // Cargar skins al montar
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
     
     const initializeSkins = async () => {
       try {
-        // 1. Cargar skins guardadas localmente PRIMERO
         const savedSkins = await SkinStorageService.getStoredSkins();
         const activeSkin = await SkinStorageService.getActiveSkin();
         
-        // Crear blob URLs para TODAS las skins que tienen fileData
-        // Solo crear si no existe ya (para evitar recrear innecesariamente)
         savedSkins.forEach(skin => {
           if (skin.fileData && skin.fileData instanceof ArrayBuffer && skin.fileData.byteLength > 0) {
             // Solo crear si no existe ya
