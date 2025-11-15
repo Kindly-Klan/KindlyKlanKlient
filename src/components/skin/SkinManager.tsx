@@ -94,14 +94,10 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       return skin.url;
     }
     
-    // FALLBACK: Crafatar
+    // Fallback 
     return `https://crafatar.com/skins/${currentUser?.uuid || 'default'}`;
   }, [currentUser?.uuid]);
 
-  // Limpiar blob URLs solo cuando se elimine una skin específica
-  // NO limpiar al desmontar porque necesitamos mantenerlos entre recargas
-
-  // Rate limiting para evitar problemas con la API de Mojang (600 requests por 10 minutos)
   const lastUploadTimeRef = useRef<number>(0);
   const MIN_UPLOAD_INTERVAL = 2000; // Mínimo 2 segundos entre subidas
 
@@ -115,41 +111,32 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
 
     const requestPromise = (async () => {
       try {
+        if (currentUser?.access_token && currentUser?.username) {
+          const sessionResponse: EnsureSessionResponse = await invoke('ensure_valid_session', {
+            username: currentUser.username
+          });
+
+          if (sessionResponse.status === 'Ok' && sessionResponse.data?.session) {
+            const validToken = sessionResponse.data.session.access_token;
+            return validToken;
+          }
+        }
+
         const savedSession = localStorage.getItem('kkk_session');
-        if (!savedSession) {
-          return null;
-        }
+        if (savedSession) {
+          try {
+            const session = JSON.parse(savedSession);
+            if (session?.username) {
+              const sessionResponse: EnsureSessionResponse = await invoke('ensure_valid_session', {
+                username: session.username
+              });
 
-        let session;
-        try {
-          session = JSON.parse(savedSession);
-        } catch (parseError) {
-          console.error('❌ Error al parsear sesión:', parseError);
-          return null;
-        }
-
-        if (!session?.username) {
-          return null;
-        }
-
-        // Validar/renovar la sesión
-        const sessionResponse: EnsureSessionResponse = await invoke('ensure_valid_session', {
-          username: session.username
-        });
-
-        if (sessionResponse.status === 'Ok' && sessionResponse.data?.session) {
-          const validToken = sessionResponse.data.session.access_token;
-          
-          // Actualizar localStorage con el token renovado
-          const updatedSession = {
-            ...session,
-            access_token: validToken,
-            expires_at: sessionResponse.data.session.expires_at,
-            refresh_token: sessionResponse.data.session.refresh_token
-          };
-          localStorage.setItem('kkk_session', JSON.stringify(updatedSession));
-          
-          return validToken;
+              if (sessionResponse.status === 'Ok' && sessionResponse.data?.session) {
+                return sessionResponse.data.session.access_token;
+              }
+            }
+          } catch (parseError) {
+          }
         }
 
         return null;
@@ -166,7 +153,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
 
     tokenRequestRef.current = requestPromise;
     return requestPromise;
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (hasInitialized.current) return;
