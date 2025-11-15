@@ -101,6 +101,10 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
   // Limpiar blob URLs solo cuando se elimine una skin específica
   // NO limpiar al desmontar porque necesitamos mantenerlos entre recargas
 
+  // Rate limiting para evitar problemas con la API de Mojang (600 requests por 10 minutos)
+  const lastUploadTimeRef = useRef<number>(0);
+  const MIN_UPLOAD_INTERVAL = 2000; // Mínimo 2 segundos entre subidas
+
   // Función para obtener token válido de Minecraft - con protección contra llamadas repetidas
   const tokenRequestRef = useRef<Promise<string | null> | null>(null);
   const getValidMinecraftToken = useCallback(async (): Promise<string | null> => {
@@ -113,7 +117,6 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       try {
         const savedSession = localStorage.getItem('kkk_session');
         if (!savedSession) {
-          console.warn('⚠️ No hay sesión guardada');
           return null;
         }
 
@@ -126,7 +129,6 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
         }
 
         if (!session?.username) {
-          console.warn('⚠️ Sesión no tiene username');
           return null;
         }
 
@@ -150,7 +152,6 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
           return validToken;
         }
 
-        console.warn('⚠️ La sesión no es válida:', sessionResponse.status);
         return null;
       } catch (error) {
         console.error('❌ Error al obtener token:', error);
@@ -167,88 +168,13 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     return requestPromise;
   }, []);
 
-  // Sincronizar skin activa con Mojang (con mejor manejo de errores y sin bloquear)
+  // Sincronización simplificada: solo actualizar URLs/textureIds si están disponibles
+  // Ya no forzamos sincronización automática - las skins locales tienen prioridad
   const syncWithMojang = useCallback(async (localSkins: SkinData[]): Promise<void> => {
-    // No sincronizar si no hay skins locales
-    if (!localSkins || localSkins.length === 0) {
-      return;
-    }
-
-    try {
-      // Intentar obtener token con timeout
-      const tokenPromise = getValidMinecraftToken();
-      const timeoutPromise = new Promise<string | null>((resolve) => 
-        setTimeout(() => resolve(null), 5000)
-      );
-      
-      const accessToken = await Promise.race([tokenPromise, timeoutPromise]);
-      
-      if (!accessToken) {
-        // No mostrar error, simplemente no sincronizar si no hay token
-        return;
-      }
-
-      // Obtener perfil de Mojang con timeout
-      const profilePromise = invoke<ProfileResponse>('get_minecraft_profile_safe', {
-        accessToken
-      });
-      const profileTimeoutPromise = new Promise<ProfileResponse>((resolve) => 
-        setTimeout(() => resolve({ status: 'Err', profile: undefined, code: 'TIMEOUT', message: 'Timeout' }), 8000)
-      );
-      
-      const profileResponse = await Promise.race([profilePromise, profileTimeoutPromise]);
-
-      if (profileResponse.status !== 'Ok' || !profileResponse.profile) {
-        // No mostrar error, simplemente no sincronizar
-        return;
-      }
-
-      const profile = profileResponse.profile as any;
-      const mojangSkins = profile.skins || [];
-      const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
-
-      if (!activeMojangSkin) {
-        // No hay skin activa en Mojang, desmarcar todas las locales (solo una vez)
-        const hasActiveLocal = localSkins.some(s => s.isActive);
-        if (hasActiveLocal) {
-          await SkinStorageService.setActiveSkin(''); // Desmarcar todas
-        }
-        return;
-      }
-
-      // Buscar si alguna skin local coincide con la activa de Mojang
-      const mojangSkinUrl = activeMojangSkin.url;
-      const mojangTextureId = activeMojangSkin.id;
-
-      const matchingLocalSkin = localSkins.find(skin => {
-        // Comparar por URL
-        if (skin.url && skin.url === mojangSkinUrl) {
-          return true;
-        }
-        // Comparar por textureId
-        if (skin.textureId && skin.textureId === mojangTextureId) {
-          return true;
-        }
-        return false;
-      });
-
-      if (matchingLocalSkin) {
-        // La skin activa de Mojang coincide con una local, marcarla como activa
-        if (!matchingLocalSkin.isActive) {
-          await SkinStorageService.setActiveSkin(matchingLocalSkin.id);
-        }
-      } else {
-        // La skin activa de Mojang NO coincide con ninguna local, desmarcar todas (solo una vez)
-        const hasActiveLocal = localSkins.some(s => s.isActive);
-        if (hasActiveLocal) {
-          await SkinStorageService.setActiveSkin(''); // Desmarcar todas
-        }
-      }
-    } catch (error) {
-      // Silenciar errores de sincronización, es una operación en segundo plano
-      // No mostrar error al usuario ni en consola para evitar spam
-    }
-  }, [getValidMinecraftToken]);
+    // Sincronización deshabilitada - las skins locales tienen prioridad
+    // Esto evita problemas con rate limits y tokens expirados
+    return;
+  }, []);
 
   // Cargar skins al montar
   useEffect(() => {
@@ -285,27 +211,13 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
         // Pequeño delay para asegurar que los blob URLs estén completamente listos
         await new Promise(resolve => setTimeout(resolve, 50));
         
-        // Establecer estado inicial PRIMERO (sin bloquear)
+        // Establecer estado inicial
         setSkins([...savedSkins]);
         setSelectedSkinId(activeSkin?.id || null);
         setIsLoadingInitial(false);
 
-        // 2. Sincronizar con Mojang en segundo plano DESPUÉS de un delay (no bloquear UI)
-        // Esperar 2 segundos para asegurar que la sesión esté lista
-        setTimeout(() => {
-          syncWithMojang(savedSkins).then(() => {
-            // Después de sincronizar, recargar skins para reflejar cambios
-            SkinStorageService.getStoredSkins().then(updatedSkins => {
-              const updatedActiveSkin = updatedSkins.find(s => s.isActive);
-              setSkins([...updatedSkins]);
-              setSelectedSkinId(updatedActiveSkin?.id || null);
-            }).catch(() => {
-              // Ignorar errores al recargar
-            });
-          }).catch(() => {
-            // Ignorar errores de sincronización
-          });
-        }, 2000);
+        // Ya no sincronizamos automáticamente con Mojang
+        // Las skins locales tienen prioridad y se muestran inmediatamente
 
         // 3. Refrescar avatares después de un delay más largo
         setTimeout(() => {
@@ -325,65 +237,12 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     return () => {
       hasInitialized.current = false;
     };
-  }, [getValidMinecraftToken, addToast, syncWithMojang]);
+  }, [addToast]);
 
-  // Sincronizar con Mojang cuando el usuario vuelve a la pestaña (con debounce para evitar spam)
-  useEffect(() => {
-    let syncTimeout: NodeJS.Timeout | null = null;
-    let lastSyncTime = 0;
-    const MIN_SYNC_INTERVAL = 10000; // Mínimo 10 segundos entre sincronizaciones
+  // Ya no sincronizamos automáticamente al cambiar de pestaña
+  // Las skins locales se muestran siempre sin depender de Mojang
 
-    const handleVisibilityChange = () => {
-      if (!document.hidden && currentUser) {
-        const now = Date.now();
-        // Solo sincronizar si han pasado al menos 10 segundos desde la última vez
-        if (now - lastSyncTime < MIN_SYNC_INTERVAL) {
-          return;
-        }
-
-        // Limpiar timeout anterior si existe
-        if (syncTimeout) {
-          clearTimeout(syncTimeout);
-        }
-
-        // Esperar 1 segundo antes de sincronizar (para evitar sincronizaciones inmediatas)
-        syncTimeout = setTimeout(() => {
-          lastSyncTime = Date.now();
-          SkinStorageService.getStoredSkins().then(localSkins => {
-            syncWithMojang(localSkins).then(() => {
-              // Recargar skins después de sincronizar
-              SkinStorageService.getStoredSkins().then(updatedSkins => {
-                const updatedActiveSkin = updatedSkins.find(s => s.isActive);
-                setSkins([...updatedSkins]);
-                setSelectedSkinId(updatedActiveSkin?.id || null);
-                // Refrescar avatares después de un delay
-                setTimeout(() => {
-                  refreshAvatars();
-                }, 500);
-              }).catch(() => {
-                // Ignorar errores
-              });
-            }).catch(() => {
-              // Ignorar errores de sincronización
-            });
-          }).catch(() => {
-            // Ignorar errores
-          });
-        }, 1000);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      if (syncTimeout) {
-        clearTimeout(syncTimeout);
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [currentUser, syncWithMojang]);
-
-  // Subir nueva skin
+  // Guardar nueva skin localmente (sin subir a Mojang)
   const handleUploadSkin = useCallback(async (file: File) => {
     if (!file) return;
 
@@ -399,57 +258,11 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     }
 
     setIsUploading(true);
-    addToast?.('Subiendo skin a Mojang...', 'info', 3000);
+    addToast?.('Guardando skin...', 'info', 2000);
 
     try {
-      // Obtener token válido
-      const accessToken = await getValidMinecraftToken();
-      if (!accessToken) {
-        throw new Error('No se pudo obtener un token válido. Por favor, reinicia sesión.');
-      }
-
-      // Crear archivo temporal y subir a Mojang
+      // Leer archivo y guardar localmente
       const fileData = await file.arrayBuffer();
-      const tempFilePath = await invoke<string>('create_temp_file', {
-        fileName: `skin_${Date.now()}.png`,
-        fileData: Array.from(new Uint8Array(fileData))
-      });
-
-      console.log('📤 Subiendo skin a Mojang API...');
-      console.log('   Token:', accessToken.substring(0, 30) + '...');
-      console.log('   Archivo:', tempFilePath);
-      console.log('   Variant: classic');
-      
-      await invoke('upload_skin_to_mojang', {
-        filePath: tempFilePath,
-        variant: 'classic',
-        accessToken
-      });
-
-      console.log('✅ Skin subida exitosamente a Mojang');
-
-      // Obtener perfil de Mojang para obtener URL y textureId de la skin recién subida
-      let skinUrl = '';
-      let textureId = '';
-      try {
-        const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
-          accessToken
-        });
-        if (profileResponse.status === 'Ok' && profileResponse.profile) {
-          const profile = profileResponse.profile as any;
-          const mojangSkins = profile.skins || [];
-          const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
-          if (activeMojangSkin) {
-            skinUrl = activeMojangSkin.url || '';
-            textureId = activeMojangSkin.id || '';
-            console.log('✅ URL y textureId obtenidos de Mojang:', { skinUrl, textureId });
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️ No se pudo obtener URL/textureId de Mojang, continuando sin ellos:', err);
-      }
-
-      // Crear blob URL INMEDIATAMENTE desde el fileData original
       const uint8Array = new Uint8Array(fileData);
       const buffer = new ArrayBuffer(uint8Array.length);
       const view = new Uint8Array(buffer);
@@ -457,41 +270,37 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       const blob = new Blob([buffer], { type: 'image/png' });
       const blobUrl = URL.createObjectURL(blob);
       
-      // Guardar skin localmente con URL y textureId si están disponibles
+      // Crear skin local
       const newSkin: SkinData = {
-        id: `uploaded_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `skin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: file.name.replace('.png', ''),
         fileData: buffer,
-        url: skinUrl,
-        textureId: textureId,
+        url: '',
+        textureId: '',
         variant: 'classic',
         uploadedAt: new Date(),
-        isActive: true
+        isActive: false, // No activar automáticamente
+        isMojangSynced: false
       };
 
+      // Guardar skin localmente
       await SkinStorageService.saveSkin(newSkin);
-      await SkinStorageService.setActiveSkin(newSkin.id);
 
-      // Guardar blob URL inmediatamente para esta skin
+      // Guardar blob URL
       blobUrlsRef.current.set(newSkin.id, blobUrl);
 
+      // Actualizar lista de skins
       const updatedSkins = await SkinStorageService.getStoredSkins();
       setSkins([...updatedSkins]);
-      setSelectedSkinId(newSkin.id);
 
-      // Refrescar avatares después de 2 segundos (dar tiempo a que Mojang procese)
-      setTimeout(() => {
-        refreshAvatars();
-      }, 2000);
-
-      addToast?.('✅ Skin subida y aplicada correctamente', 'success');
+      addToast?.('✅ Skin guardada correctamente', 'success');
     } catch (error) {
-      console.error('❌ Error al subir skin:', error);
+      console.error('❌ Error al guardar skin:', error);
       addToast?.(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`, 'error');
     } finally {
       setIsUploading(false);
     }
-  }, [addToast, getValidMinecraftToken]);
+  }, [addToast]);
 
   // Helper: Obtener skin completa con fileData desde storage
   const getSkinWithFileData = useCallback(async (skinId: string): Promise<SkinData | null> => {
@@ -538,21 +347,37 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     throw new Error(`La skin "${skin.name || skin.id}" no tiene datos disponibles. Por favor, vuelve a subirla.`);
   }, []);
 
-  // Seleccionar y aplicar skin - SIEMPRE subir a Mojang
+  // Seleccionar skin: primero activar localmente, luego intentar subir a Mojang (opcional)
   const handleSelectSkin = useCallback(async (skin: SkinData) => {
     if (isUploading || selectedSkinId === skin.id) return;
 
+    // 1. Activar skin localmente INMEDIATAMENTE (sin esperar a Mojang)
+    await SkinStorageService.setActiveSkin(skin.id);
+    setSelectedSkinId(skin.id);
+    
+    // Recargar skins para reflejar el cambio
+    const allSkins = await SkinStorageService.getStoredSkins();
+    setSkins([...allSkins]);
+
+    // 2. Intentar subir a Mojang en segundo plano (opcional, no bloquea)
     setIsUploading(true);
-    addToast?.('Aplicando skin a Mojang...', 'info', 3000);
+    
+    // Rate limiting: esperar si la última subida fue hace menos de MIN_UPLOAD_INTERVAL
+    const timeSinceLastUpload = Date.now() - lastUploadTimeRef.current;
+    if (timeSinceLastUpload < MIN_UPLOAD_INTERVAL) {
+      await new Promise(resolve => setTimeout(resolve, MIN_UPLOAD_INTERVAL - timeSinceLastUpload));
+    }
 
     try {
       // Obtener fileData de la skin
       const fileData = await getSkinFileData(skin);
 
-      // Obtener token
+      // Obtener token (si no hay token, simplemente no subimos a Mojang)
       const accessToken = await getValidMinecraftToken();
       if (!accessToken) {
-        throw new Error('No se pudo autenticar. Verifica tu sesión.');
+        console.log('⚠️ No hay token válido, skin activada solo localmente');
+        setIsUploading(false);
+        return;
       }
 
       // Crear archivo temporal
@@ -566,72 +391,57 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       const variant = currentStoredSkin?.variant || skin.variant || 'classic';
       
       // Subir a Mojang
+      lastUploadTimeRef.current = Date.now();
       try {
         await invoke('upload_skin_to_mojang', {
           filePath: tempFilePath,
           variant: variant,
           accessToken
         });
+
+        // Obtener perfil de Mojang para actualizar URL y textureId
+        try {
+          const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
+            accessToken
+          });
+          if (profileResponse.status === 'Ok' && profileResponse.profile) {
+            const profile = profileResponse.profile as any;
+            const mojangSkins = profile.skins || [];
+            const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
+            if (activeMojangSkin) {
+              const updatedSkin: SkinData = {
+                ...(currentStoredSkin || skin),
+                fileData: fileData,
+                url: activeMojangSkin.url || skin.url || '',
+                textureId: activeMojangSkin.id || skin.textureId || '',
+                isMojangSynced: true
+              };
+              await SkinStorageService.saveSkin(updatedSkin);
+              
+              // Recargar skins
+              const updatedSkins = await SkinStorageService.getStoredSkins();
+              setSkins([...updatedSkins]);
+            }
+          }
+        } catch (err) {
+          // Ignorar errores al obtener perfil
+        }
+
+        addToast?.('✅ Skin aplicada y sincronizada con Mojang', 'success');
       } catch (uploadError: any) {
         // Manejar errores específicos de la API
         if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {
-          throw new Error('Rate limit de Mojang API. Espera unos segundos e inténtalo de nuevo.');
+          addToast?.('⚠️ Rate limit de Mojang. La skin está activa localmente.', 'info');
+        } else if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
+          addToast?.('⚠️ Sesión expirada. La skin está activa localmente.', 'info');
+        } else {
+          // Otros errores: la skin sigue activa localmente
+          console.warn('⚠️ Error al subir a Mojang (skin activa localmente):', uploadError);
         }
-        if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
-          throw new Error('Sesión expirada. Por favor, reinicia sesión.');
-        }
-        throw new Error(`Error al subir skin: ${uploadError?.message || 'Error desconocido'}`);
       }
-
-      // Obtener perfil de Mojang para obtener URL y textureId actualizados
-      let updatedSkinUrl = skin.url || '';
-      let updatedTextureId = skin.textureId || '';
-      try {
-        const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
-          accessToken
-        });
-        if (profileResponse.status === 'Ok' && profileResponse.profile) {
-          const profile = profileResponse.profile as any;
-          const mojangSkins = profile.skins || [];
-          const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
-          if (activeMojangSkin) {
-            updatedSkinUrl = activeMojangSkin.url || '';
-            updatedTextureId = activeMojangSkin.id || '';
-            console.log('✅ URL y textureId actualizados de Mojang:', { updatedSkinUrl, updatedTextureId });
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️ No se pudo obtener URL/textureId de Mojang, usando valores existentes:', err);
-      }
-
-      // Guardar el fileData en disco si no está guardado, y actualizar URL/textureId
-      const storedSkinForSelect = await getSkinWithFileData(skin.id);
-      const updatedSkin: SkinData = {
-        ...(storedSkinForSelect || skin),
-        fileData: fileData,
-        url: updatedSkinUrl || skin.url || '',
-        textureId: updatedTextureId || skin.textureId || ''
-      };
-      await SkinStorageService.saveSkin(updatedSkin);
-
-      // Actualizar skin activa
-      await SkinStorageService.setActiveSkin(skin.id);
-      setSelectedSkinId(skin.id);
-
-      // Recargar skins
-      const allUpdatedSkins = await SkinStorageService.getStoredSkins();
-      setSkins([...allUpdatedSkins]);
-
-      // Refrescar avatares después de 2 segundos
-      setTimeout(() => {
-        refreshAvatars();
-      }, 2000);
-
-      addToast?.('✅ Skin aplicada correctamente', 'success');
     } catch (error) {
-      console.error('❌ Error al aplicar skin:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      addToast?.(`❌ ${errorMessage}`, 'error');
+      // Error al obtener fileData o token: la skin ya está activa localmente
+      console.warn('⚠️ Error al procesar skin para Mojang (skin activa localmente):', error);
     } finally {
       setIsUploading(false);
     }
@@ -663,7 +473,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     }
   }, [selectedSkinId, addToast]);
 
-  // Cambiar modelo (slim/classic) - SELECCIONA AUTOMÁTICAMENTE
+  // Cambiar modelo (slim/classic) - actualizar localmente primero, luego Mojang
   const handleToggleModel = useCallback(async (skin: SkinData, event: React.MouseEvent) => {
     event.stopPropagation();
 
@@ -672,71 +482,13 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     const newVariant: SkinModel = skin.variant === 'classic' ? 'slim' : 'classic';
     
     setIsUploading(true);
-    addToast?.('Cambiando formato a Mojang...', 'info', 3000);
 
     try {
-      // Obtener fileData de la skin
-      const fileData = await getSkinFileData(skin);
-
-      // Obtener token
-      const accessToken = await getValidMinecraftToken();
-      if (!accessToken) {
-        throw new Error('No se pudo autenticar. Verifica tu sesión.');
-      }
-
-      // Crear archivo temporal
-      const tempFilePath = await invoke<string>('create_temp_file', {
-        fileName: `skin_${Date.now()}.png`,
-        fileData: Array.from(new Uint8Array(fileData))
-      });
-      
-      // Subir a Mojang con el nuevo variant
-      try {
-        await invoke('upload_skin_to_mojang', {
-          filePath: tempFilePath,
-          variant: newVariant,
-          accessToken
-        });
-      } catch (uploadError: any) {
-        // Manejar errores específicos de la API
-        if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {
-          throw new Error('Rate limit de Mojang API. Espera unos segundos e inténtalo de nuevo.');
-        }
-        if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
-          throw new Error('Sesión expirada. Por favor, reinicia sesión.');
-        }
-        throw new Error(`Error al cambiar formato: ${uploadError?.message || 'Error desconocido'}`);
-      }
-
-      // Obtener perfil de Mojang para obtener URL y textureId actualizados
-      let updatedSkinUrl = skin.url || '';
-      let updatedTextureId = skin.textureId || '';
-      try {
-        const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
-          accessToken
-        });
-        if (profileResponse.status === 'Ok' && profileResponse.profile) {
-          const profile = profileResponse.profile as any;
-          const mojangSkins = profile.skins || [];
-          const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
-          if (activeMojangSkin) {
-            updatedSkinUrl = activeMojangSkin.url || '';
-            updatedTextureId = activeMojangSkin.id || '';
-            console.log('✅ URL y textureId actualizados de Mojang después de cambiar formato:', { updatedSkinUrl, updatedTextureId });
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️ No se pudo obtener URL/textureId de Mojang, usando valores existentes:', err);
-      }
-
-      // Actualizar skin con el nuevo variant - PRESERVAR fileData y actualizar URL/textureId
+      // 1. Actualizar variant localmente INMEDIATAMENTE
       const storedSkin = await getSkinWithFileData(skin.id);
       const updatedSkin: SkinData = { 
         ...(storedSkin || skin),
-        variant: newVariant,
-        fileData: fileData,
-        url: updatedSkinUrl || skin.url || '',
-        textureId: updatedTextureId || skin.textureId || ''
+        variant: newVariant
       };
       await SkinStorageService.saveSkin(updatedSkin);
 
@@ -744,20 +496,71 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       const allUpdatedSkins = await SkinStorageService.getStoredSkins();
       setSkins([...allUpdatedSkins]);
 
-      // SELECCIONAR AUTOMÁTICAMENTE esta skin
-      await SkinStorageService.setActiveSkin(skin.id);
-      setSelectedSkinId(skin.id);
+      // 2. Intentar subir a Mojang en segundo plano (opcional)
+      // Rate limiting
+      const timeSinceLastUpload = Date.now() - lastUploadTimeRef.current;
+      if (timeSinceLastUpload < MIN_UPLOAD_INTERVAL) {
+        await new Promise(resolve => setTimeout(resolve, MIN_UPLOAD_INTERVAL - timeSinceLastUpload));
+      }
 
-      // Refrescar avatares después de 2 segundos
-      setTimeout(() => {
-        refreshAvatars();
-      }, 2000);
+      const fileData = await getSkinFileData(updatedSkin);
+      const accessToken = await getValidMinecraftToken();
+      
+      if (accessToken) {
+        try {
+          const tempFilePath = await invoke<string>('create_temp_file', {
+            fileName: `skin_${Date.now()}.png`,
+            fileData: Array.from(new Uint8Array(fileData))
+          });
+          
+          lastUploadTimeRef.current = Date.now();
+          await invoke('upload_skin_to_mojang', {
+            filePath: tempFilePath,
+            variant: newVariant,
+            accessToken
+          });
 
-      addToast?.('✅ Formato actualizado y skin seleccionada', 'success');
+          // Actualizar URL/textureId si es posible
+          try {
+            const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
+              accessToken
+            });
+            if (profileResponse.status === 'Ok' && profileResponse.profile) {
+              const profile = profileResponse.profile as any;
+              const mojangSkins = profile.skins || [];
+              const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
+              if (activeMojangSkin) {
+                const finalSkin: SkinData = {
+                  ...updatedSkin,
+                  url: activeMojangSkin.url || updatedSkin.url || '',
+                  textureId: activeMojangSkin.id || updatedSkin.textureId || '',
+                  isMojangSynced: true
+                };
+                await SkinStorageService.saveSkin(finalSkin);
+                const finalSkins = await SkinStorageService.getStoredSkins();
+                setSkins([...finalSkins]);
+              }
+            }
+          } catch (err) {
+            // Ignorar errores al obtener perfil
+          }
+
+          addToast?.('✅ Formato actualizado', 'success');
+        } catch (uploadError: any) {
+          if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {
+            addToast?.('⚠️ Rate limit. Formato actualizado localmente.', 'info');
+          } else if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
+            addToast?.('⚠️ Sesión expirada. Formato actualizado localmente.', 'info');
+          } else {
+            addToast?.('✅ Formato actualizado localmente', 'success');
+          }
+        }
+      } else {
+        addToast?.('✅ Formato actualizado localmente', 'success');
+      }
     } catch (error) {
       console.error('❌ Error al cambiar formato:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      addToast?.(`❌ ${errorMessage}`, 'error');
+      addToast?.('Error al cambiar formato', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -784,19 +587,17 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       {/* Overlay oscuro */}
       <div className="absolute inset-0 bg-black/30" />
 
-      {/* Contenido principal */}
       <div className="relative z-10 h-full flex flex-col px-8 py-2">
-        {/* Título - muy pequeño */}
         <div className="flex-shrink-0 mb-3">
-          <h1 className="text-2xl font-black text-white text-center tracking-wide drop-shadow-lg">
+          <h1 className="text-4xl font-black text-white text-center tracking-wide drop-shadow-lg">
             Gestión de Skins
           </h1>
         </div>
 
-        {/* Grid de skins - más padding para que no se corte */}
+        {/* Grid de skins */}
         <div
           {...getRootProps()}
-          className="flex-1 overflow-y-auto px-2 custom-scrollbar"
+          className="flex-1 pb-10 px-2 custom-scrollbar"
         >
           <input {...getInputProps()} />
 

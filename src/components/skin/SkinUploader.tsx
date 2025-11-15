@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { SkinData } from '@/types/skin';
-import { invoke } from '@tauri-apps/api/core';
 
 interface SkinUploaderProps {
   onUploadSuccess: (skinData: SkinData) => void;
@@ -23,46 +22,35 @@ export const SkinUploader: React.FC<SkinUploaderProps> = ({
     setIsProcessing(true);
 
     try {
-      
-      const savedSession = localStorage.getItem('kkk_session');
-      const session = savedSession ? JSON.parse(savedSession) : null;
-      const accessToken = session?.access_token;
-      if (!accessToken) {
-        throw new Error('No hay sesión activa. Inicia sesión para cambiar tu skin.');
+      // Validaciones básicas
+      if (file.type !== 'image/png') {
+        throw new Error('Solo se permiten archivos PNG');
       }
 
-      
-      const tempFilePath = await invoke<string>('create_temp_file', {
-        fileName: file.name,
-        fileData: await file.arrayBuffer()
-      });
+      if (file.size > 24 * 1024) {
+        throw new Error('El archivo debe ser menor a 24KB');
+      }
 
-      
-      await invoke('upload_skin_to_mojang', {
-        filePath: tempFilePath,
-        variant: 'classic',
-        accessToken
-      });
-
-      
+      // Guardar skin localmente (sin subir a Mojang)
       const fileData = await file.arrayBuffer();
       const skinData: SkinData = {
         id: `skin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: file.name,
+        name: file.name.replace('.png', ''),
         file,
         fileData,
         url: '', 
         textureId: '',
         variant: 'classic',
         uploadedAt: new Date(),
-        isActive: true
+        isActive: false, // No activar automáticamente
+        isMojangSynced: false
       };
 
-      
+      // Notificar éxito - el componente padre se encargará de guardarla
       onUploadSuccess(skinData);
 
     } catch (error) {
-      console.error('Error subiendo skin:', error);
+      console.error('Error procesando skin:', error);
       onUploadError(error instanceof Error ? error.message : 'Error desconocido');
     } finally {
       setIsProcessing(false);

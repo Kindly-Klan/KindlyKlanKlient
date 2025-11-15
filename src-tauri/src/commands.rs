@@ -253,7 +253,20 @@ pub async fn upload_skin_to_mojang(file_path: String, variant: String, access_to
         .multipart(form).send().await.map_err(|e| format!("Failed to upload skin: {}", e))?;
     let status = response.status();
     let response_text = response.text().await.unwrap_or_default();
-    if !status.is_success() { return Err(format!("Mojang API error ({}): {}", status, response_text)); }
+    
+    if !status.is_success() {
+        // Mejorar mensajes de error según el código de estado
+        if status.as_u16() == 429 {
+            return Err(format!("Rate limit exceeded (429). Mojang API allows 600 requests per 10 minutes. Please wait before trying again."));
+        }
+        if status.as_u16() == 401 {
+            return Err(format!("Unauthorized (401). Session expired or invalid token. Please restart your session."));
+        }
+        if status.as_u16() == 400 {
+            return Err(format!("Bad request (400). Invalid skin file or variant. {}", response_text));
+        }
+        return Err(format!("Mojang API error ({}): {}", status, response_text));
+    }
     Ok("Skin uploaded successfully".to_string())
 }
 
