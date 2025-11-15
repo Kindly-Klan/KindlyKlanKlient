@@ -24,10 +24,15 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
+    // Obtener el tamaño del contenedor para ajustar el canvas
+    const container = canvasRef.current.parentElement;
+    const width = container?.clientWidth || 192;
+    const height = container?.clientHeight || 256;
+
     const skinViewer = new skinview3d.SkinViewer({
       canvas: canvasRef.current,
-      width: 192, 
-      height: 256, 
+      width: width, 
+      height: height, 
       skin: undefined,
     });
     skinViewer.globalLight.intensity = 3;
@@ -137,14 +142,16 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
   }
 
   return (
-    <div className={`relative ${className}`}>
-      <div className="w-full h-full bg-black">
+    <div className={`w-full h-full ${className}`}>
+      <div className="w-full h-full bg-black relative">
         <canvas
           ref={canvasRef}
           className={`w-full h-full ${isLoading ? 'opacity-50' : ''}`}
           style={{
             imageRendering: 'pixelated',
             cursor: 'grab',
+            pointerEvents: 'auto',
+            display: 'block',
           }}
           onMouseDown={(e) => {
             e.currentTarget.style.cursor = 'grabbing';
@@ -154,6 +161,10 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.cursor = 'grab';
+          }}
+          onClick={(e) => {
+            // Prevenir que el click en el canvas seleccione la skin
+            e.stopPropagation();
           }}
         />
       </div>

@@ -1306,7 +1306,7 @@ function App() {
                        if (isDownloadingAssets) {
                          setLoaderText("Descargando assets de instancia...");
                        } else {
-                         setLoaderText("Descargando Java...");
+                         setLoaderText("Iniciando instancia...");
                        }
                        setShowLoader(true);
 

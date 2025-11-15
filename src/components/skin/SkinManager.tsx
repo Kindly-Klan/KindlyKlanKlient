@@ -40,10 +40,12 @@ interface ProfileResponse {
 }
 
 // Función para refrescar avatares añadiendo timestamp (SOLO Crafatar, no todas las imágenes)
+// Esta función sincroniza la skin entre sidebar e isla dinámica
 const refreshAvatars = () => {
   const timestamp = Date.now();
   
   // Refrescar SOLO las imágenes de Crafatar (no tocar otras imágenes)
+  // Esto sincroniza sidebar e isla dinámica (UserProfile) al mismo tiempo
   document.querySelectorAll('img[src*="crafatar.com"]').forEach((img: any) => {
     try {
       const url = new URL(img.src);
@@ -55,8 +57,6 @@ const refreshAvatars = () => {
       img.src = `${img.src}${separator}t=${timestamp}`;
     }
   });
-  
-  console.log('✅ Avatares de Crafatar refrescados con timestamp:', timestamp);
 };
 
 export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast }) => {
@@ -191,13 +191,57 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
         setSelectedSkinId(activeSkin?.id || null);
         setIsLoadingInitial(false);
 
-        // Ya no sincronizamos automáticamente con Mojang
-        // Las skins locales tienen prioridad y se muestran inmediatamente
+        // Sincronizar periódicamente para detectar si la skin activa en Mojang no coincide con ninguna local
+        const syncInterval = setInterval(async () => {
+          try {
+            const accessToken = await getValidMinecraftToken();
+            if (!accessToken || !currentUser?.username) return;
 
-        // 3. Refrescar avatares después de un delay más largo
-        setTimeout(() => {
-          refreshAvatars();
-        }, 1000);
+            const profileResponse = await invoke<ProfileResponse>('get_minecraft_profile_safe', {
+              accessToken
+            });
+            
+            if (profileResponse.status === 'Ok' && profileResponse.profile) {
+              const profile = profileResponse.profile as any;
+              const mojangSkins = profile.skins || [];
+              const activeMojangSkin = mojangSkins.find((s: MojangSkin) => s.state === 'ACTIVE');
+              
+              if (activeMojangSkin) {
+                // Verificar si la skin activa de Mojang coincide con alguna local
+                const currentSkins = await SkinStorageService.getStoredSkins();
+                const matchingLocalSkin = currentSkins.find(skin => {
+                  return (skin.url && skin.url === activeMojangSkin.url) ||
+                         (skin.textureId && skin.textureId === activeMojangSkin.id);
+                });
+
+                // Si no coincide con ninguna local, desmarcar todas
+                if (!matchingLocalSkin && selectedSkinId) {
+                  await SkinStorageService.setActiveSkin('');
+                  setSelectedSkinId(null);
+                  const updatedSkins = await SkinStorageService.getStoredSkins();
+                  setSkins([...updatedSkins]);
+                  refreshAvatars();
+                }
+              } else {
+                // No hay skin activa en Mojang, desmarcar todas
+                if (selectedSkinId) {
+                  await SkinStorageService.setActiveSkin('');
+                  setSelectedSkinId(null);
+                  const updatedSkins = await SkinStorageService.getStoredSkins();
+                  setSkins([...updatedSkins]);
+                  refreshAvatars();
+                }
+              }
+            }
+          } catch (error) {
+            // Ignorar errores de sincronización
+          }
+        }, 30000); // Cada 30 segundos
+
+        // Limpiar intervalo al desmontar
+        return () => {
+          clearInterval(syncInterval);
+        };
       } catch (error) {
         // Error crítico al cargar skins desde localStorage
         console.error('❌ Error al cargar skins desde localStorage:', error);
@@ -233,7 +277,6 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     }
 
     setIsUploading(true);
-    addToast?.('Guardando skin...', 'info', 2000);
 
     try {
       // Leer archivo y guardar localmente
@@ -268,7 +311,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       const updatedSkins = await SkinStorageService.getStoredSkins();
       setSkins([...updatedSkins]);
 
-      addToast?.('✅ Skin guardada correctamente', 'success');
+      addToast?.('Skin guardada', 'success');
     } catch (error) {
       console.error('❌ Error al guardar skin:', error);
       addToast?.(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`, 'error');
@@ -333,8 +376,15 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     // Recargar skins para reflejar el cambio
     const allSkins = await SkinStorageService.getStoredSkins();
     setSkins([...allSkins]);
+    
+    // Refrescar avatares inmediatamente
+    refreshAvatars();
+    
+    // Mostrar toast de que se aplicó (solo uno, no duplicar)
+    addToast?.('Skin aplicada', 'success');
 
     // 2. Intentar subir a Mojang en segundo plano (opcional, no bloquea)
+    // NO mostrar toast adicional aquí para evitar duplicados
     setIsUploading(true);
     
     // Rate limiting: esperar si la última subida fue hace menos de MIN_UPLOAD_INTERVAL
@@ -402,16 +452,16 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
           // Ignorar errores al obtener perfil
         }
 
-        addToast?.('✅ Skin aplicada y sincronizada con Mojang', 'success');
+        // No mostrar toast aquí - ya se mostró al activar localmente
       } catch (uploadError: any) {
         // Manejar errores específicos de la API
         if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {
-          addToast?.('⚠️ Rate limit de Mojang. La skin está activa localmente.', 'info');
+          addToast?.('Rate limit. Skin activa localmente', 'info');
         } else if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
-          addToast?.('⚠️ Sesión expirada. La skin está activa localmente.', 'info');
+          addToast?.('Sesión expirada. Skin activa localmente', 'info');
         } else {
           // Otros errores: la skin sigue activa localmente
-          console.warn('⚠️ Error al subir a Mojang (skin activa localmente):', uploadError);
+          console.warn('Error al subir a Mojang (skin activa localmente):', uploadError);
         }
       }
     } catch (error) {
@@ -442,6 +492,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       const updatedSkins = await SkinStorageService.getStoredSkins();
       setSkins([...updatedSkins]);
       addToast?.('Skin eliminada', 'success');
+      refreshAvatars();
     } catch (error) {
       console.error('❌ Error al eliminar skin:', error);
       addToast?.('Error al eliminar skin', 'error');
@@ -520,18 +571,18 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
             // Ignorar errores al obtener perfil
           }
 
-          addToast?.('✅ Formato actualizado', 'success');
+          addToast?.('Formato actualizado', 'success');
         } catch (uploadError: any) {
           if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {
-            addToast?.('⚠️ Rate limit. Formato actualizado localmente.', 'info');
+            addToast?.('Rate limit. Formato actualizado localmente', 'info');
           } else if (uploadError?.message?.includes('401') || uploadError?.message?.includes('Unauthorized')) {
-            addToast?.('⚠️ Sesión expirada. Formato actualizado localmente.', 'info');
+            addToast?.('Sesión expirada. Formato actualizado localmente', 'info');
           } else {
-            addToast?.('✅ Formato actualizado localmente', 'success');
+            addToast?.('Formato actualizado localmente', 'success');
           }
         }
       } else {
-        addToast?.('✅ Formato actualizado localmente', 'success');
+        addToast?.('Formato actualizado localmente', 'success');
       }
     } catch (error) {
       console.error('❌ Error al cambiar formato:', error);
@@ -562,17 +613,22 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       {/* Overlay oscuro */}
       <div className="absolute inset-0 bg-black/30" />
 
-      <div className="relative z-10 h-full flex flex-col px-8 py-2">
-        <div className="flex-shrink-0 mb-3">
-          <h1 className="text-4xl font-black text-white text-center tracking-wide drop-shadow-lg">
-            Gestión de Skins
-          </h1>
+      <div className="relative z-10 h-full flex flex-col px-8 py-4">
+        <div className="flex-shrink-0 mb-8 flex flex-col items-center">
+          <div className="flex items-center justify-center gap-4">
+            <h1 className="text-6xl font-black text-white tracking-wide drop-shadow-lg">
+              Gestión de Skins
+            </h1>
+            <span className="relative top-1 px-3.5 py-1.5 text-[10px] font-extrabold text-black bg-[#00ffff] rounded-full shadow-lg uppercase tracking-wider border-2 border-[#00ffff]/50">
+              BETA
+            </span>
+          </div>
         </div>
 
         {/* Grid de skins */}
         <div
           {...getRootProps()}
-          className="flex-1 pb-10 px-2 custom-scrollbar"
+          className="flex-1 overflow-y-auto pb-10 px-2 custom-scrollbar"
         >
           <input {...getInputProps()} />
 
@@ -644,8 +700,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
                   >
                     {/* Contenedor principal con ring */}
                     <div 
-                      onClick={() => handleSelectSkin(skin)}
-                      className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out relative cursor-pointer flex flex-col ${
+                      className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out relative flex flex-col ${
                         isSelected
                           ? 'ring-2 ring-[#00ffff]'
                           : 'ring-1 ring-white/10 hover:ring-white/20'
@@ -655,7 +710,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
                       } : {}}
                     >
                         {/* Preview 3D - ocupa casi todo menos el footer */}
-                        <div className="h-[calc(100%-44px)]">
+                        <div className="h-[calc(100%-44px)] relative overflow-hidden flex items-center justify-center">
                           <SkinPreview3D 
                             key={`preview-${skin.id}-${skin.variant}`} 
                             skinUrl={skin.fileData ? undefined : skinUrl}
@@ -678,37 +733,51 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
                         {/* Botón Seleccionar - visible en hover, center */}
                         {!isSelected && (
                           <button
-                            onClick={() => handleSelectSkin(skin)}
-                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 px-6 py-2 rounded-lg bg-[#00ffff]/90 hover:bg-[#00ffff] text-black font-medium text-sm shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-105"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectSkin(skin);
+                            }}
+                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 px-6 py-2 rounded-lg bg-[#00ffff]/90 hover:bg-[#00ffff] text-black font-medium text-sm shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-105 pointer-events-auto"
                           >
                             Seleccionar
                           </button>
                         )}
                       </div>
 
-                      {/* Footer con Toggle Slim/Classic - SIEMPRE VISIBLE */}
-                      <div className="h-[44px] flex items-center justify-center p-2 bg-black/90 border-t border-white/10">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-medium transition-colors ${skin.variant === 'slim' ? 'text-[#00ffff]' : 'text-white/50'}`}>
-                            Slim
-                          </span>
-                          <button
-                            onClick={(e) => handleToggleModel(skin, e)}
-                            disabled={isUploading}
-                            className={`relative w-11 h-6 rounded-full transition-all ${
-                              skin.variant === 'classic' ? 'bg-[#00ffff]' : 'bg-white/20'
-                            } ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-                          >
-                            <div
-                              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
-                                skin.variant === 'classic' ? 'translate-x-5' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
-                          <span className={`text-xs font-medium transition-colors ${skin.variant === 'classic' ? 'text-[#00ffff]' : 'text-white/50'}`}>
-                            Classic
-                          </span>
-                        </div>
+                      {/* Footer con botones Slim/Classic */}
+                      <div className="h-[44px] flex items-center justify-center p-2 bg-black/90 border-t border-white/10 gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (skin.variant !== 'slim' && !isUploading) {
+                              handleToggleModel(skin, e);
+                            }
+                          }}
+                          disabled={isUploading || skin.variant === 'slim'}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                            skin.variant === 'slim'
+                              ? 'bg-[#00ffff] text-black'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          } ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          Slim
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (skin.variant !== 'classic' && !isUploading) {
+                              handleToggleModel(skin, e);
+                            }
+                          }}
+                          disabled={isUploading || skin.variant === 'classic'}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                            skin.variant === 'classic'
+                              ? 'bg-[#00ffff] text-black'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          } ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          Classic
+                        </button>
                       </div>
                     </div>
                   </div>

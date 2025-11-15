@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "kindlyklanklient"
-version = "0.1.68"
+version = "0.1.70"
 dependencies = [
  "anyhow",
  "chrono",
