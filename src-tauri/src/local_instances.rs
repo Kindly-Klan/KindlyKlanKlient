@@ -341,61 +341,116 @@ pub async fn sync_mods_from_remote(
     let base_url = crate::instances::build_distribution_url(&distribution_url);
     let manifest = crate::instances::load_instance_manifest(&base_url, &remote_instance_id).await?;
     
-    log::info!("📦 Remote instance loaded: {} mods", manifest.files.mods.len());
-    
-    let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
-        "local_id": local_instance_id,
-        "remote_id": remote_instance_id,
-        "stage": "clearing_mods",
-        "percentage": 20,
-        "message": "Limpiando carpeta de mods..."
-    }));
+    log::info!("📦 Remote instance loaded: {} mods, {} configs", manifest.files.mods.len(), manifest.files.configs.len());
     
     // Get local instance directory
     let local_instances_dir = get_local_instances_dir()?;
     let instance_dir = local_instances_dir.join(&local_instance_id);
     let mods_dir = instance_dir.join("mods");
+    let config_dir = instance_dir.join("config");
     
-    // Clear mods directory
-    if mods_dir.exists() {
-        tokio::fs::remove_dir_all(&mods_dir)
-            .await
-            .map_err(|e| format!("Failed to remove mods directory: {}", e))?;
-    }
-    
+    // Create directories if they don't exist (don't clear existing mods)
     tokio::fs::create_dir_all(&mods_dir)
         .await
         .map_err(|e| format!("Failed to create mods directory: {}", e))?;
+    tokio::fs::create_dir_all(&config_dir)
+        .await
+        .map_err(|e| format!("Failed to create config directory: {}", e))?;
     
-    log::info!("🗑️  Mods directory cleared");
+    log::info!("📁 Directories ready (preserving existing mods)");
+    
+    // Download mods from remote instance (only if they don't exist or are different)
+    let total_mods = manifest.files.mods.len();
+    let mut downloaded_mods = 0;
+    let mut skipped_mods = 0;
     
     let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
         "local_id": local_instance_id,
         "remote_id": remote_instance_id,
         "stage": "downloading_mods",
-        "percentage": 30,
-        "message": format!("Descargando {} mods...", manifest.files.mods.len())
+        "percentage": 20,
+        "message": format!("Sincronizando {} mods...", total_mods)
     }));
     
-    // Download all mods from remote instance
-    let total_mods = manifest.files.mods.len();
     for (index, mod_file) in manifest.files.mods.iter().enumerate() {
-        let progress = 30 + ((index as f32 / total_mods as f32) * 60.0) as u32;
+        let progress = 20 + ((index as f32 / total_mods as f32) * 40.0) as u32;
         
         let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
             "local_id": local_instance_id,
             "remote_id": remote_instance_id,
             "stage": "downloading_mods",
             "percentage": progress,
-            "message": format!("Descargando {} ({}/{})", mod_file.name, index + 1, total_mods)
+            "message": format!("Sincronizando {} ({}/{})", mod_file.name, index + 1, total_mods)
         }));
         
         let asset = crate::instances::create_asset_from_file_entry(mod_file, &remote_instance_id, &base_url);
         let target_path = mods_dir.join(&mod_file.name);
         
-        crate::instances::download_file_with_retry(&asset.url, &target_path).await?;
+        // Only download if file doesn't exist or checksum differs
+        let should_download = if target_path.exists() {
+            if !mod_file.sha256.is_empty() {
+                !crate::instances::verify_file_checksum(&target_path, &mod_file.sha256).is_ok()
+            } else if let Some(md5) = &mod_file.md5 {
+                !md5.is_empty() && !crate::instances::verify_file_md5(&target_path, md5).is_ok()
+            } else {
+                true // No checksum available, download to be safe
+            }
+        } else {
+            true // File doesn't exist, download it
+        };
         
-        log::info!("✅ Downloaded mod: {}", mod_file.name);
+        if should_download {
+            crate::instances::download_file_with_retry(&asset.url, &target_path).await?;
+            downloaded_mods += 1;
+            log::info!("✅ Downloaded mod: {}", mod_file.name);
+        } else {
+            skipped_mods += 1;
+            log::info!("⏭️  Skipped mod (already exists): {}", mod_file.name);
+        }
+    }
+    
+    // Download configs from remote instance
+    let total_configs = manifest.files.configs.len();
+    let mut downloaded_configs = 0;
+    
+    let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
+        "local_id": local_instance_id,
+        "remote_id": remote_instance_id,
+        "stage": "downloading_configs",
+        "percentage": 60,
+        "message": format!("Sincronizando {} configs...", total_configs)
+    }));
+    
+    for (index, config_file) in manifest.files.configs.iter().enumerate() {
+        let progress = 60 + ((index as f32 / total_configs as f32) * 35.0) as u32;
+        
+        let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
+            "local_id": local_instance_id,
+            "remote_id": remote_instance_id,
+            "stage": "downloading_configs",
+            "percentage": progress,
+            "message": format!("Sincronizando config {} ({}/{})", config_file.name, index + 1, total_configs)
+        }));
+        
+        let asset = crate::instances::create_asset_from_file_entry(config_file, &remote_instance_id, &base_url);
+        
+        // Determine target path (respect target if specified, otherwise use name)
+        let target_path = if let Some(target) = &config_file.target {
+            config_dir.join(target)
+        } else {
+            config_dir.join(&config_file.name)
+        };
+        
+        // Create parent directories if needed
+        if let Some(parent) = target_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        }
+        
+        crate::instances::download_file_with_retry(&asset.url, &target_path).await?;
+        downloaded_configs += 1;
+        log::info!("✅ Downloaded config: {}", config_file.name);
     }
     
     let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
@@ -403,12 +458,12 @@ pub async fn sync_mods_from_remote(
         "remote_id": remote_instance_id,
         "stage": "completed",
         "percentage": 100,
-        "message": "¡Mods sincronizados exitosamente!"
+        "message": format!("¡Sincronización completada! {} mods, {} configs", downloaded_mods, downloaded_configs)
     }));
     
-    log::info!("🎉 Mods synced successfully: {} mods", total_mods);
+    log::info!("🎉 Sync completed: {} mods downloaded ({} skipped), {} configs downloaded", downloaded_mods, skipped_mods, downloaded_configs);
     
-    Ok(format!("Successfully synced {} mods", total_mods))
+    Ok(format!("Successfully synced {} mods ({} skipped, {} new) and {} configs", downloaded_mods + skipped_mods, skipped_mods, downloaded_mods, downloaded_configs))
 }
 
 #[tauri::command]
@@ -723,11 +778,13 @@ pub async fn launch_local_instance(
     }
     
     let app = app_handle.clone();
+    let instance_id_clone = instance_id.clone();
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
                 log::info!("🎮 Minecraft exited with status: {:?}", status);
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "instance_id": instance_id_clone,
                     "status": "exited",
                     "code": status.code()
                 }));
@@ -735,6 +792,7 @@ pub async fn launch_local_instance(
             Err(e) => {
                 log::error!("❌ Error waiting for Minecraft: {}", e);
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "instance_id": instance_id_clone,
                     "status": "error",
                     "error": e.to_string()
                 }));

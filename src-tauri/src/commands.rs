@@ -1582,7 +1582,7 @@ pub async fn download_modrinth_mod_with_dependencies(
     }
 
     // Descargar dependencias requeridas
-    for (project_id, dep_version_id) in dependencies_to_download {
+    for (_project_id, dep_version_id) in dependencies_to_download {
         // Obtener información de la versión de la dependencia
         match crate::modrinth::get_version_by_id(&dep_version_id).await {
             Ok(dep_version) => {
@@ -1660,6 +1660,253 @@ pub async fn download_modrinth_mod_with_dependencies(
     Ok(format!("Mod and dependencies downloaded successfully"))
 }
 
+// ========== List installed mods ==========
+
+#[derive(serde::Serialize)]
+pub struct InstalledMod {
+    pub filename: String,
+    pub project_id: Option<String>,
+}
+
+/// Calcular el hash SHA512 de un archivo
+fn calculate_sha512(file_path: &std::path::Path) -> Option<String> {
+    use std::fs::File;
+    use std::io::Read;
+    use sha2::{Digest, Sha512};
+    
+    let mut file = match File::open(file_path) {
+        Ok(f) => f,
+        Err(_) => return None,
+    };
+    
+    let mut hasher = Sha512::new();
+    let mut buffer = vec![0u8; 8192];
+    
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buffer[..n]),
+            Err(_) => return None,
+        }
+    }
+    
+    let hash = format!("{:x}", hasher.finalize());
+    Some(hash)
+}
+
+/// Leer el project_id de Modrinth desde un archivo JAR
+/// Primero intenta usar el hash SHA512 para buscar en la API de Modrinth
+/// Si falla, intenta leer del manifest
+async fn get_modrinth_project_id(jar_path: &std::path::Path) -> Option<String> {
+    // Método 1: Calcular hash SHA512 y buscar en la API de Modrinth (más preciso)
+    if let Some(sha512) = calculate_sha512(jar_path) {
+        if let Ok(Some(version)) = crate::modrinth::get_version_from_hash(&sha512).await {
+            return Some(version.project_id);
+        }
+    }
+    
+    // Método 2: Leer del manifest del JAR (fallback)
+    read_modrinth_project_id_from_manifest(jar_path)
+}
+
+/// Leer el project_id de Modrinth desde el manifest del JAR
+fn read_modrinth_project_id_from_manifest(jar_path: &std::path::Path) -> Option<String> {
+    use std::fs::File;
+    use std::io::Read;
+    use zip::ZipArchive;
+    
+    let file = match File::open(jar_path) {
+        Ok(f) => f,
+        Err(_) => return None,
+    };
+    
+    let mut archive = match ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => return None,
+    };
+    
+    // 1. Intentar leer del manifest (META-INF/MANIFEST.MF)
+    if let Ok(mut manifest_file) = archive.by_name("META-INF/MANIFEST.MF") {
+        let mut manifest_content = String::new();
+        if manifest_file.read_to_string(&mut manifest_content).is_ok() {
+            // Buscar project_id en el manifest
+            for line in manifest_content.lines() {
+                // Buscar líneas que contengan "Modrinth-Project-ID" o "X-Modrinth-Project-ID"
+                if line.trim().starts_with("Modrinth-Project-ID:") || 
+                   line.trim().starts_with("X-Modrinth-Project-ID:") {
+                    if let Some(colon_pos) = line.find(':') {
+                        let id = line[colon_pos + 1..].trim();
+                        if !id.is_empty() {
+                            return Some(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 2. Intentar leer de fabric.mod.json
+    if let Ok(mut mod_json_file) = archive.by_name("fabric.mod.json") {
+        let mut json_content = String::new();
+        if mod_json_file.read_to_string(&mut json_content).is_ok() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_content) {
+                // Buscar en el campo "modrinth" o "sources"
+                if let Some(modrinth) = json.get("modrinth").or_else(|| json.get("sources")) {
+                    if let Some(project_id) = modrinth.get("projectId")
+                        .or_else(|| modrinth.get("project_id"))
+                        .and_then(|v| v.as_str()) {
+                        return Some(project_id.to_string());
+                    }
+                }
+                // También buscar directamente en el nivel raíz
+                if let Some(project_id) = json.get("modrinth_project_id")
+                    .or_else(|| json.get("modrinthProjectId"))
+                    .and_then(|v| v.as_str()) {
+                    return Some(project_id.to_string());
+                }
+            }
+        }
+    }
+    
+    // 3. Intentar leer de quilt.mod.json
+    if let Ok(mut mod_json_file) = archive.by_name("quilt.mod.json") {
+        let mut json_content = String::new();
+        if mod_json_file.read_to_string(&mut json_content).is_ok() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_content) {
+                // Buscar en el campo "modrinth" o "sources"
+                if let Some(modrinth) = json.get("modrinth").or_else(|| json.get("sources")) {
+                    if let Some(project_id) = modrinth.get("projectId")
+                        .or_else(|| modrinth.get("project_id"))
+                        .and_then(|v| v.as_str()) {
+                        return Some(project_id.to_string());
+                    }
+                }
+                // También buscar directamente en el nivel raíz
+                if let Some(project_id) = json.get("modrinth_project_id")
+                    .or_else(|| json.get("modrinthProjectId"))
+                    .and_then(|v| v.as_str()) {
+                    return Some(project_id.to_string());
+                }
+            }
+        }
+    }
+    
+    // 4. Intentar leer de META-INF/mods.toml (Forge/NeoForge)
+    if let Ok(mut mods_toml_file) = archive.by_name("META-INF/mods.toml") {
+        let mut toml_content = String::new();
+        if mods_toml_file.read_to_string(&mut toml_content).is_ok() {
+            // Buscar project_id en el TOML
+            for line in toml_content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("modrinthProjectId") || trimmed.starts_with("modrinth_project_id") {
+                    if let Some(equals_pos) = trimmed.find('=') {
+                        let id = trimmed[equals_pos + 1..].trim();
+                        let id = id.trim_matches('"').trim_matches('\'').trim();
+                        if !id.is_empty() {
+                            return Some(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+#[tauri::command]
+pub async fn list_installed_mods(instance_id: String) -> Result<Vec<InstalledMod>, String> {
+    let instance_dir = crate::local_instances::get_instance_directory_smart(&instance_id);
+    let mods_dir = instance_dir.join("mods");
+    
+    if !mods_dir.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let mut mod_files = Vec::new();
+    let mut entries = tokio::fs::read_dir(&mods_dir)
+        .await
+        .map_err(|e| format!("Failed to read mods directory: {}", e))?;
+    
+    while let Some(entry) = entries.next_entry().await
+        .map_err(|e| format!("Failed to read directory entry: {}", e))? {
+        let path = entry.path();
+        
+        if path.is_file() {
+            if let Some(extension) = path.extension() {
+                if extension == "jar" || extension == "JAR" {
+                    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                        // Usar el método mejorado que busca por hash SHA512 primero
+                        let project_id = get_modrinth_project_id(&path).await;
+                        mod_files.push(InstalledMod {
+                            filename: filename.to_string(),
+                            project_id,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(mod_files)
+}
+
+// ========== List Minecraft worlds/saves ==========
+
+#[derive(serde::Serialize)]
+pub struct MinecraftWorld {
+    pub name: String,
+    pub path: String,
+    pub icon_path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_minecraft_worlds(instance_id: String) -> Result<Vec<MinecraftWorld>, String> {
+    let instance_dir = crate::local_instances::get_instance_directory_smart(&instance_id);
+    let saves_dir = instance_dir.join("saves");
+    
+    if !saves_dir.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let mut worlds = Vec::new();
+    let mut entries = tokio::fs::read_dir(&saves_dir)
+        .await
+        .map_err(|e| format!("Failed to read saves directory: {}", e))?;
+    
+    while let Some(entry) = entries.next_entry().await
+        .map_err(|e| format!("Failed to read directory entry: {}", e))? {
+        let path = entry.path();
+        
+        if path.is_dir() {
+            let world_name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            
+            // Buscar icono del mundo (icon.png en la raíz del mundo)
+            let icon_path = path.join("icon.png");
+            let icon = if icon_path.exists() {
+                Some(icon_path.to_string_lossy().to_string())
+            } else {
+                None
+            };
+            
+            // Verificar que es un mundo válido (debe tener level.dat)
+            let level_dat = path.join("level.dat");
+            if level_dat.exists() {
+                worlds.push(MinecraftWorld {
+                    name: world_name,
+                    path: path.to_string_lossy().to_string(),
+                    icon_path: icon,
+                });
+            }
+        }
+    }
+    
+    Ok(worlds)
+}
+
 // ========== Copy folders between instances ==========
 
 #[tauri::command]
@@ -1684,8 +1931,25 @@ pub async fn copy_instance_folders(
     let mut copied_count = 0;
 
     for folder in &folders {
-        let source_folder = source_dir.join(folder);
-        let target_folder = target_dir.join(folder);
+        // Si la carpeta contiene "/", es una subcarpeta (ej: "saves/World1")
+        let (base_folder, subfolder) = if folder.contains('/') {
+            let parts: Vec<&str> = folder.splitn(2, '/').collect();
+            (parts[0], Some(parts[1]))
+        } else {
+            (folder.as_str(), None)
+        };
+        
+        let source_folder = if let Some(sub) = subfolder {
+            source_dir.join(base_folder).join(sub)
+        } else {
+            source_dir.join(base_folder)
+        };
+        
+        let target_folder = if let Some(sub) = subfolder {
+            target_dir.join(base_folder).join(sub)
+        } else {
+            target_dir.join(base_folder)
+        };
 
         if !source_folder.exists() {
             log::warn!("⚠️  Source folder does not exist: {}", source_folder.display());

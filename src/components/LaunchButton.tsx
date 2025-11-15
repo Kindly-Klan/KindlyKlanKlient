@@ -7,13 +7,13 @@ interface LaunchButtonProps {
 	disabled?: boolean;
 	className?: string;
 	isJavaInstalling?: boolean;
-	instanceId?: string; // Añadir instanceId para identificar la instancia
+	instanceId?: string;
 }
 
 type LaunchState = 'idle' | 'launching' | 'playing';
 
 // Caché global para estados de lanzamiento por instancia
-const launchStateCache = new Map<string, { state: LaunchState; playTime: number; startTime: number }>();
+const launchStateCache = new Map<string, { state: LaunchState; startTime: number }>();
 
 const LaunchButton: React.FC<LaunchButtonProps> = ({
 	onLaunch,
@@ -23,49 +23,70 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	instanceId = 'default'
 }) => {
 	// Inicializar con estado en caché si existe
-	const cachedState = launchStateCache.get(instanceId);
-	const [state, setState] = useState<LaunchState>(cachedState?.state || 'idle');
-	const [playTime, setPlayTime] = useState(() => {
-		if (cachedState && cachedState.state === 'playing') {
-			// Calcular tiempo transcurrido desde el inicio
-			const elapsed = Math.floor((Date.now() - cachedState.startTime) / 1000);
-			return cachedState.playTime + elapsed;
-		}
-		return cachedState?.playTime || 0;
-	});
-	const startTimeRef = useRef<number>(cachedState?.startTime || Date.now());
+	const getInitialState = () => {
+		const cachedState = launchStateCache.get(instanceId);
+		return cachedState?.state || 'idle';
+	};
+	
+	const [state, setState] = useState<LaunchState>(getInitialState());
+	const [playTime, setPlayTime] = useState(0);
+	const startTimeRef = useRef<number>(Date.now());
 	const [isHovered, setIsHovered] = useState(false);
+	
+	// Actualizar estado cuando cambia instanceId
+	useEffect(() => {
+		const cachedState = launchStateCache.get(instanceId);
+		if (cachedState) {
+			setState(cachedState.state);
+			if (cachedState.state === 'playing' || cachedState.state === 'launching') {
+				startTimeRef.current = cachedState.startTime;
+				// Calcular tiempo transcurrido
+				const elapsed = Math.floor((Date.now() - cachedState.startTime) / 1000);
+				setPlayTime(elapsed);
+			} else {
+				setPlayTime(0);
+				startTimeRef.current = Date.now();
+			}
+		} else {
+			setState('idle');
+			setPlayTime(0);
+			startTimeRef.current = Date.now();
+		}
+	}, [instanceId]);
 
+	// Intervalo para incrementar el tiempo cuando está playing o launching
 	useEffect(() => {
 		let interval: NodeJS.Timeout | null = null;
-		if (state === 'playing') {
+		if (state === 'playing' || state === 'launching') {
 			interval = setInterval(() => {
-				setPlayTime(prev => {
-					const newTime = prev + 1;
-					// Actualizar caché
-					if (launchStateCache.has(instanceId)) {
-						const cached = launchStateCache.get(instanceId)!;
-						launchStateCache.set(instanceId, { 
-							...cached, 
-							playTime: newTime,
-							startTime: startTimeRef.current
-						});
-					}
-					return newTime;
-				});
+				const cachedState = launchStateCache.get(instanceId);
+				if (cachedState && (cachedState.state === 'playing' || cachedState.state === 'launching')) {
+					// Calcular tiempo transcurrido desde el startTime
+					const elapsed = Math.floor((Date.now() - cachedState.startTime) / 1000);
+					setPlayTime(elapsed);
+				}
 			}, 1000);
+		} else {
+			setPlayTime(0);
 		}
 		return () => { if (interval) clearInterval(interval); };
 	}, [state, instanceId]);
 
-	// Reset when the Minecraft process exits
+	// Reset when the Minecraft process exits (only for this instance)
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
-		listen('minecraft_exited', () => {
+		listen('minecraft_exited', (event: any) => {
+			const data = event.payload;
+			// Solo procesar si el evento es para esta instancia
+			if (data.instance_id !== instanceId) {
+				return;
+			}
+			
 			// Guardar tiempo total jugado antes de resetear
 			const cached = launchStateCache.get(instanceId);
-			if (cached && cached.playTime > 0) {
-				const hours = cached.playTime / 3600;
+			if (cached && cached.state === 'playing') {
+				const elapsed = Math.floor((Date.now() - cached.startTime) / 1000);
+				const hours = elapsed / 3600;
 				const saved = localStorage.getItem(`playtime_${instanceId}`);
 				const previousHours = saved ? parseFloat(saved) || 0 : 0;
 				const totalHours = previousHours + hours;
@@ -82,17 +103,29 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	}, [instanceId]);
 
 	const handleClick = async () => {
-		if (disabled || state !== 'idle' || isJavaInstalling) return;
+		// Verificar el estado actual del caché para esta instancia específica
+		const currentCachedState = launchStateCache.get(instanceId);
+		const currentState = currentCachedState?.state || state;
+		
+		if (disabled || currentState !== 'idle' || isJavaInstalling) {
+			return;
+		}
+		
 		setState('launching');
-		launchStateCache.set(instanceId, { state: 'launching', playTime: 0, startTime: Date.now() });
+		const launchStartTime = Date.now();
+		startTimeRef.current = launchStartTime;
+		launchStateCache.set(instanceId, { state: 'launching', startTime: launchStartTime });
+		setPlayTime(0);
+		
 		try {
 			await onLaunch();
-			startTimeRef.current = Date.now();
+			const playStartTime = Date.now();
+			startTimeRef.current = playStartTime;
 			setState('playing');
 			setPlayTime(0);
-			launchStateCache.set(instanceId, { state: 'playing', playTime: 0, startTime: startTimeRef.current });
+			launchStateCache.set(instanceId, { state: 'playing', startTime: playStartTime });
 		} catch (error) {
-			console.error('Error during launch:', error);
+			console.error(`[LaunchButton ${instanceId}] Error during launch:`, error);
 			setState('idle');
 			setPlayTime(0);
 			launchStateCache.delete(instanceId);
@@ -161,14 +194,18 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 
 	const getButtonClass = () => {
 		const baseClass = "text-white font-bold text-xl px-16 py-8 rounded-2xl shadow-2xl transform transition-all duration-500 ease-out text-center relative overflow-hidden min-w-[16rem] hover:scale-105";
-		if (state === 'playing' || state === 'launching') {
+		const currentCachedState = launchStateCache.get(instanceId);
+		const currentState = currentCachedState?.state || state;
+		if (currentState === 'playing' || currentState === 'launching') {
 			return `${baseClass} bg-gradient-to-r from-[#00ffff]/20 via-[#00d4ff]/20 to-[#00ffff]/20 hover:from-[#00ffff]/30 hover:via-[#00d4ff]/30 hover:to-[#00ffff]/30 neon-glow-cyan`;
 		}
 		return `${baseClass} bg-gradient-to-r from-[#00ffff]/10 via-[#ff00ff]/10 to-[#00ffff]/10 hover:from-[#00ffff]/20 hover:via-[#ff00ff]/20 hover:to-[#00ffff]/20 neon-glow-cyan-hover`;
 	};
 
 	const getButtonStyle = (isHovered: boolean = false) => {
-		if (state === 'playing' || state === 'launching') {
+		const currentCachedState = launchStateCache.get(instanceId);
+		const currentState = currentCachedState?.state || state;
+		if (currentState === 'playing' || currentState === 'launching') {
 			return {
 				background: 'rgba(0, 0, 0, 0.6)',
 				backdropFilter: 'blur(24px)',
@@ -190,17 +227,23 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 		};
 	};
 
+	// Obtener el estado actual del caché para esta instancia específica
+	const currentCachedState = launchStateCache.get(instanceId);
+	const displayState = currentCachedState?.state || state;
+	// El botón solo debe estar deshabilitado si ESTA instancia específica no está en 'idle'
+	const isButtonDisabled = disabled || displayState !== 'idle' || isJavaInstalling;
+	
 	return (
 		<div className="relative">
 			<Button
 				onClick={handleClick}
-				disabled={disabled || state !== 'idle' || isJavaInstalling}
+				disabled={isButtonDisabled}
 				className={`${getButtonClass()} ${className}`}
 				style={getButtonStyle(isHovered)}
 				onMouseEnter={() => setIsHovered(true)}
 				onMouseLeave={() => setIsHovered(false)}
 			>
-				{(state === 'launching' || state === 'playing') && (
+				{(displayState === 'launching' || displayState === 'playing') && (
 					<div className="absolute inset-0 flex items-center justify-center">
 						<div className="marquee-container transition-all duration-500">
 							<div className="marquee-text">
@@ -221,7 +264,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 				)}
 
 				<span className="relative z-10">
-					{state === 'launching' || state === 'playing' ? '' : getButtonContent()}
+					{displayState === 'launching' || displayState === 'playing' ? '' : getButtonContent()}
 				</span>
 			</Button>
 		</div>

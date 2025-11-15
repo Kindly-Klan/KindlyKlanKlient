@@ -215,11 +215,13 @@ async fn launch_minecraft_with_auth(
     }
 
     let app = app_handle.clone();
+    let instance_id_owned = instance_id.to_string();
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
                 log::info!("🎮 Minecraft exited with status: {:?}", status);
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "instance_id": instance_id_owned,
                     "status": "exited",
                     "code": status.code()
                 }));
@@ -227,6 +229,7 @@ async fn launch_minecraft_with_auth(
             Err(e) => {
                 log::error!("❌ Error waiting for Minecraft: {}", e);
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
+                    "instance_id": instance_id_owned,
                     "status": "error",
                     "error": e.to_string()
                 }));
@@ -358,7 +361,9 @@ pub fn run() {
             download_modrinth_mod,
             download_modrinth_mod_with_dependencies,
             // Copy folders
-            copy_instance_folders
+            copy_instance_folders,
+            list_minecraft_worlds,
+            list_installed_mods
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

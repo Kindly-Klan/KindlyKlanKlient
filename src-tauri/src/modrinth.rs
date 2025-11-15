@@ -155,6 +155,39 @@ pub async fn get_version_by_id(version_id: &str) -> Result<ModrinthVersion> {
     Ok(version)
 }
 
+/// Obtener información de una versión desde el hash SHA512 del archivo
+pub async fn get_version_from_hash(sha512: &str) -> Result<Option<ModrinthVersion>> {
+    let client = reqwest::Client::builder()
+        .user_agent("KindlyKlanKlient/1.0.0 (github.com/kindlyklan/klient)")
+        .build()?;
+
+    let url = format!("{}/version_file/{}?algorithm=sha512", MODRINTH_API_BASE, sha512);
+
+    log::info!("🔍 Buscando versión por hash SHA512: {}", sha512);
+
+    let response = client
+        .get(&url)
+        .send()
+        .await?;
+
+    if response.status() == 404 {
+        // No se encontró el archivo en Modrinth
+        return Ok(None);
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
+    }
+
+    let version: ModrinthVersion = response.json().await?;
+    log::info!("✅ Versión encontrada por hash: {} (project: {})", version.version_number, version.project_id);
+    
+    Ok(Some(version))
+}
+
 /// Obtener todas las versiones de un proyecto
 pub async fn get_project_versions(
     project_id: &str,
