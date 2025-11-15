@@ -1434,3 +1434,346 @@ pub async fn open_frontend_log_folder() -> Result<(), String> {
     Ok(())
 }
 
+// ========== Modrinth API Commands ==========
+
+#[tauri::command]
+pub async fn search_modrinth_mods(
+    query: String,
+    minecraft_version: Option<String>,
+    loader: Option<String>,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let result = crate::modrinth::search_projects(
+        &query,
+        minecraft_version.as_deref(),
+        loader.as_deref(),
+        limit,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(result).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_modrinth_project_versions(
+    project_id: String,
+    minecraft_version: Option<String>,
+    loader: Option<String>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let versions = crate::modrinth::get_project_versions(
+        &project_id,
+        minecraft_version.as_deref(),
+        loader.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let json_versions: Vec<serde_json::Value> = versions
+        .into_iter()
+        .map(|v| serde_json::to_value(v).unwrap())
+        .collect();
+
+    Ok(json_versions)
+}
+
+#[tauri::command]
+pub async fn get_modrinth_version_dependencies(
+    version_id: String,
+) -> Result<serde_json::Value, String> {
+    let deps = crate::modrinth::get_version_dependencies(&version_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    serde_json::to_value(deps).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn download_modrinth_mod(
+    file_url: String,
+    instance_id: String,
+    filename: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // Usar función smart que detecta si es instancia local o remota
+    let instance_dir = crate::local_instances::get_instance_directory_smart(&instance_id);
+    let mods_dir = instance_dir.join("mods");
+    
+    // Crear directorio de mods si no existe
+    tokio::fs::create_dir_all(&mods_dir)
+        .await
+        .map_err(|e| format!("Failed to create mods directory: {}", e))?;
+
+    let file_path = mods_dir.join(&filename);
+
+    // Emitir progreso
+    let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+        "instance_id": instance_id,
+        "filename": filename,
+        "status": "downloading",
+        "percentage": 0
+    }));
+
+    crate::modrinth::download_mod_file(&file_url, &file_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emitir completado
+    let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+        "instance_id": instance_id,
+        "filename": filename,
+        "status": "completed",
+        "percentage": 100
+    }));
+
+    Ok(format!("Mod downloaded to: {}", file_path.display()))
+}
+
+#[tauri::command]
+pub async fn download_modrinth_mod_with_dependencies(
+    version_id: String,
+    instance_id: String,
+    minecraft_version: String,
+    loader: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    log::info!("📦 Downloading mod {} with dependencies for instance {}", version_id, instance_id);
+
+    // Obtener información de la versión directamente por ID
+    let version = crate::modrinth::get_version_by_id(&version_id)
+        .await
+        .map_err(|e| format!("Failed to get version: {}", e))?;
+
+    // Usar función smart que detecta si es instancia local o remota
+    let instance_dir = crate::local_instances::get_instance_directory_smart(&instance_id);
+    let mods_dir = instance_dir.join("mods");
+    
+    tokio::fs::create_dir_all(&mods_dir)
+        .await
+        .map_err(|e| format!("Failed to create mods directory: {}", e))?;
+
+    // Las dependencias ya vienen en el objeto version.dependencies
+    // Solo procesar dependencias requeridas
+    let mut downloaded = std::collections::HashSet::new();
+    let mut dependencies_to_download: Vec<(String, String)> = Vec::new(); // (project_id, version_id)
+
+    // Recopilar dependencias requeridas
+    for dep in &version.dependencies {
+        if dep.dependency_type == "required" {
+            if let Some(project_id) = &dep.project_id {
+                if let Some(dep_version_id) = &dep.version_id {
+                    dependencies_to_download.push((project_id.clone(), dep_version_id.clone()));
+                } else {
+                    // Si no hay version_id, buscar la última versión compatible del proyecto
+                    log::info!("🔍 Dependency {} doesn't have version_id, fetching latest compatible version", project_id);
+                    match crate::modrinth::get_project_versions(project_id, Some(&minecraft_version), Some(&loader)).await {
+                        Ok(dep_versions) => {
+                            if let Some(latest_dep_version) = dep_versions.first() {
+                                dependencies_to_download.push((project_id.clone(), latest_dep_version.id.clone()));
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("⚠️  Could not fetch versions for dependency {}: {}", project_id, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Descargar dependencias requeridas
+    for (project_id, dep_version_id) in dependencies_to_download {
+        // Obtener información de la versión de la dependencia
+        match crate::modrinth::get_version_by_id(&dep_version_id).await {
+            Ok(dep_version) => {
+                // Verificar que la versión sea compatible
+                let is_compatible = dep_version.game_versions.contains(&minecraft_version)
+                    && dep_version.loaders.contains(&loader);
+
+                if !is_compatible {
+                    log::warn!("⚠️  Skipping incompatible dependency version: {}", dep_version_id);
+                    continue;
+                }
+
+                // Obtener el archivo principal
+                if let Some(primary_file) = dep_version.files.iter().find(|f| f.primary) {
+                    let filename = &primary_file.filename;
+                    
+                    if downloaded.contains(filename) {
+                        continue;
+                    }
+
+                    log::info!("⬇️  Downloading dependency: {}", filename);
+                    
+                    let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+                        "instance_id": instance_id,
+                        "filename": filename,
+                        "status": "downloading_dependency",
+                        "percentage": 0
+                    }));
+
+                    crate::modrinth::download_mod_file(&primary_file.url, &mods_dir.join(filename))
+                        .await
+                        .map_err(|e| format!("Failed to download dependency {}: {}", filename, e))?;
+
+                    downloaded.insert(filename.clone());
+
+                    let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+                        "instance_id": instance_id,
+                        "filename": filename,
+                        "status": "completed_dependency",
+                        "percentage": 100
+                    }));
+                }
+            }
+            Err(e) => {
+                log::warn!("⚠️  Could not fetch dependency version {}: {}", dep_version_id, e);
+            }
+        }
+    }
+
+    // Descargar el mod principal
+    if let Some(primary_file) = version.files.iter().find(|f| f.primary) {
+        let filename = &primary_file.filename;
+        
+        log::info!("⬇️  Downloading main mod: {}", filename);
+        
+        let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+            "instance_id": instance_id,
+            "filename": filename,
+            "status": "downloading",
+            "percentage": 0
+        }));
+
+        crate::modrinth::download_mod_file(&primary_file.url, &mods_dir.join(filename))
+            .await
+            .map_err(|e| format!("Failed to download mod {}: {}", filename, e))?;
+
+        let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
+            "instance_id": instance_id,
+            "filename": filename,
+            "status": "completed",
+            "percentage": 100
+        }));
+    }
+
+    Ok(format!("Mod and dependencies downloaded successfully"))
+}
+
+// ========== Copy folders between instances ==========
+
+#[tauri::command]
+pub async fn copy_instance_folders(
+    source_instance_id: String,
+    target_instance_id: String,
+    folders: Vec<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // Usar función smart que detecta si es instancia local o remota
+    let source_dir = crate::local_instances::get_instance_directory_smart(&source_instance_id);
+    let target_dir = crate::local_instances::get_instance_directory_smart(&target_instance_id);
+
+    if !source_dir.exists() {
+        return Err(format!("Source instance directory does not exist: {}", source_dir.display()));
+    }
+
+    if !target_dir.exists() {
+        return Err(format!("Target instance directory does not exist: {}", target_dir.display()));
+    }
+
+    let mut copied_count = 0;
+
+    for folder in &folders {
+        let source_folder = source_dir.join(folder);
+        let target_folder = target_dir.join(folder);
+
+        if !source_folder.exists() {
+            log::warn!("⚠️  Source folder does not exist: {}", source_folder.display());
+            continue;
+        }
+
+        // Emitir progreso
+        let _ = app_handle.emit("copy-folders-progress", serde_json::json!({
+            "source_instance_id": source_instance_id,
+            "target_instance_id": target_instance_id,
+            "folder": folder,
+            "status": "copying",
+            "percentage": 0
+        }));
+
+        // Copiar carpeta recursivamente
+        if source_folder.is_dir() {
+            // Crear directorio de destino
+            tokio::fs::create_dir_all(&target_folder)
+                .await
+                .map_err(|e| format!("Failed to create target folder: {}", e))?;
+
+            // Copiar archivos
+            copy_directory_recursive(&source_folder, &target_folder)
+                .await
+                .map_err(|e| format!("Failed to copy folder {}: {}", folder, e))?;
+        } else {
+            // Es un archivo, copiarlo directamente
+            if let Some(parent) = target_folder.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+            }
+            tokio::fs::copy(&source_folder, &target_folder)
+                .await
+                .map_err(|e| format!("Failed to copy file {}: {}", folder, e))?;
+        }
+
+        copied_count += 1;
+
+        // Emitir completado
+        let _ = app_handle.emit("copy-folders-progress", serde_json::json!({
+            "source_instance_id": source_instance_id,
+            "target_instance_id": target_instance_id,
+            "folder": folder,
+            "status": "completed",
+            "percentage": 100
+        }));
+
+        log::info!("✅ Copied folder: {} -> {}", source_folder.display(), target_folder.display());
+    }
+
+    Ok(format!("Successfully copied {} folder(s)", copied_count))
+}
+
+async fn copy_directory_recursive(
+    source: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), String> {
+    copy_directory_recursive_impl(source, target).await
+}
+
+async fn copy_directory_recursive_impl(
+    source: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), String> {
+    let mut entries = tokio::fs::read_dir(source)
+        .await
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    while let Some(entry) = entries.next_entry().await
+        .map_err(|e| format!("Failed to read directory entry: {}", e))? {
+        let path = entry.path();
+        let target_path = target.join(path.file_name().ok_or("Invalid file name")?);
+
+        if path.is_dir() {
+            tokio::fs::create_dir_all(&target_path)
+                .await
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            // Usar Box::pin para la recursión async
+            Box::pin(copy_directory_recursive_impl(&path, &target_path)).await?;
+        } else {
+            tokio::fs::copy(&path, &target_path)
+                .await
+                .map_err(|e| format!("Failed to copy file: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+

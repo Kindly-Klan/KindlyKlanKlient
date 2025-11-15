@@ -52,6 +52,24 @@ fn get_local_instances_dir() -> Result<PathBuf, String> {
     Ok(base.join(".kindlyklanklient").join("local_instances"))
 }
 
+// Get instance directory (works for both local and remote instances)
+pub fn get_instance_directory_smart(instance_id: &str) -> PathBuf {
+    let base = std::env::var("USERPROFILE")
+        .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
+        .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
+    
+    // Check if it's a local instance
+    let local_instances_dir = base.join("local_instances");
+    let local_instance_dir = local_instances_dir.join(instance_id);
+    
+    if local_instance_dir.exists() {
+        local_instance_dir
+    } else {
+        // Fallback to remote instance directory
+        base.join(instance_id)
+    }
+}
+
 #[tauri::command]
 pub async fn create_local_instance(
     name: String,

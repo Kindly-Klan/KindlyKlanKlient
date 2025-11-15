@@ -23,6 +23,7 @@ mod auth_ms;
 mod commands;
 mod admins;
 mod local_instances;
+mod modrinth;
 pub use models::*;
 pub use versions::*;
 pub use whitelist::*;
@@ -349,7 +350,15 @@ pub fn run() {
             log_frontend_error,
             get_frontend_logs,
             clear_frontend_logs,
-            open_frontend_log_folder
+            open_frontend_log_folder,
+            // Modrinth API
+            search_modrinth_mods,
+            get_modrinth_project_versions,
+            get_modrinth_version_dependencies,
+            download_modrinth_mod,
+            download_modrinth_mod_with_dependencies,
+            // Copy folders
+            copy_instance_folders
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

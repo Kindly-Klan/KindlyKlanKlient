@@ -45,6 +45,8 @@ interface InstanceViewProps {
   isLocal?: boolean;
   onSyncMods?: (localId: string) => void;
   onOpenFolder?: (localId: string) => void;
+  onDownloadMods?: (localId: string) => void;
+  onCopyFolders?: (localId: string) => void;
 }
 
 // Caché global para videos por instancia
@@ -60,6 +62,8 @@ const InstanceView: React.FC<InstanceViewProps> = ({
   isLocal = false,
   onSyncMods,
   onOpenFolder,
+  onDownloadMods,
+  onCopyFolders,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [localVideoPath, setLocalVideoPath] = useState<string | null>(null);
@@ -339,6 +343,25 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                   </Tooltip>
                 </button>
 
+                {/* Download mods from Modrinth button */}
+                <button
+                  onClick={() => onDownloadMods?.(instanceId)}
+                  className="p-3 rounded-xl bg-[#ff00ff]/10 border-2 border-[#ff00ff]/30 text-[#ff00ff] hover:bg-[#ff00ff]/20 hover:border-[#ff00ff] transition-all duration-200 group neon-glow-magenta-hover"
+                >
+                  <Tooltip content="Descargar mods desde Modrinth" side="top">
+                    <div>
+                      <svg 
+                        className="w-6 h-6 group-hover:scale-110 transition-transform" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                  </Tooltip>
+                </button>
+
                 {/* Play button */}
                 <LaunchButton
                   onLaunch={() => onLaunch(localInstance || instance)}
@@ -351,7 +374,6 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                 <button
                   onClick={() => onSyncMods?.(instanceId)}
                   className="p-3 rounded-xl bg-[#00ffff]/10 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/20 hover:border-[#00ffff] transition-all duration-200 group neon-glow-cyan-hover"
-                  title="Sincronizar mods desde instancia remota"
                 >
                   <Tooltip content="Sincronizar mods desde instancia remota" side="top">
                     <div>
@@ -362,6 +384,25 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                         viewBox="0 0 24 24"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                  </Tooltip>
+                </button>
+
+                {/* Copy folders button */}
+                <button
+                  onClick={() => onCopyFolders?.(instanceId)}
+                  className="p-3 rounded-xl bg-[#ffff00]/10 border-2 border-[#ffff00]/30 text-[#ffff00] hover:bg-[#ffff00]/20 hover:border-[#ffff00] transition-all duration-200 group"
+                >
+                  <Tooltip content="Copiar carpetas desde otra instancia" side="top">
+                    <div>
+                      <svg 
+                        className="w-6 h-6 group-hover:scale-110 transition-transform" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     </div>
                   </Tooltip>

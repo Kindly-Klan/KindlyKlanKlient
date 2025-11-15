@@ -20,6 +20,8 @@ import { SessionService } from "@/services/sessions";
 import { AdminService } from "@/services/admins";
 import NoAccessScreen from "@/components/NoAccessScreen";
 import CreateLocalInstanceModal from "@/components/CreateLocalInstanceModal";
+import ModrinthSearchModal from "@/components/ModrinthSearchModal";
+import CopyFoldersModal from "@/components/CopyFoldersModal";
 import type { LocalInstance } from "@/types/local-instances";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
@@ -381,6 +383,10 @@ function App() {
   const [creatingInstanceId, setCreatingInstanceId] = useState<string | null>(null);
   const [syncModsModalOpen, setSyncModsModalOpen] = useState(false);
   const [syncingLocalId, setSyncingLocalId] = useState<string | null>(null);
+  const [modrinthModalOpen, setModrinthModalOpen] = useState(false);
+  const [modrinthInstanceId, setModrinthInstanceId] = useState<string | null>(null);
+  const [copyFoldersModalOpen, setCopyFoldersModalOpen] = useState(false);
+  const [copyFoldersInstanceId, setCopyFoldersInstanceId] = useState<string | null>(null);
 
   useEffect(() => {
     void logger.info('Aplicación iniciada', 'APP');
@@ -908,6 +914,18 @@ function App() {
     }
   };
 
+  // Handle download mods from Modrinth
+  const handleDownloadMods = (instanceId: string) => {
+    setModrinthInstanceId(instanceId);
+    setModrinthModalOpen(true);
+  };
+
+  // Handle copy folders
+  const handleCopyFolders = (instanceId: string) => {
+    setCopyFoldersInstanceId(instanceId);
+    setCopyFoldersModalOpen(true);
+  };
+
   // Handle local instance deleted
   const handleLocalInstanceDeleted = (instanceId: string) => {
     setLocalInstances(localInstances.filter(li => li.id !== instanceId));
@@ -1302,6 +1320,8 @@ function App() {
                      isLocal={localInstances.some(li => li.id === selectedInstance)}
                      onSyncMods={handleSyncMods}
                      onOpenFolder={handleOpenFolder}
+                     onDownloadMods={handleDownloadMods}
+                     onCopyFolders={handleCopyFolders}
                      onLaunch={async (instance) => {
                        if (isDownloadingAssets) {
                          setLoaderText("Descargando assets de instancia...");
@@ -1725,6 +1745,47 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modrinth Search Modal */}
+      {modrinthModalOpen && modrinthInstanceId && (
+        <ModrinthSearchModal
+          isOpen={modrinthModalOpen}
+          onClose={() => {
+            setModrinthModalOpen(false);
+            setModrinthInstanceId(null);
+          }}
+          instanceId={modrinthInstanceId}
+          minecraftVersion={
+            localInstances.find(li => li.id === modrinthInstanceId)?.minecraft_version || '1.21.1'
+          }
+          loader={
+            localInstances.find(li => li.id === modrinthInstanceId)?.fabric_version 
+              ? 'fabric' 
+              : 'fabric'
+          }
+          onModDownloaded={() => {
+            addToast('Mod descargado correctamente', 'success');
+          }}
+          addToast={addToast}
+        />
+      )}
+
+      {/* Copy Folders Modal */}
+      {copyFoldersModalOpen && copyFoldersInstanceId && (
+        <CopyFoldersModal
+          isOpen={copyFoldersModalOpen}
+          onClose={() => {
+            setCopyFoldersModalOpen(false);
+            setCopyFoldersInstanceId(null);
+          }}
+          targetInstanceId={copyFoldersInstanceId}
+          localInstances={localInstances}
+          onFoldersCopied={() => {
+            addToast('Carpetas copiadas correctamente', 'success');
+          }}
+          addToast={addToast}
+        />
       )}
         </>
       )}
