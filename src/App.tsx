@@ -1716,7 +1716,7 @@ function App() {
                         {instance.name}
                       </h3>
                       <p className="text-white/60 text-sm">
-                        Minecraft {instance.minecraft_version} • {instance.mod_loader?.type} {instance.mod_loader?.version}
+                        Minecraft {instance.minecraft_version} • {instance.version}
                       </p>
                     </div>
                     <svg 
