@@ -1338,14 +1338,17 @@ function App() {
                          try {
                            const localInst = localInstances.find(li => li.id === selectedInstance);
                            if (!localInst) throw new Error('Local instance not found');
-                           
+
+                           // Load saved RAM configuration
+                           const [minRam, maxRam] = await invoke<[number, number]>('load_ram_config');
+
                            await invoke('launch_local_instance', {
                              instanceId: localInst.id,
                              accessToken: currentAccount.user.access_token,
                              username: currentAccount.user.username,
                              uuid: currentAccount.user.uuid,
-                             minRamGb: 4.0,
-                             maxRamGb: 8.0,
+                             minRamGb: minRam,
+                             maxRamGb: maxRam,
                            });
                            
                            setShowLoader(false);
