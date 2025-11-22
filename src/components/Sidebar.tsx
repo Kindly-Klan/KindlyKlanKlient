@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Tooltip from '@/components/ui/Tooltip';
 import type { LocalInstance } from '@/types/local-instances';
 import { invoke } from '@tauri-apps/api/core';
+import { Avatar } from '@/components/Avatar';
 
 interface Instance {
   id: string;
@@ -304,21 +305,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                     className="relative group cursor-pointer transition-all duration-300 ease-out hover:scale-105"
                   >
                     <div className="w-14 h-14 rounded-2xl overflow-hidden ring-1 ring-white/10 hover:ring-white/20 transition-all duration-300 ease-out select-none">
-                      <img
-                        src={`https://crafatar.com/avatars/${currentUser.uuid}?size=64&overlay=true`}
-                        alt={`${currentUser.username}'s avatar`}
+                      <Avatar
+                        uuid={currentUser.uuid}
+                        username={currentUser.username}
+                        size={64}
+                        overlay={true}
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // Fallback to default avatar if Crafatar fails
-                          e.currentTarget.src = `data:image/svg+xml;base64,${btoa(`
-                            <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                              <rect width="64" height="64" rx="12" fill="#4A90E2"/>
-                              <text x="32" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="white">
-                                ${currentUser.username.charAt(0).toUpperCase()}
-                              </text>
-                            </svg>
-                          `)}`;
-                        }}
                       />
                     </div>
                   </div>

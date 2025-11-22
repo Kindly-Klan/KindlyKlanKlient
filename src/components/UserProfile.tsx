@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import Tooltip from '@/components/ui/Tooltip';
+import { Avatar } from '@/components/Avatar';
 
 interface AuthSession {
   access_token: string;
@@ -32,17 +33,6 @@ const UserProfile: React.FC<UserProfileProps> = ({
   onLogoutAccount,
   onAddAccount
 }) => {
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, account: Account) => {
-    
-    e.currentTarget.src = `data:image/svg+xml;base64,${btoa(`
-      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <rect width="40" height="40" rx="8" fill="#4A90E2"/>
-        <text x="20" y="26" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">
-          ${account.user.username.charAt(0).toUpperCase()}
-        </text>
-      </svg>
-    `)}`;
-  };
 
   return (
     <div className="flex items-center space-x-2 glass-card rounded-2xl px-4 py-2 border border-white/10 select-none backdrop-blur-md">
@@ -51,16 +41,22 @@ const UserProfile: React.FC<UserProfileProps> = ({
         {accounts.map((account) => (
           <div key={account.id} className="relative">
             <Tooltip content={account.user.username} side="top">
-              <img
-                src={`https://crafatar.com/avatars/${account.user.uuid}?size=32&overlay=true`}
-                className={`w-8 h-8 rounded-xl border-2 cursor-pointer transition-all duration-300 ease-out select-none ${
+              <div
+                className={`w-8 h-8 rounded-xl border-2 cursor-pointer transition-all duration-300 ease-out select-none overflow-hidden ${
                   account.id === currentAccount?.id
                     ? 'border-[#00ffff] shadow-lg neon-glow-cyan scale-110'
                     : 'border-white/20 hover:border-[#00ffff]/50 hover:scale-105'
                 }`}
-                onError={(e) => handleImageError(e, account)}
                 onClick={() => onSwitchAccount(account)}
-              />
+              >
+                <Avatar
+                  uuid={account.user.uuid}
+                  username={account.user.username}
+                  size={32}
+                  overlay={true}
+                  className="w-full h-full object-cover"
+                />
+              </div>
             </Tooltip>
             
             {account.id === currentAccount?.id && (

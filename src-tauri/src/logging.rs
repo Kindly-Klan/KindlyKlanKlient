@@ -28,7 +28,7 @@ impl Logger {
         })
     }
     
-    fn get_log_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    pub fn get_log_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
         let mut log_dir = dirs::data_dir()
             .ok_or("No data directory found")?;
         

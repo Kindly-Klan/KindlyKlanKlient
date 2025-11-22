@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 interface ToastProps {
   message: string;
@@ -9,6 +9,9 @@ interface ToastProps {
 
 const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [previousMessage, setPreviousMessage] = useState(message);
+  const [isChanging, setIsChanging] = useState(false);
+  const messageRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 100);
@@ -16,9 +19,19 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
     return () => clearTimeout(timer);
   }, [duration]);
 
+  useEffect(() => {
+    if (message !== previousMessage) {
+      setIsChanging(true);
+      setTimeout(() => {
+        setPreviousMessage(message);
+        setIsChanging(false);
+      }, 300);
+    }
+  }, [message, previousMessage]);
+
   const handleClose = () => {
     setIsVisible(false);
-    setTimeout(onClose, 300); 
+    setTimeout(onClose, 500);
   };
 
   const getToastStyles = () => {
@@ -62,19 +75,27 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 5000 }
       className={`
         z-[10000] max-w-sm w-full
         p-4 rounded-2xl border-2 shadow-2xl
-        transition-all duration-300 transform
-        ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+        transition-all duration-500 ease-out transform overflow-hidden
+        ${isVisible ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-full opacity-0 scale-95'}
         ${styles.text} ${styles.border}
       `}
       style={{
         background: `linear-gradient(135deg, ${styles.background} 0%, ${styles.backdrop} 100%)`,
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6)'
+        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6)',
+        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
       }}
     >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium flex-1 mr-3">{message}</p>
+        <p 
+          ref={messageRef}
+          className={`text-sm font-medium flex-1 mr-3 transition-all duration-300 ${
+            isChanging ? 'opacity-50 scale-95' : 'opacity-100 scale-100'
+          }`}
+        >
+          {message}
+        </p>
         <button
           onClick={handleClose}
           className="text-white/70 hover:text-white transition-colors duration-200 flex-shrink-0"

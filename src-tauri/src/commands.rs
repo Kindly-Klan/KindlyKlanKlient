@@ -1434,6 +1434,40 @@ pub async fn open_frontend_log_folder() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn open_backend_log_folder() -> Result<(), String> {
+    use crate::logging::Logger;
+    
+    let log_dir = Logger::get_log_directory()
+        .map_err(|e| format!("Failed to get log directory: {}", e))?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&log_dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open log folder: {}", e))?;
+    }
+    
+    Ok(())
+}
+
 // ========== Modrinth API Commands ==========
 
 #[tauri::command]

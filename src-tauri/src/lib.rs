@@ -354,6 +354,7 @@ pub fn run() {
             get_frontend_logs,
             clear_frontend_logs,
             open_frontend_log_folder,
+            open_backend_log_folder,
             // Modrinth API
             search_modrinth_mods,
             get_modrinth_project_versions,

@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "kindlyklanklient"
-version = "0.1.75"
+version = "0.1.77"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2492,7 +2492,6 @@ dependencies = [
  "tauri-plugin-sql",
  "tauri-plugin-updater",
  "tokio",
- "toml 0.8.2",
  "url",
  "urlencoding",
  "walkdir",

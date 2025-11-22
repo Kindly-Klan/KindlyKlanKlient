@@ -642,18 +642,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
                         : 'linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
                       backdropFilter: 'blur(20px)',
                       WebkitBackdropFilter: 'blur(20px)',
-                      boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                      boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)',
                     }}
                     onMouseEnter={(e) => {
                       if (!isCheckingUpdates) {
                         e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
                         e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(34, 211, 238, 0.3)';
+                        e.currentTarget.style.cursor = 'pointer';
+                      } else {
+                        e.currentTarget.style.cursor = 'not-allowed';
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!isCheckingUpdates) {
                         e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
                         e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.cursor = 'pointer';
+                      } else {
+                        e.currentTarget.style.cursor = 'not-allowed';
                       }
                     }}
                   >
@@ -689,13 +695,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
                         if (!isDownloadingUpdate) {
                           e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 88, 12, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
                           e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(234, 88, 12, 0.3)';
+                          e.currentTarget.style.cursor = 'pointer';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isDownloadingUpdate) {
                           e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
                           e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
-                        }
+                          e.currentTarget.style.cursor = 'pointer';
+                          }
                       }}
                     >
                       {isDownloadingUpdate ? (
@@ -722,15 +730,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
                         background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
                         backdropFilter: 'blur(20px)',
                         WebkitBackdropFilter: 'blur(20px)',
-                        boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                        boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)',
+                        cursor: 'pointer'
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
                         e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(34, 197, 94, 0.3)';
+                        e.currentTarget.style.cursor = 'pointer';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
                         e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.cursor = 'pointer';
                       }}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -743,85 +754,83 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
               </div>
             </div>
 
-            {/* Frontend Logs Section */}
+            {/* Logs Section */}
             <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
-              {/* Section Header */}
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-8 h-8 flex items-center justify-center">
                   <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-white">Logs del Frontend</h2>
+                <h2 className="text-2xl font-bold text-white">Logs</h2>
               </div>
 
-              <div className="space-y-4">
-                <p className="text-white/70">
-                  Los logs del frontend capturan errores y eventos de la interfaz de usuario para ayudar con la depuración.
-                </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke('open_frontend_log_folder');
+                    } catch (error) {
+                      console.error('Failed to open frontend log folder:', error);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl border-2 border-yellow-400/60 text-yellow-200 transition-all duration-200 flex items-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(234, 179, 8, 0.3)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Abrir carpeta de frontend
+                </button>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await invoke('open_frontend_log_folder');
-                      } catch (error) {
-                        console.error('Failed to open log folder:', error);
-                      }
-                    }}
-                    className="px-4 py-2 rounded-xl border-2 border-yellow-400/60 text-yellow-200 transition-all duration-200 flex items-center gap-2"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                      backdropFilter: 'blur(20px)',
-                      WebkitBackdropFilter: 'blur(20px)',
-                      boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                      e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(234, 179, 8, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                      e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
-                    }}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    Abrir carpeta de logs
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      try {
-                        await invoke('clear_frontend_logs');
-                        console.log('Frontend logs cleared');
-                      } catch (error) {
-                        console.error('Failed to clear logs:', error);
-                      }
-                    }}
-                    className="px-4 py-2 rounded-xl border-2 border-red-400/60 text-red-200 transition-all duration-200 flex items-center gap-2"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                      backdropFilter: 'blur(20px)',
-                      WebkitBackdropFilter: 'blur(20px)',
-                      boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                      e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(239, 68, 68, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                      e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
-                    }}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Limpiar logs
-                  </button>
-                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke('open_backend_log_folder');
+                    } catch (error) {
+                      console.error('Failed to open backend log folder:', error);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl border-2 border-yellow-400/60 text-yellow-200 transition-all duration-200 flex items-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(234, 179, 8, 0.3)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Abrir carpeta de backend
+                </button>
               </div>
             </div>
            </div>

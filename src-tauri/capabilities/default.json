@@ -8,6 +8,7 @@
     "core:app:default",
     "core:window:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-progress-bar",
     "core:path:default",
     "core:event:default",
     "core:menu:default",
@@ -23,6 +24,7 @@
     "updater:default",
     "updater:allow-check",
     "updater:allow-download",
-    "updater:allow-install"
+    "updater:allow-install",
+    "notification:default"
   ]
 }

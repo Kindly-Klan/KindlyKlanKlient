@@ -12,8 +12,8 @@ import InstanceView from "@/components/InstanceView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import UpdateReadyToast from "@/components/UpdateReadyToast";
 import { SkinManager } from "@/components/skin/SkinManager";
-import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { sendNotification } from "@tauri-apps/plugin-notification";
+import { sendNotificationSafe, initializeNotificationPermissions } from "@/utils/notifications";
+import { showIndeterminateProgressBar, hideProgressBar } from "@/utils/progressBar";
 import { UpdaterService } from "@/services/updater";
 import { WhitelistService } from "@/services/whitelist";
 import { SessionService } from "@/services/sessions";
@@ -71,15 +71,12 @@ const ensureJavaInstalled = async (
   }
 
   try {
+    // Mostrar indicador de progreso indeterminado al iniciar descarga
+    void showIndeterminateProgressBar();
+    
     // Escuchar eventos de progreso de Java
     const unlistenProgress = await listen('java-download-progress', (e: any) => {
       const data = e.payload as { percentage: number; status: string };
-      const progress = data.percentage / 100;
-      // Actualizar barra de progreso en la barra de tareas
-      getCurrentWindow().setProgressBar({ 
-        status: ProgressBarStatus.Normal, 
-        progress: progress 
-      }).catch(() => {});
       if (setJavaProgress) {
         setJavaProgress(data.percentage);
       }
@@ -87,9 +84,9 @@ const ensureJavaInstalled = async (
     
     const unlistenCompleted = await listen('java-download-completed', async (e: any) => {
       try {
-        await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
+        await hideProgressBar();
         // Mostrar notificación
-        sendNotification({
+        await sendNotificationSafe({
           title: 'Java instalado',
           body: `Java ${e.payload.version || ''} se ha instalado correctamente`,
         });
@@ -102,7 +99,7 @@ const ensureJavaInstalled = async (
     return javaVersion;
   } catch (error) {
     console.error('Error downloading Java:', error);
-    try { await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None }); } catch {}
+    await hideProgressBar();
     throw error;
   }
 };
@@ -140,21 +137,18 @@ const launchInstance = async (
 
       try {
         const { listen } = await import('@tauri-apps/api/event');
+        // Mostrar indicador de progreso indeterminado al iniciar descarga
+        void showIndeterminateProgressBar();
+        
         const unlistenProgress = await listen('asset-download-progress', (e: any) => {
           const data = e.payload as AssetDownloadProgress;
           setDownloadProgress(data);
-          // Actualizar barra de progreso en la barra de tareas
-          const progress = data.percentage / 100;
-          getCurrentWindow().setProgressBar({ 
-            status: ProgressBarStatus.Normal, 
-            progress: progress 
-          }).catch(() => {});
         });
         const unlistenCompleted = await listen('asset-download-completed', async () => {
           setDownloadProgress({ current: 100, total: 100, percentage: 100, current_file: '', status: 'Completed' });
           try {
-            await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None });
-            sendNotification({
+            await hideProgressBar();
+            await sendNotificationSafe({
               title: 'Instancia lista',
               body: `La instancia "${instance.name}" se ha descargado correctamente`,
             });
@@ -174,7 +168,7 @@ const launchInstance = async (
         unlistenCompleted();
       } catch (error) {
         console.error('Error downloading assets:', error);
-        try { await getCurrentWindow().setProgressBar({ status: ProgressBarStatus.None }); } catch {}
+        await hideProgressBar();
         addToast('Error descargando assets de la instancia', 'error');
         throw error;
       }
@@ -390,6 +384,15 @@ function App() {
 
   useEffect(() => {
     void logger.info('Aplicación iniciada', 'APP');
+    // Inicializar permisos de notificaciones al inicio
+    void initializeNotificationPermissions();
+    // Forzar modo oscuro en la ventana
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().setTheme('dark');
+      } catch {}
+    })();
   }, []);
   
   useEffect(() => {}, [distributionLoaded]);
@@ -454,24 +457,18 @@ function App() {
         }
       }
 
-      // SIEMPRE verificar si hay nuevas actualizaciones al iniciar (no solo cada 30 minutos)
-      // Esto asegura que siempre se verifique al iniciar el launcher
-      console.log('Verificando actualizaciones al iniciar...');
+      console.log('Verifying updates...');
       const result = await UpdaterService.checkForUpdates();
       
       if (result.available) {
-        // Obtener el estado actualizado después de verificar
         const newState = await UpdaterService.getUpdateState();
         if (newState.available_version && !newState.downloaded) {
-          console.log('Nueva actualización disponible, iniciando descarga automática...');
-          // Mostrar toast de descarga con progreso ANTES de iniciar la descarga
+          console.log('New update available, starting download...');
           setUpdateDownloadVersion(newState.available_version);
           setUpdateDownloadProgress(0);
           
-          // Descargar automáticamente
           const downloadResult = await UpdaterService.downloadUpdateSilent(false);
           if (!downloadResult.success) {
-            // Si falla la descarga, ocultar toast de descarga y mostrar error
             setUpdateDownloadProgress(null);
             setUpdateDownloadVersion(null);
             addToast('Error al descargar la actualización', 'error');
@@ -480,42 +477,35 @@ function App() {
               setUpdateDialogState({ isDownloadReady: false, hasUpdateAvailable: true, version: finalState.available_version });
               setUpdateDialogOpen(true);
             }
-          }
-          // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
-          // a través del evento update-download-complete
+          } 
         }
       } else {
-        console.log('No hay actualizaciones disponibles');
+        console.log('No updates available');
       }
     } catch (error) {
       console.error('Error checking for updates on startup:', error);
     }
   };
 
-  // Verificar actualizaciones periódicamente (cada 30 minutos)
   const checkForUpdatesPeriodic = async () => {
     try {
       const shouldCheck = await UpdaterService.shouldCheckForUpdates();
       if (!shouldCheck) {
-        console.log('Aún no es momento de verificar actualizaciones (cada 30 minutos)');
+        console.log('Not time to check for updates');
         return;
       }
 
-      console.log('Verificando actualizaciones periódicamente...');
+      console.log('Checking for updates periodically...');
       const result = await UpdaterService.checkForUpdates();
       if (result.available) {
-        // Obtener el estado actualizado después de verificar
         const state = await UpdaterService.getUpdateState();
         if (state.available_version && !state.downloaded) {
-          console.log('Nueva actualización disponible en verificación periódica, iniciando descarga...');
-          // Mostrar toast de descarga con progreso ANTES de iniciar la descarga
+          console.log('New update available in periodic check, starting download...');
           setUpdateDownloadVersion(state.available_version);
           setUpdateDownloadProgress(0);
           
-          // Descargar automáticamente
           const downloadResult = await UpdaterService.downloadUpdateSilent(false);
           if (!downloadResult.success) {
-            // Si falla la descarga, ocultar toast de descarga y mostrar error
             setUpdateDownloadProgress(null);
             setUpdateDownloadVersion(null);
             addToast('Error al descargar la actualización', 'error');
@@ -525,14 +515,12 @@ function App() {
               setUpdateDialogOpen(true);
             }
           }
-          // Si tiene éxito, el toast de "lista para instalar" se mostrará cuando se complete
-          // a través del evento update-download-complete
         }
       } else {
-        console.log('No hay actualizaciones disponibles en verificación periódica');
+        console.log('No updates available in periodic check');
       }
     } catch (error) {
-      console.error('Error checking for updates periodically:', error);
+      console.error('Error checking for updates in periodic check:', error);
     }
   };
 
@@ -550,27 +538,23 @@ function App() {
     loadDistribution();
     checkExistingSession().catch(console.error);
     
-    // Check for updates after a short delay to not interfere with startup
     setTimeout(() => {
       checkForUpdatesOnStartup();
     }, 2000);
 
-    // Verificar actualizaciones periódicamente cada 30 minutos
     const updateCheckInterval = setInterval(() => {
       checkForUpdatesPeriodic();
     }, 30 * 60 * 1000); // 30 minutos
 
-    // Escuchar eventos de actualización
     let unlistenUpdateStart: (() => void) | null = null;
     let unlistenUpdateProgress: (() => void) | null = null;
     let unlistenUpdateComplete: (() => void) | null = null;
     
     (async () => {
       try {
-        // Listener para cuando inicia la descarga - mostrar toast inmediatamente
         unlistenUpdateStart = await listen('update-download-start', async () => {
-          console.log('Descarga de actualización iniciada');
-          // Obtener el estado para asegurar que tenemos la versión correcta
+          console.log('Update download started');
+          void showIndeterminateProgressBar();
           try {
             const state = await UpdaterService.getUpdateState();
             if (state.available_version) {
@@ -578,25 +562,23 @@ function App() {
               setUpdateDownloadProgress(0);
             }
           } catch (error) {
-            console.error('Error obteniendo estado de actualización:', error);
-            // Aún así, establecer el progreso a 0 para mostrar el toast
+            console.error('Error getting update state:', error);
             setUpdateDownloadProgress(0);
           }
         });
         
         unlistenUpdateProgress = await listen<number>('update-download-progress', (event) => {
-          setUpdateDownloadProgress(event.payload);
+          const progress = event.payload;
+          setUpdateDownloadProgress(progress);
         });
         
         unlistenUpdateComplete = await listen('update-download-complete', async () => {
-          console.log('Descarga de actualización completada');
+          console.log('Update download completed');
           setUpdateDownloadProgress(100);
-          // Esperar un poco para que se actualice el estado
+          await hideProgressBar();
           setTimeout(async () => {
             const state = await UpdaterService.getUpdateState();
-            // Verificar que la actualización no se haya instalado ya
             if (state.available_version && state.available_version === state.current_version) {
-              // Ya está instalada, limpiar estado
               await invoke('clear_update_state');
               setUpdateDownloadProgress(null);
               setUpdateDownloadVersion(null);
@@ -646,14 +628,12 @@ function App() {
         if (isValid) {
           validAccounts.push(account);
         } else {
-          console.warn(`Token inválido para cuenta ${account.user.username}, eliminando...`);
+          console.warn(`Invalid token for account ${account.user.username}, deleting...`);
         }
       }
 
       if (validAccounts.length !== accounts.length) {
         setAccounts(validAccounts);
-        // DB es fuente de verdad, no sincronizar a localStorage
-
 
         if (currentAccount && !validAccounts.find(acc => acc.id === currentAccount.id)) {
           if (validAccounts.length > 0) {
@@ -812,7 +792,6 @@ function App() {
       setDistribution(manifest);
       setDistributionLoaded(true);
       
-      // Filtrar instancias según permisos del usuario actual
       if (currentAccount) {
         const accessibleInstances = await WhitelistService.getAccessibleInstances(
           currentAccount.user.username,
@@ -820,7 +799,6 @@ function App() {
         );
         setFilteredInstances(accessibleInstances);
       } else {
-        // Si no hay usuario logueado, mostrar todas las instancias
         setFilteredInstances(manifest.instances);
       }
       
@@ -830,7 +808,6 @@ function App() {
     }
   };
 
-  // Check if current user is admin
   const checkAdminStatus = async () => {
     if (!currentAccount) {
       setIsAdmin(false);
@@ -847,7 +824,6 @@ function App() {
     }
   };
 
-  // Load local instances (only for admins)
   const loadLocalInstances = async () => {
     if (!isAdmin) {
       setLocalInstances([]);
@@ -863,13 +839,9 @@ function App() {
       addToast('Error al cargar instancias locales', 'error');
     }
   };
-
-  // Handle creating a local instance
+  
   const handleCreateLocalInstance = (instance: LocalInstance) => {
-    // No agregar la instancia al estado aquí, dejar que loadLocalInstances() lo haga
-    // para evitar conflictos y duplicados
     setCreatingInstanceId(instance.id);    
-    // Remove creating state after animation
     setTimeout(() => {
       setCreatingInstanceId(null);
     }, 2000);
@@ -914,19 +886,16 @@ function App() {
     }
   };
 
-  // Handle download mods from Modrinth
   const handleDownloadMods = (instanceId: string) => {
     setModrinthInstanceId(instanceId);
     setModrinthModalOpen(true);
   };
 
-  // Handle copy folders
   const handleCopyFolders = (instanceId: string) => {
     setCopyFoldersInstanceId(instanceId);
     setCopyFoldersModalOpen(true);
   };
 
-  // Handle local instance deleted
   const handleLocalInstanceDeleted = (instanceId: string) => {
     setLocalInstances(localInstances.filter(li => li.id !== instanceId));
     if (selectedInstance === instanceId) {
@@ -934,17 +903,14 @@ function App() {
     }
   };
 
-  // Effect to check admin status when user changes
   useEffect(() => {
     checkAdminStatus();
   }, [currentAccount]);
 
-  // Effect to load local instances when admin status changes
   useEffect(() => {
     loadLocalInstances();
   }, [isAdmin]);
 
-  // Listen to local instance creation progress
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let isUnmounted = false;
@@ -957,7 +923,7 @@ function App() {
       
       if (progress.stage === 'completed') {
         addToast(progress.message, 'success');
-        // Recargar instancias después de un pequeño delay para asegurar que la instancia esté completamente creada
+        // Reload instances after a small delay to ensure the instance is completely created
         setTimeout(() => {
           if (!isUnmounted) {
             loadLocalInstances();
@@ -972,7 +938,6 @@ function App() {
     };
   }, []);
 
-  // Listen to mod sync progress
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     
@@ -990,11 +955,9 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      // Limpiar sesiones de la base de datos si hay cuenta activa
       if (currentAccount) {
         await SessionService.deleteSession(currentAccount.user.username);
       }
-      // También limpiar todas las sesiones por seguridad
       await SessionService.clearAllSessions();
     } catch (error) {
       console.error('Error clearing sessions from database:', error);
@@ -1009,7 +972,6 @@ function App() {
 
   const checkExistingSession = async () => {
     try {
-      // Primero intentar cargar sesión activa desde la base de datos (el backend intentará refrescar si es posible)
       const activeSession = await SessionService.getActiveSession();
 
       if (activeSession) {
@@ -1018,7 +980,6 @@ function App() {
         console.log('Current time:', new Date());
         console.log('Is expired:', SessionService.isSessionExpired(activeSession));
 
-        // Si expirada, eliminar; si expira pronto, intentar refresh
         if (SessionService.isSessionExpired(activeSession)) {
           console.log('Session expired, removing...');
           await SessionService.deleteSession(activeSession.username);
@@ -1026,7 +987,6 @@ function App() {
           return;
         }
 
-        // Si expira pronto, intentar refresh de forma transparente
         if (SessionService.isSessionExpiringSoon(activeSession, 10)) {
           try {
             const refreshed = await SessionService.refreshActiveSession(activeSession.username);

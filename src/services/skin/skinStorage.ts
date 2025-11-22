@@ -190,4 +190,8 @@ export class SkinStorageService {
   static getCrafatarHeadUrl(uuid: string, size: number = 40): string {
     return `https://crafatar.com/avatars/${uuid}?size=${size}&overlay=true`;
   }
+
+  static getAvatarUrl(uuid: string, size: number = 40, overlay: boolean = true): string {
+    return `https://crafatar.com/avatars/${uuid}?size=${size}${overlay ? '&overlay=true' : ''}`;
+  }
 }
