@@ -117,9 +117,10 @@ export async function loadAvatarWithFallback(
   overlay: boolean = true
 ): Promise<string> {
   const cachedProvider = getCachedProvider(uuid);
+  const allProviders: AvatarProvider[] = ['crafatar', 'minotar', 'mcheads'];
   const providers: AvatarProvider[] = cachedProvider 
-    ? [cachedProvider, 'crafatar', 'minotar', 'mcheads'].filter((p, i, arr) => arr.indexOf(p) === i)
-    : ['crafatar', 'minotar', 'mcheads'];
+    ? [cachedProvider, ...allProviders].filter((p, i, arr) => arr.indexOf(p) === i) as AvatarProvider[]
+    : allProviders;
 
   const promises = providers.map(provider => 
     testProvider(provider, uuid, size, overlay).then(url => ({ provider, url }))
