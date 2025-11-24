@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { register } from "@tauri-apps/plugin-global-shortcut";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/Loader";
 import ToastContainer from "@/components/ToastContainer";
@@ -343,6 +345,7 @@ interface DistributionManifest {
 
 function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const devToolsOpenRef = useRef(false);
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
   const [distribution, setDistribution] = useState<DistributionManifest | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
@@ -389,9 +392,21 @@ function App() {
     // Forzar modo oscuro en la ventana
     (async () => {
       try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
         await getCurrentWindow().setTheme('dark');
       } catch {}
+    })();
+    
+    (async () => {
+      try {
+        await register('CommandOrControl+Shift+D', async () => {
+          try {
+            await invoke('toggle_devtools');
+            devToolsOpenRef.current = !devToolsOpenRef.current;
+          } catch (error) {
+          }
+        });
+      } catch (error) {
+      }
     })();
   }, []);
   

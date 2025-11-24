@@ -1402,6 +1402,23 @@ pub async fn clear_frontend_logs() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn toggle_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    
+    let window = app_handle.get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    
+    // Alternar DevTools: abrir si están cerrados, cerrar si están abiertos
+    if window.is_devtools_open() {
+        window.close_devtools();
+    } else {
+        window.open_devtools();
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn open_frontend_log_folder() -> Result<(), String> {
     let log_path = get_frontend_log_path()?;
     let log_dir = log_path.parent()

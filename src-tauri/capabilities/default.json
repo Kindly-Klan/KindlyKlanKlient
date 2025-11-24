@@ -25,6 +25,10 @@
     "updater:allow-check",
     "updater:allow-download",
     "updater:allow-install",
-    "notification:default"
+    "notification:default",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "core:webview:allow-internal-toggle-devtools"
   ]
 }

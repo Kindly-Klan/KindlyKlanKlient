@@ -260,6 +260,16 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::default().build())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(|app| {
+            // Establecer el título de la ventana con la versión desde Cargo.toml
+            if let Some(window) = app.get_webview_window("main") {
+                let version = app.package_info().version.to_string();
+                let title = format!("Kindly Klan Klient v{}", version);
+                let _ = window.set_title(&title);
+            }
+            Ok(())
+        })
         .manage(is_downloading)
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -355,6 +365,7 @@ pub fn run() {
             clear_frontend_logs,
             open_frontend_log_folder,
             open_backend_log_folder,
+            toggle_devtools,
             // Modrinth API
             search_modrinth_mods,
             get_modrinth_project_versions,

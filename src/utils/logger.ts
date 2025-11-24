@@ -46,9 +46,11 @@ class FrontendLogger {
    * Registra un mensaje en los logs
    */
   private async log(level: LogLevel, message: string, context?: string, data?: any) {
-    // Log en consola (solo en desarrollo)
+    // Log en consola (siempre mostrar errores y warnings, incluso en producción)
     const isDev = import.meta.env.DEV;
-    if (isDev) {
+    const shouldLogToConsole = isDev || level === 'error' || level === 'warn';
+    
+    if (shouldLogToConsole) {
       const logMethod = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
       logMethod(`[${level.toUpperCase()}]${context ? ` [${context}]` : ''} ${message}`, data || '');
     }
