@@ -1121,8 +1121,10 @@ pub async fn stop_minecraft_instance(
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::os::windows::process::CommandExt;
             let output = Command::new("taskkill")
                 .args(&["/PID", &pid.to_string(), "/F", "/T"])
+                .creation_flags(0x08000000)
                 .output()
                 .map_err(|e| format!("Failed to kill process: {}", e))?;
             

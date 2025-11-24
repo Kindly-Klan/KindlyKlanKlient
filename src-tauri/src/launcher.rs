@@ -21,9 +21,25 @@ impl MinecraftLauncher {
 
     // Find Java executable in common locations
     pub fn find_java(&self) -> Result<PathBuf> {
-        if let Ok(output) = Command::new("java").arg("-version").output() {
-            if output.status.success() {
-                return Ok(PathBuf::from("java"));
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            if let Ok(output) = Command::new("java")
+                .arg("-version")
+                .creation_flags(0x08000000)
+                .output() {
+                if output.status.success() {
+                    return Ok(PathBuf::from("java"));
+                }
+            }
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(output) = Command::new("java").arg("-version").output() {
+                if output.status.success() {
+                    return Ok(PathBuf::from("java"));
+                }
             }
         }
         let common_paths = vec![
@@ -301,7 +317,29 @@ impl MinecraftLauncher {
 }
 
 pub fn get_total_ram_mb() -> anyhow::Result<u32> {
-    if let Ok(output) = Command::new("wmic").arg("OS").arg("get").arg("TotalVisibleMemorySize").output() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        if let Ok(output) = Command::new("wmic")
+            .arg("OS")
+            .arg("get")
+            .arg("TotalVisibleMemorySize")
+            .creation_flags(0x08000000)
+            .output() {
+            if output.status.success() {
+                let stdout = String::from_utf8(output.stdout)?;
+                for line in stdout.lines() {
+                    if let Ok(kb) = line.trim().parse::<u64>() {
+                        return Ok((kb / 1024) as u32);
+                    }
+                }
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(output) = Command::new("wmic").arg("OS").arg("get").arg("TotalVisibleMemorySize").output() {
         if output.status.success() {
             let stdout = String::from_utf8(output.stdout)?;
             for line in stdout.lines() {
@@ -359,9 +397,25 @@ pub async fn find_java_executable() -> Result<String, String> {
     ];
 
     for path in &common_paths {
-        if let Ok(output) = Command::new(path).arg("-version").output() {
-            if output.status.success() {
-                return Ok(path.to_string());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            if let Ok(output) = Command::new(path)
+                .arg("-version")
+                .creation_flags(0x08000000)
+                .output() {
+                if output.status.success() {
+                    return Ok(path.to_string());
+                }
+            }
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(output) = Command::new(path).arg("-version").output() {
+                if output.status.success() {
+                    return Ok(path.to_string());
+                }
             }
         }
     }
