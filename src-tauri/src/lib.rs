@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::env;
  
 use std::process::Command;
- 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
  
 use tauri::{Emitter, Manager};
 #[cfg(target_os = "windows")]
@@ -192,6 +193,18 @@ async fn launch_minecraft_with_auth(
     let mut child = command.spawn()
         .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
     
+    let pid = child.id();
+    
+    if let Some(state) = app_handle.try_state::<Arc<Mutex<HashMap<String, u32>>>>() {
+        if let Ok(mut processes) = state.lock() {
+            log::info!("💾 Guardando proceso para instancia: {} con PID: {}", instance_id, pid);
+            processes.insert(instance_id.to_string(), pid);
+            log::info!("📋 Procesos activos: {:?}", processes.keys().collect::<Vec<_>>());
+        }
+    } else {
+        log::warn!("⚠️ No se pudo obtener el estado de procesos");
+    }
+    
     // Capturar stdout
     if let Some(stdout) = child.stdout.take() {
         use std::io::{BufRead, BufReader};
@@ -216,10 +229,18 @@ async fn launch_minecraft_with_auth(
 
     let app = app_handle.clone();
     let instance_id_owned = instance_id.to_string();
+    let processes_state = if let Some(state) = app_handle.try_state::<Arc<Mutex<HashMap<String, u32>>>>() {
+        state.inner().clone()
+    } else {
+        return Err("Failed to get processes state".to_string());
+    };
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
                 log::info!("🎮 Minecraft exited with status: {:?}", status);
+                if let Ok(mut processes) = processes_state.lock() {
+                    processes.remove(&instance_id_owned);
+                }
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
                     "instance_id": instance_id_owned,
                     "status": "exited",
@@ -228,6 +249,9 @@ async fn launch_minecraft_with_auth(
             }
             Err(e) => {
                 log::error!("❌ Error waiting for Minecraft: {}", e);
+                if let Ok(mut processes) = processes_state.lock() {
+                    processes.remove(&instance_id_owned);
+                }
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
                     "instance_id": instance_id_owned,
                     "status": "error",
@@ -254,6 +278,7 @@ pub fn run() {
     // Global state for tracking active downloads
     use std::sync::{Arc, Mutex};
     let is_downloading = Arc::new(Mutex::new(false));
+    let minecraft_processes: Arc<Mutex<HashMap<String, u32>>> = Arc::new(Mutex::new(HashMap::new()));
     
     tauri::Builder::default()
         .plugin(tauri_plugin_oauth::init())
@@ -271,6 +296,7 @@ pub fn run() {
             Ok(())
         })
         .manage(is_downloading)
+        .manage(minecraft_processes.clone())
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app_handle = window.app_handle();

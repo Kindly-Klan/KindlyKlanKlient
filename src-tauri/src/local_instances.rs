@@ -1,6 +1,6 @@
 use crate::models::{LocalInstance, LocalInstanceMetadata};
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use serde_json;
 
 // Generate a slugified ID from name with random suffix
@@ -755,6 +755,18 @@ pub async fn launch_local_instance(
     let mut child = command.spawn()
         .map_err(|e| format!("Failed to start Minecraft: {}", e))?;
     
+    let pid = child.id();
+    
+    if let Some(state) = app_handle.try_state::<std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>>() {
+        if let Ok(mut processes) = state.lock() {
+            log::info!("💾 Guardando proceso local para instancia: {} con PID: {}", instance_id, pid);
+            processes.insert(instance_id.clone(), pid);
+            log::info!("📋 Procesos activos: {:?}", processes.keys().collect::<Vec<_>>());
+        }
+    } else {
+        log::warn!("⚠️ No se pudo obtener el estado de procesos");
+    }
+    
     if let Some(stdout) = child.stdout.take() {
         use std::io::{BufRead, BufReader};
         std::thread::spawn(move || {
@@ -779,10 +791,18 @@ pub async fn launch_local_instance(
     
     let app = app_handle.clone();
     let instance_id_clone = instance_id.clone();
+    let processes_state = if let Some(state) = app_handle.try_state::<std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>>() {
+        state.inner().clone()
+    } else {
+        return Err("Failed to get processes state".to_string());
+    };
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
                 log::info!("🎮 Minecraft exited with status: {:?}", status);
+                if let Ok(mut processes) = processes_state.lock() {
+                    processes.remove(&instance_id_clone);
+                }
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
                     "instance_id": instance_id_clone,
                     "status": "exited",
@@ -791,6 +811,9 @@ pub async fn launch_local_instance(
             }
             Err(e) => {
                 log::error!("❌ Error waiting for Minecraft: {}", e);
+                if let Ok(mut processes) = processes_state.lock() {
+                    processes.remove(&instance_id_clone);
+                }
                 let _ = app.emit("minecraft_exited", serde_json::json!({ 
                     "instance_id": instance_id_clone,
                     "status": "error",

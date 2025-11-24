@@ -10,6 +10,7 @@ use tauri::Emitter;
 use crate::UpdateState;
 use crate::{DistributionManifest, InstanceManifest};
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use crate::models::{ForgeVersion, NeoForgeVersion};
 
 /// Verifica si un archivo debe ignorarse basándose en los patrones de ignorar :)
@@ -1107,8 +1108,52 @@ pub fn get_system_ram() -> Result<u32, String> {
 }
 
 #[tauri::command]
-pub async fn stop_minecraft_instance(instance_id: String) -> Result<String, String> {
-    Ok(format!("Minecraft instance {} stopped", instance_id))
+pub async fn stop_minecraft_instance(
+    instance_id: String,
+    state: State<'_, Arc<Mutex<HashMap<String, u32>>>>
+) -> Result<String, String> {
+    let pid = {
+        let processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+        processes.get(&instance_id).copied()
+    };
+    
+    if let Some(pid) = pid {
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            let output = Command::new("taskkill")
+                .args(&["/PID", &pid.to_string(), "/F", "/T"])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+            
+            if output.status.success() {
+                let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+                processes.remove(&instance_id);
+                Ok(format!("Minecraft instance {} stopped", instance_id))
+            } else {
+                Err(format!("Failed to stop process: {}", String::from_utf8_lossy(&output.stderr)))
+            }
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::process::Command;
+            let output = Command::new("kill")
+                .args(&["-9", &pid.to_string()])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+            
+            if output.status.success() {
+                let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+                processes.remove(&instance_id);
+                Ok(format!("Minecraft instance {} stopped", instance_id))
+            } else {
+                Err(format!("Failed to stop process: {}", String::from_utf8_lossy(&output.stderr)))
+            }
+        }
+    } else {
+        Err(format!("No running Minecraft instance found for {}", instance_id))
+    }
 }
 
 #[tauri::command]

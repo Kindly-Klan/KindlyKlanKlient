@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 
 interface LaunchButtonProps {
@@ -57,18 +58,27 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	// Intervalo para incrementar el tiempo cuando está playing o launching
 	useEffect(() => {
 		let interval: NodeJS.Timeout | null = null;
-		if (state === 'playing' || state === 'launching') {
-			interval = setInterval(() => {
-				const cachedState = launchStateCache.get(instanceId);
-				if (cachedState && (cachedState.state === 'playing' || cachedState.state === 'launching')) {
-					// Calcular tiempo transcurrido desde el startTime
-					const elapsed = Math.floor((Date.now() - cachedState.startTime) / 1000);
-					setPlayTime(elapsed);
-				}
-			}, 1000);
+		
+		const updateTime = () => {
+			const cached = launchStateCache.get(instanceId);
+			if (cached && (cached.state === 'playing' || cached.state === 'launching')) {
+				const elapsed = Math.floor((Date.now() - cached.startTime) / 1000);
+				setPlayTime(elapsed);
+			} else {
+				setPlayTime(0);
+			}
+		};
+		
+		const cachedState = launchStateCache.get(instanceId);
+		const currentState = cachedState?.state || state;
+		
+		if (currentState === 'playing' || currentState === 'launching') {
+			updateTime();
+			interval = setInterval(updateTime, 1000);
 		} else {
 			setPlayTime(0);
 		}
+		
 		return () => { if (interval) clearInterval(interval); };
 	}, [state, instanceId]);
 
@@ -91,6 +101,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 				const previousHours = saved ? parseFloat(saved) || 0 : 0;
 				const totalHours = previousHours + hours;
 				localStorage.setItem(`playtime_${instanceId}`, totalHours.toString());
+				window.dispatchEvent(new CustomEvent('playtime_updated', { detail: { instanceId } }));
 			}
 			
 			setState('idle');
@@ -103,7 +114,6 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 	}, [instanceId]);
 
 	const handleClick = async () => {
-		// Verificar el estado actual del caché para esta instancia específica
 		const currentCachedState = launchStateCache.get(instanceId);
 		const currentState = currentCachedState?.state || state;
 		
@@ -129,6 +139,30 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 			setState('idle');
 			setPlayTime(0);
 			launchStateCache.delete(instanceId);
+		}
+	};
+
+	const handleStop = async (e: React.MouseEvent) => {
+		e.stopPropagation();
+		e.preventDefault();
+		try {
+			const cached = launchStateCache.get(instanceId);
+			if (cached && cached.state === 'playing') {
+				const elapsed = Math.floor((Date.now() - cached.startTime) / 1000);
+				const hours = elapsed / 3600;
+				const saved = localStorage.getItem(`playtime_${instanceId}`);
+				const previousHours = saved ? parseFloat(saved) || 0 : 0;
+				const totalHours = previousHours + hours;
+				localStorage.setItem(`playtime_${instanceId}`, totalHours.toString());
+				window.dispatchEvent(new CustomEvent('playtime_updated', { detail: { instanceId } }));
+			}
+			
+			await invoke('stop_minecraft_instance', { instanceId: instanceId });
+			setState('idle');
+			setPlayTime(0);
+			launchStateCache.delete(instanceId);
+		} catch (error) {
+			console.error(`[LaunchButton] Error stopping Minecraft:`, error);
 		}
 	};
 
@@ -171,7 +205,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 				const timeText = formatTimeForMarquee(playTime);
 				return (
 					<div className="marquee-container">
-						<div className="marquee-text">
+						<div className="marquee-text text-yellow-400">
 							{timeText.split('').map((letter, index) => (
 								<span
 									key={index}
@@ -227,30 +261,32 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 		};
 	};
 
-	// Obtener el estado actual del caché para esta instancia específica
 	const currentCachedState = launchStateCache.get(instanceId);
 	const displayState = currentCachedState?.state || state;
-	// El botón solo debe estar deshabilitado si ESTA instancia específica no está en 'idle'
 	const isButtonDisabled = disabled || displayState !== 'idle' || isJavaInstalling;
+	const showStopButton = displayState === 'playing' && isHovered && !isJavaInstalling;
 	
 	return (
-		<div className="relative">
+		<div 
+			className="relative"
+			onMouseEnter={() => setIsHovered(true)}
+			onMouseLeave={() => setIsHovered(false)}
+			style={{ zIndex: 1 }}
+		>
 			<Button
 				onClick={handleClick}
 				disabled={isButtonDisabled}
 				className={`${getButtonClass()} ${className}`}
 				style={getButtonStyle(isHovered)}
-				onMouseEnter={() => setIsHovered(true)}
-				onMouseLeave={() => setIsHovered(false)}
 			>
 				{(displayState === 'launching' || displayState === 'playing') && (
 					<div className="absolute inset-0 flex items-center justify-center">
 						<div className="marquee-container transition-all duration-500">
-							<div className="marquee-text">
+							<div className={`marquee-text ${displayState === 'playing' ? 'text-yellow-400' : ''}`}>
 								{formatTimeForMarquee(playTime).split('').map((letter, index) => (
 									<span
 										key={index}
-										className="marquee-letter transition-all duration-500"
+										className={`marquee-letter transition-all duration-500 ${displayState === 'playing' ? 'text-yellow-400' : ''}`}
 										style={{
 											animationDelay: `${(2.5 / formatTimeForMarquee(playTime).length) * (formatTimeForMarquee(playTime).length - 1 - index) * -1}s`
 										}}
@@ -267,6 +303,57 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 					{displayState === 'launching' || displayState === 'playing' ? '' : getButtonContent()}
 				</span>
 			</Button>
+			
+			{showStopButton && (
+				<div 
+					className="absolute inset-0 z-50 flex items-center justify-center animate-fade-in pointer-events-none"
+				>
+					<div
+						onClick={(e) => {
+							e.stopPropagation();
+							e.preventDefault();
+							handleStop(e);
+						}}
+						onMouseDown={(e) => {
+							e.stopPropagation();
+						}}
+						role="button"
+						tabIndex={0}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								e.stopPropagation();
+								handleStop(e as any);
+							}
+						}}
+						className="w-14 h-14 rounded-full bg-red-600/90 hover:bg-red-700/90 border-2 border-red-400/50 flex items-center justify-center cursor-pointer transition-all duration-200 pointer-events-auto"
+					>
+						<svg 
+							className="w-6 h-6 text-white" 
+							fill="currentColor" 
+							viewBox="0 0 24 24"
+						>
+							<rect x="6" y="6" width="12" height="12" rx="1" />
+						</svg>
+					</div>
+				</div>
+			)}
+			
+			<style>{`
+				@keyframes fade-in {
+					from {
+						opacity: 0;
+						transform: scale(0.9);
+					}
+					to {
+						opacity: 1;
+						transform: scale(1);
+					}
+				}
+				.animate-fade-in {
+					animation: fade-in 0.2s ease-out;
+				}
+			`}</style>
 		</div>
 	);
 };

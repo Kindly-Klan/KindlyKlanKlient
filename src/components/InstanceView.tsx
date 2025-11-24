@@ -325,102 +325,106 @@ const InstanceView: React.FC<InstanceViewProps> = ({
           <div className="flex flex-col items-center gap-4">
             {/* Buttons row for local instances */}
             {isLocal && (
-              <div className="flex items-center gap-4">
-                {/* Open folder button */}
-                <button
-                  onClick={() => onOpenFolder?.(instanceId)}
-                  className="p-3 rounded-xl bg-white/5 border border-white/20 text-white hover:bg-white/10 hover:border-white/30 transition-all duration-200 group"
-                >
-                  <Tooltip content="Abrir carpeta de la instancia" side="top">
-                    <svg 
-                      className="w-6 h-6 group-hover:scale-110 transition-transform" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                  </Tooltip>
-                </button>
-
-                {/* Download mods from Modrinth button */}
-                <button
-                  onClick={() => onDownloadMods?.(instanceId)}
-                  className="p-3 rounded-xl bg-[#ff00ff]/10 border-2 border-[#ff00ff]/30 text-[#ff00ff] hover:bg-[#ff00ff]/20 hover:border-[#ff00ff] transition-all duration-200 group neon-glow-magenta-hover"
-                >
-                  <Tooltip content="Descargar mods desde Modrinth" side="top">
-                    <div>
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-4">
+                  {/* Open folder button */}
+                  <button
+                    onClick={() => onOpenFolder?.(instanceId)}
+                    className="p-3 rounded-xl bg-white/5 border border-white/20 text-white hover:bg-white/10 hover:border-white/30 transition-all duration-200 group"
+                  >
+                    <Tooltip content="Abrir carpeta de la instancia" side="top">
                       <svg 
                         className="w-6 h-6 group-hover:scale-110 transition-transform" 
                         fill="none" 
                         stroke="currentColor" 
                         viewBox="0 0 24 24"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                       </svg>
-                    </div>
-                  </Tooltip>
-                </button>
+                    </Tooltip>
+                  </button>
 
-                {/* Play button */}
-                <LaunchButton
-                  onLaunch={() => onLaunch(localInstance || instance)}
-                  className="text-center"
-                  isJavaInstalling={isJavaInstalling}
-                  instanceId={instanceId}
-                />
+                  {/* Download mods from Modrinth button */}
+                  <button
+                    onClick={() => onDownloadMods?.(instanceId)}
+                    className="p-3 rounded-xl bg-[#ff00ff]/10 border-2 border-[#ff00ff]/30 text-[#ff00ff] hover:bg-[#ff00ff]/20 hover:border-[#ff00ff] transition-all duration-200 group neon-glow-magenta-hover"
+                  >
+                    <Tooltip content="Descargar mods desde Modrinth" side="top">
+                      <div>
+                        <svg 
+                          className="w-6 h-6 group-hover:scale-110 transition-transform" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                    </Tooltip>
+                  </button>
 
-                {/* Sync mods button */}
-                <button
-                  onClick={() => onSyncMods?.(instanceId)}
-                  className="p-3 rounded-xl bg-[#00ffff]/10 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/20 hover:border-[#00ffff] transition-all duration-200 group neon-glow-cyan-hover"
-                >
-                  <Tooltip content="Sincronizar mods desde instancia remota" side="top">
-                    <div>
-                      <svg 
-                        className="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </div>
-                  </Tooltip>
-                </button>
+                  {/* Play button */}
+                  <LaunchButton
+                    onLaunch={() => onLaunch(localInstance || instance)}
+                    className="text-center"
+                    isJavaInstalling={isJavaInstalling}
+                    instanceId={instanceId}
+                  />
 
-                {/* Copy folders button */}
-                <button
-                  onClick={() => onCopyFolders?.(instanceId)}
-                  className="p-3 rounded-xl bg-[#ffff00]/10 border-2 border-[#ffff00]/30 text-[#ffff00] hover:bg-[#ffff00]/20 hover:border-[#ffff00] transition-all duration-200 group"
-                >
-                  <Tooltip content="Copiar carpetas desde otra instancia" side="top">
-                    <div>
-                      <svg 
-                        className="w-6 h-6 group-hover:scale-110 transition-transform" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  </Tooltip>
-                </button>
+                  {/* Sync mods button */}
+                  <button
+                    onClick={() => onSyncMods?.(instanceId)}
+                    className="p-3 rounded-xl bg-[#00ffff]/10 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/20 hover:border-[#00ffff] transition-all duration-200 group neon-glow-cyan-hover"
+                  >
+                    <Tooltip content="Sincronizar mods desde instancia remota" side="top">
+                      <div>
+                        <svg 
+                          className="w-6 h-6 group-hover:rotate-180 transition-transform duration-500" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </div>
+                    </Tooltip>
+                  </button>
+
+                  {/* Copy folders button */}
+                  <button
+                    onClick={() => onCopyFolders?.(instanceId)}
+                    className="p-3 rounded-xl bg-[#ffff00]/10 border-2 border-[#ffff00]/30 text-[#ffff00] hover:bg-[#ffff00]/20 hover:border-[#ffff00] transition-all duration-200 group"
+                  >
+                    <Tooltip content="Copiar carpetas desde otra instancia" side="top">
+                      <div>
+                        <svg 
+                          className="w-6 h-6 group-hover:scale-110 transition-transform" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    </Tooltip>
+                  </button>
+                </div>
+                <PlayTimeStats instanceId={instanceId} />
               </div>
             )}
 
             {/* Regular instance - only play button */}
             {!isLocal && (
-            <LaunchButton
-              onLaunch={() => onLaunch(instance)}
-              className="text-center"
-              isJavaInstalling={isJavaInstalling}
-              instanceId={instanceId}
-            />
+            <div className="flex flex-col items-center gap-2">
+              <LaunchButton
+                onLaunch={() => onLaunch(instance)}
+                className="text-center"
+                isJavaInstalling={isJavaInstalling}
+                instanceId={instanceId}
+              />
+              <PlayTimeStats instanceId={instanceId} />
+            </div>
             )}
-            
-            <PlayTimeStats instanceId={instanceId} />
           </div>
         </div>
       </div>
@@ -460,6 +464,20 @@ const PlayTimeStats: React.FC<{ instanceId: string }> = ({ instanceId }) => {
     unlisten().then(fn => {
       return () => { try { fn(); } catch {} };
     }).catch(() => {});
+    
+    // Escuchar evento personalizado cuando se actualiza el playtime
+    const handlePlaytimeUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.instanceId === instanceId) {
+        loadPlayTime();
+      }
+    };
+    
+    window.addEventListener('playtime_updated', handlePlaytimeUpdate);
+    
+    return () => {
+      window.removeEventListener('playtime_updated', handlePlaytimeUpdate);
+    };
   }, [instanceId]);
   
   if (totalHours < 1.0) return null;
