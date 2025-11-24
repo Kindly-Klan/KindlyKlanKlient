@@ -49,12 +49,12 @@ jobs:
         with:
           node-version: lts/*
       
-      - name: Get version from tauri.conf.json
+      - name: Get version from Cargo.toml
         id: version
-        uses: notiz-dev/github-action-json-property@release
+        uses: SebRollen/toml-action@v1.2.0
         with:
-          path: 'src-tauri/tauri.conf.json'
-          prop_path: 'version'
+          file: 'src-tauri/Cargo.toml'
+          field: 'package.version'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -83,8 +83,8 @@ jobs:
           projectPath: src-tauri
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
-          tagName: v${{ steps.version.outputs.prop }}
-          releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.prop }}'
+          tagName: v${{ steps.version.outputs.value }}
+          releaseName: 'Kindly Klan Klient v${{ steps.version.outputs.value }}'
           releaseBody: 'Automated release from commit ${{ github.sha }}'
           releaseDraft: false
           prerelease: false
