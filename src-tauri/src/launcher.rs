@@ -339,16 +339,37 @@ pub fn get_total_ram_mb() -> anyhow::Result<u32> {
     
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(output) = Command::new("wmic").arg("OS").arg("get").arg("TotalVisibleMemorySize").output() {
-        if output.status.success() {
-            let stdout = String::from_utf8(output.stdout)?;
-            for line in stdout.lines() {
-                if let Ok(kb) = line.trim().parse::<u64>() {
-                    return Ok((kb / 1024) as u32);
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(output) = Command::new("free").arg("-b").output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if line.starts_with("Mem:") {
+                            if let Some(kb_str) = line.split_whitespace().nth(1) {
+                                if let Ok(bytes) = kb_str.parse::<u64>() {
+                                    return Ok((bytes / 1024 / 1024) as u32);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(output) = Command::new("sysctl").arg("-n").arg("hw.memsize").output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(bytes) = stdout.trim().parse::<u64>() {
+                        return Ok((bytes / 1024 / 1024) as u32);
+                    }
                 }
             }
         }
     }
+    
     Ok(4096)
 }
 
