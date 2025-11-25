@@ -5,10 +5,12 @@ import type { UpdateState, UpdateProgress } from '@/types/updater';
 
 interface SettingsViewProps {
   addToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
+  scrollToUpdates?: boolean;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates = false }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const updatesSectionRef = React.useRef<HTMLDivElement>(null);
   const [minRam, setMinRam] = useState(2.0);
   const [maxRam, setMaxRam] = useState(4.0);
   const [systemRam, setSystemRam] = useState(8);
@@ -37,6 +39,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  // Scroll to updates section when requested
+  useEffect(() => {
+    if (scrollToUpdates && updatesSectionRef.current && isVisible) {
+      setTimeout(() => {
+        updatesSectionRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+      }, 500);
+    }
+  }, [scrollToUpdates, isVisible]);
 
   // Get system RAM and load saved configuration
   useEffect(() => {
@@ -571,7 +585,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast }) => {
              </div>
 
             {/* Update Configuration Section */}
-            <div className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
+            <div ref={updatesSectionRef} className="bg-black/20 backdrop-blur-sm rounded-2xl border border-white/10 p-6 mt-6">
               
               {/* Section Header */}
               <div className="flex items-center justify-between mb-6">

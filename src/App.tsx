@@ -356,6 +356,7 @@ function App() {
   const [isLoginVisible, setIsLoginVisible] = useState(true);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [scrollToUpdates, setScrollToUpdates] = useState(false);
   const [distributionLoaded, setDistributionLoaded] = useState(false);
   const [skinViewOpen, setSkinViewOpen] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<AssetDownloadProgress | null>(null);
@@ -779,10 +780,12 @@ function App() {
     if (!settingsOpen) {
       setSkinViewOpen(false);
       setSelectedInstance(null);
+      setScrollToUpdates(false);
       setSettingsOpen(true);
     } else {
       setSettingsOpen(false);
       setSelectedInstance(null);
+      setScrollToUpdates(false);
     }
   };
 
@@ -1242,6 +1245,7 @@ function App() {
                ) : settingsOpen ? (
                  <SettingsView
                    addToast={addToast}
+                   scrollToUpdates={scrollToUpdates}
                  />
                ) : !distribution ? (
                 <div className="flex items-center justify-center h-full">
@@ -1394,6 +1398,7 @@ function App() {
             version={updateReadyVersion}
             onClose={() => setUpdateReadyVersion(null)}
             onClick={() => {
+              setScrollToUpdates(true);
               setSettingsOpen(true);
               setSelectedInstance(null);
               setSkinViewOpen(false);
@@ -1604,9 +1609,9 @@ function App() {
 
       {/* Diálogo de confirmación de cierre durante descarga */}
       {closeDialogOpen && (
-        <div 
+          <div 
           className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
-          style={{
+            style={{
             background: 'rgba(0, 0, 0, 0.6)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)'

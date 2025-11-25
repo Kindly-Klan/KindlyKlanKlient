@@ -701,20 +701,20 @@ pub async fn download_instance_assets(
                 }
             } else {
                 // Archivo no ignorado: verificar si necesita descarga
-                let mut needs_download = true;
-                if target_path.exists() {
-                    if !mod_file.sha256.is_empty() {
+            let mut needs_download = true;
+            if target_path.exists() {
+                if !mod_file.sha256.is_empty() {
                         if crate::instances::verify_file_checksum(&target_path, &mod_file.sha256).is_ok() { 
                             needs_download = false; 
                         }
-                    } else if let Some(md5) = mod_file.md5.as_ref() {
-                        if !md5.is_empty() {
+                } else if let Some(md5) = mod_file.md5.as_ref() {
+                    if !md5.is_empty() {
                             if crate::instances::verify_file_md5(&target_path, md5).is_ok() { 
                                 needs_download = false; 
                             }
-                        }
                     }
                 }
+            }
                 if needs_download {
                     mods_to_download.push((file_url, target_path));
                 }
@@ -810,20 +810,20 @@ pub async fn download_instance_assets(
                 }
             } else {
                 // Archivo no ignorado: verificar si necesita descarga
-                let mut needs_download = true;
-                if target_path.exists() {
-                    if !config_file.sha256.is_empty() {
+            let mut needs_download = true;
+            if target_path.exists() {
+                if !config_file.sha256.is_empty() {
                         if crate::instances::verify_file_checksum(&target_path, &config_file.sha256).is_ok() { 
                             needs_download = false; 
                         }
-                    } else if let Some(md5) = config_file.md5.as_ref() {
-                        if !md5.is_empty() {
+                } else if let Some(md5) = config_file.md5.as_ref() {
+                    if !md5.is_empty() {
                             if crate::instances::verify_file_md5(&target_path, md5).is_ok() { 
                                 needs_download = false; 
                             }
-                        }
                     }
                 }
+            }
                 if needs_download {
                     configs_to_download.push((file_url, target_path));
                 }
