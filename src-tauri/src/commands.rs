@@ -674,38 +674,70 @@ pub async fn download_instance_assets(
         
         use std::collections::HashSet;
         let mut expected_mods: HashSet<String> = HashSet::new();
+        
+        // Preparar directorio de mods
+        let mods_dir = instance_dir.join("mods");
+        if let Some(parent) = mods_dir.parent() { 
+            tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; 
+        }
+        tokio::fs::create_dir_all(&mods_dir).await.map_err(|e| e.to_string())?;
+        
+        // Preparar lista de archivos a descargar en paralelo
+        let mut mods_to_download: Vec<(String, std::path::PathBuf)> = Vec::new();
         for mod_file in &instance.files.mods {
-            // Verificar si el archivo está en ignored_files
-            let should_ignore = crate::utils::matches_glob_patterns(&mod_file.name, ignored_mods);
-            
-            let file_url = if mod_file.url.starts_with("http") { mod_file.url.clone() } else { format!("{}/{}", base.trim_end_matches('/'), mod_file.url.trim_start_matches('/')) };
-            let target_path = instance_dir.join("mods").join(&mod_file.name);
             expected_mods.insert(mod_file.name.clone());
-            if let Some(parent) = target_path.parent() { tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; }
+            let should_ignore = crate::utils::matches_glob_patterns(&mod_file.name, ignored_mods);
+            let file_url = if mod_file.url.starts_with("http") { 
+                mod_file.url.clone() 
+            } else { 
+                format!("{}/{}", base.trim_end_matches('/'), mod_file.url.trim_start_matches('/')) 
+            };
+            let target_path = mods_dir.join(&mod_file.name);
             
             if should_ignore {
                 // Archivo ignorado: solo descargar si NO existe (primera vez)
-                // Si ya existe, NO sobrescribirlo para proteger los cambios del usuario
                 if !target_path.exists() {
-                    // Primera vez: descargar el archivo
-                    crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?;
+                    mods_to_download.push((file_url, target_path));
                 }
-                // Si ya existe, no hacer nada (proteger cambios del usuario)
-                continue;
-            }
-            
-            // Archivo no ignorado: descargar normalmente si es necesario
-            let mut needs_download = true;
-            if target_path.exists() {
-                if !mod_file.sha256.is_empty() {
-                    if crate::instances::verify_file_checksum(&target_path, &mod_file.sha256).is_ok() { needs_download = false; }
-                } else if let Some(md5) = mod_file.md5.as_ref() {
-                    if !md5.is_empty() {
-                        if crate::instances::verify_file_md5(&target_path, md5).is_ok() { needs_download = false; }
+            } else {
+                // Archivo no ignorado: verificar si necesita descarga
+                let mut needs_download = true;
+                if target_path.exists() {
+                    if !mod_file.sha256.is_empty() {
+                        if crate::instances::verify_file_checksum(&target_path, &mod_file.sha256).is_ok() { 
+                            needs_download = false; 
+                        }
+                    } else if let Some(md5) = mod_file.md5.as_ref() {
+                        if !md5.is_empty() {
+                            if crate::instances::verify_file_md5(&target_path, md5).is_ok() { 
+                                needs_download = false; 
+                            }
+                        }
                     }
                 }
+                if needs_download {
+                    mods_to_download.push((file_url, target_path));
+                }
             }
-            if needs_download { crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?; }
+        }
+        
+        // Descargar mods en paralelo
+        if !mods_to_download.is_empty() {
+            use futures_util::stream::{self, StreamExt};
+            let parallel = num_cpus::get().saturating_mul(4).max(20).min(mods_to_download.len());
+            let results: Vec<Result<(), String>> = stream::iter(mods_to_download.into_iter())
+                .map(|(url, path)| async move {
+                    crate::instances::download_file_with_retry(&url, &path).await
+                })
+                .buffer_unordered(parallel)
+                .collect()
+                .await;
+            
+            for result in results {
+                if let Err(e) = result {
+                    log::warn!("⚠️  Error descargando mod: {}", e);
+                }
+            }
         }
         
         // Limpiar mods: solo borrar si estaba en el historial pero ya no está en el manifest actual
@@ -730,48 +762,77 @@ pub async fn download_instance_assets(
 
         let mut expected_configs: HashSet<String> = HashSet::new();
         let mut expected_root_files: HashSet<String> = HashSet::new();
+        
+        // Preparar lista de configs a descargar en paralelo
+        let mut configs_to_download: Vec<(String, std::path::PathBuf)> = Vec::new();
         for config_file in &instance.files.configs {
-            let file_url = if config_file.url.starts_with("http") { config_file.url.clone() } else { format!("{}/{}", base.trim_end_matches('/'), config_file.url.trim_start_matches('/')) };
+            let file_url = if config_file.url.starts_with("http") { 
+                config_file.url.clone() 
+            } else { 
+                format!("{}/{}", base.trim_end_matches('/'), config_file.url.trim_start_matches('/')) 
+            };
             let mut rel = config_file.target.clone().unwrap_or(config_file.path.clone());
             if rel == "config/options.txt" { rel = "options.txt".to_string(); }
             if rel.starts_with("config/config/") { rel = rel.replacen("config/config/", "config/", 1); }
             else if rel.starts_with("config/") { rel = rel.replacen("config/", "config/", 1); }
             expected_configs.insert(rel.clone());
-
             
             if !rel.contains('/') {
                 expected_root_files.insert(rel.clone());
             }
             
-            // Verificar si el archivo está en ignored_files
             let should_ignore = should_ignore_config_file(&rel, ignored_configs);
-            
             let target_path = instance_dir.join(&rel);
-            if let Some(parent) = target_path.parent() { tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; }
+            
+            // Crear directorio padre si es necesario
+            if let Some(parent) = target_path.parent() { 
+                tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; 
+            }
             
             if should_ignore {
                 // Archivo ignorado: solo descargar si NO existe (primera vez)
-                // Si ya existe, NO sobrescribirlo para proteger los cambios del usuario
                 if !target_path.exists() {
-                    // Primera vez: descargar el archivo
-                    crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?;
+                    configs_to_download.push((file_url, target_path));
                 }
-                // Si ya existe, no hacer nada (se ignora basicamente jej)
-                continue;
-            }
-            
-            // Archivo no ignorado: descargar normalmente si es necesario
-            let mut needs_download = true;
-            if target_path.exists() {
-                if !config_file.sha256.is_empty() {
-                    if crate::instances::verify_file_checksum(&target_path, &config_file.sha256).is_ok() { needs_download = false; }
-                } else if let Some(md5) = config_file.md5.as_ref() {
-                    if !md5.is_empty() {
-                        if crate::instances::verify_file_md5(&target_path, md5).is_ok() { needs_download = false; }
+            } else {
+                // Archivo no ignorado: verificar si necesita descarga
+                let mut needs_download = true;
+                if target_path.exists() {
+                    if !config_file.sha256.is_empty() {
+                        if crate::instances::verify_file_checksum(&target_path, &config_file.sha256).is_ok() { 
+                            needs_download = false; 
+                        }
+                    } else if let Some(md5) = config_file.md5.as_ref() {
+                        if !md5.is_empty() {
+                            if crate::instances::verify_file_md5(&target_path, md5).is_ok() { 
+                                needs_download = false; 
+                            }
+                        }
                     }
                 }
+                if needs_download {
+                    configs_to_download.push((file_url, target_path));
+                }
             }
-            if needs_download { crate::instances::download_file(&file_url, &target_path).await.map_err(|e| e.to_string())?; }
+        }
+        
+        // Descargar configs en paralelo
+        if !configs_to_download.is_empty() {
+            use futures_util::stream::{self, StreamExt};
+            let parallel = num_cpus::get().saturating_mul(4).max(20).min(configs_to_download.len());
+            let results: Vec<Result<(), String>> = stream::iter(configs_to_download.into_iter())
+                .map(|(url, path)| async move {
+                    crate::instances::download_file_with_retry(&url, &path).await
+                })
+                .buffer_unordered(parallel)
+                .collect()
+                .await;
+            
+            for result in results {
+                if let Err(e) = result {
+                    log::warn!("⚠️  Error descargando config: {}", e);
+                }
+            }
         }
         
         if let Some(history) = &previous_history {
