@@ -63,10 +63,10 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 			const cached = launchStateCache.get(instanceId);
 			if (cached && (cached.state === 'playing' || cached.state === 'launching')) {
 				const elapsed = Math.floor((Date.now() - cached.startTime) / 1000);
-				setPlayTime(elapsed);
+					setPlayTime(elapsed);
 			} else {
 				setPlayTime(0);
-			}
+				}
 		};
 		
 		const cachedState = launchStateCache.get(instanceId);

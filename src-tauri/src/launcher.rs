@@ -36,9 +36,9 @@ impl MinecraftLauncher {
         
         #[cfg(not(target_os = "windows"))]
         {
-            if let Ok(output) = Command::new("java").arg("-version").output() {
-                if output.status.success() {
-                    return Ok(PathBuf::from("java"));
+        if let Ok(output) = Command::new("java").arg("-version").output() {
+            if output.status.success() {
+                return Ok(PathBuf::from("java"));
                 }
             }
         }
@@ -326,15 +326,15 @@ pub fn get_total_ram_mb() -> anyhow::Result<u32> {
             .arg("TotalVisibleMemorySize")
             .creation_flags(0x08000000)
             .output() {
-            if output.status.success() {
-                let stdout = String::from_utf8(output.stdout)?;
-                for line in stdout.lines() {
-                    if let Ok(kb) = line.trim().parse::<u64>() {
-                        return Ok((kb / 1024) as u32);
-                    }
+        if output.status.success() {
+            let stdout = String::from_utf8(output.stdout)?;
+            for line in stdout.lines() {
+                if let Ok(kb) = line.trim().parse::<u64>() {
+                    return Ok((kb / 1024) as u32);
                 }
             }
         }
+    }
     }
     
     #[cfg(not(target_os = "windows"))]
@@ -433,9 +433,9 @@ pub async fn find_java_executable() -> Result<String, String> {
         
         #[cfg(not(target_os = "windows"))]
         {
-            if let Ok(output) = Command::new(path).arg("-version").output() {
-                if output.status.success() {
-                    return Ok(path.to_string());
+        if let Ok(output) = Command::new(path).arg("-version").output() {
+            if output.status.success() {
+                return Ok(path.to_string());
                 }
             }
         }

@@ -152,7 +152,8 @@ pub async fn download_file(url: &str, file_path: &Path) -> Result<(), String> {
 
     let client = reqwest::Client::builder()
         .user_agent("KindlyKlanKlient/1.0")
-        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(None)
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -992,7 +993,8 @@ pub async fn ensure_assets_present(app_handle: &tauri::AppHandle, instance_dir: 
     let total_count = pending.len() as u64;
     let client = std::sync::Arc::new(reqwest::Client::builder()
         .user_agent("KindlyKlanKlient/1.0")
-        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(None)
         .pool_max_idle_per_host(parallel)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .build().map_err(|e| e.to_string())?);

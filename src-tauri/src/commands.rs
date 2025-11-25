@@ -1131,7 +1131,7 @@ pub async fn stop_minecraft_instance(
             if output.status.success() {
                 let mut processes = state.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
                 processes.remove(&instance_id);
-                Ok(format!("Minecraft instance {} stopped", instance_id))
+    Ok(format!("Minecraft instance {} stopped", instance_id))
             } else {
                 Err(format!("Failed to stop process: {}", String::from_utf8_lossy(&output.stderr)))
             }
