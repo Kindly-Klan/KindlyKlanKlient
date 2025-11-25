@@ -725,9 +725,23 @@ pub async fn download_instance_assets(
         if !mods_to_download.is_empty() {
             use futures_util::stream::{self, StreamExt};
             let parallel = num_cpus::get().saturating_mul(4).max(20).min(mods_to_download.len());
+            
+            // Crear cliente HTTP compartido con pool de conexiones limitado
+            let client = std::sync::Arc::new(reqwest::Client::builder()
+                .user_agent("KindlyKlanKlient/1.0")
+                .connect_timeout(std::time::Duration::from_secs(20))
+                .timeout(std::time::Duration::from_secs(86400))
+                .pool_max_idle_per_host(10)
+                .pool_idle_timeout(std::time::Duration::from_secs(90))
+                .build()
+                .map_err(|e| format!("Failed to build HTTP client: {}", e))?);
+            
             let results: Vec<Result<(), String>> = stream::iter(mods_to_download.into_iter())
-                .map(|(url, path)| async move {
-                    crate::instances::download_file_with_retry(&url, &path).await
+                .map(|(url, path)| {
+                    let client = client.clone();
+                    async move {
+                        crate::instances::download_file_with_retry_and_client(&client, &url, &path).await
+                    }
                 })
                 .buffer_unordered(parallel)
                 .collect()
@@ -820,9 +834,23 @@ pub async fn download_instance_assets(
         if !configs_to_download.is_empty() {
             use futures_util::stream::{self, StreamExt};
             let parallel = num_cpus::get().saturating_mul(4).max(20).min(configs_to_download.len());
+            
+            // Crear cliente HTTP compartido con pool de conexiones limitado
+            let client = std::sync::Arc::new(reqwest::Client::builder()
+                .user_agent("KindlyKlanKlient/1.0")
+                .connect_timeout(std::time::Duration::from_secs(20))
+                .timeout(std::time::Duration::from_secs(86400))
+                .pool_max_idle_per_host(10)
+                .pool_idle_timeout(std::time::Duration::from_secs(90))
+                .build()
+                .map_err(|e| format!("Failed to build HTTP client: {}", e))?);
+            
             let results: Vec<Result<(), String>> = stream::iter(configs_to_download.into_iter())
-                .map(|(url, path)| async move {
-                    crate::instances::download_file_with_retry(&url, &path).await
+                .map(|(url, path)| {
+                    let client = client.clone();
+                    async move {
+                        crate::instances::download_file_with_retry_and_client(&client, &url, &path).await
+                    }
                 })
                 .buffer_unordered(parallel)
                 .collect()

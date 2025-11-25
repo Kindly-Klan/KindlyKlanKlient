@@ -148,14 +148,17 @@ pub fn get_local_file_path(instance_dir: &Path, file_path: &str) -> Result<PathB
 }
 
 pub async fn download_file(url: &str, file_path: &Path) -> Result<(), String> {
-    use tokio::io::AsyncWriteExt;
-
     let client = reqwest::Client::builder()
         .user_agent("KindlyKlanKlient/1.0")
         .connect_timeout(std::time::Duration::from_secs(20))
         .timeout(std::time::Duration::from_secs(86400))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    download_file_with_client(&client, url, file_path).await
+}
+
+pub async fn download_file_with_client(client: &reqwest::Client, url: &str, file_path: &Path) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
 
     let mut response = client
         .get(url)
@@ -211,6 +214,23 @@ pub async fn download_file_with_retry(url: &str, file_path: &Path) -> Result<(),
 
     for attempt in 1..=MAX_RETRIES {
         match download_file(url, file_path).await {
+            Ok(_) => return Ok(()),
+            Err(_e) => {
+                if attempt < MAX_RETRIES {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+
+    Err(format!("Failed to download {} after {} attempts", url, MAX_RETRIES))
+}
+
+pub async fn download_file_with_retry_and_client(client: &reqwest::Client, url: &str, file_path: &Path) -> Result<(), String> {
+    const MAX_RETRIES: u32 = 3;
+
+    for attempt in 1..=MAX_RETRIES {
+        match download_file_with_client(client, url, file_path).await {
             Ok(_) => return Ok(()),
             Err(_e) => {
                 if attempt < MAX_RETRIES {

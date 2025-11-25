@@ -1404,56 +1404,87 @@ function App() {
 
       {/* Update Dialog */}
       {updateDialogOpen && updateDialogState && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+          style={{
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setUpdateDialogOpen(false);
+            }
+          }}
+        >
           <div 
-            className="rounded-2xl border-2 border-green-400/60 p-8 max-w-md w-full mx-4 shadow-2xl"
+            className="rounded-3xl p-10 max-w-md w-full mx-4 animate-slide-up"
             style={{
               background: updateDialogState.isDownloadReady
-                ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.7) 100%)'
-                : 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(0, 0, 0, 0.7) 100%)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6)'
+                ? 'linear-gradient(145deg, rgba(17, 24, 39, 0.98) 0%, rgba(31, 41, 55, 0.95) 100%)'
+                : 'linear-gradient(145deg, rgba(17, 24, 39, 0.98) 0%, rgba(31, 41, 55, 0.95) 100%)',
+              backdropFilter: 'blur(32px)',
+              WebkitBackdropFilter: 'blur(32px)',
+              boxShadow: updateDialogState.isDownloadReady
+                ? '0 25px 80px -12px rgba(34, 197, 94, 0.5), 0 0 0 1px rgba(34, 197, 94, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
+                : '0 25px 80px -12px rgba(59, 130, 246, 0.5), 0 0 0 1px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+              border: updateDialogState.isDownloadReady
+                ? '1px solid rgba(34, 197, 94, 0.25)'
+                : '1px solid rgba(59, 130, 246, 0.25)'
             }}
           >
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              <div 
+                className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-scale-in"
                 style={{
+                  animationDelay: '0.1s',
+                  animationFillMode: 'both',
                   background: updateDialogState.isDownloadReady
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(0, 0, 0, 0.4) 100%)'
-                    : 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(0, 0, 0, 0.4) 100%)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
+                    ? 'radial-gradient(circle, rgba(34, 197, 94, 0.25) 0%, rgba(34, 197, 94, 0.1) 100%)'
+                    : 'radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(59, 130, 246, 0.1) 100%)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
                   border: updateDialogState.isDownloadReady
                     ? '2px solid rgba(34, 197, 94, 0.4)'
-                    : '2px solid rgba(59, 130, 246, 0.4)'
+                    : '2px solid rgba(59, 130, 246, 0.4)',
+                  boxShadow: updateDialogState.isDownloadReady
+                    ? '0 0 30px rgba(34, 197, 94, 0.3), inset 0 0 20px rgba(34, 197, 94, 0.1)'
+                    : '0 0 30px rgba(59, 130, 246, 0.3), inset 0 0 20px rgba(59, 130, 246, 0.1)'
                 }}
               >
                 <svg 
-                  className={`w-8 h-8 ${updateDialogState.isDownloadReady ? 'text-green-300' : 'text-blue-300'}`} 
+                  className={`w-10 h-10 ${updateDialogState.isDownloadReady ? 'text-green-400' : 'text-blue-400'}`} 
                   fill="none" 
                   stroke="currentColor" 
                   viewBox="0 0 24 24"
+                  style={{
+                    filter: updateDialogState.isDownloadReady
+                      ? 'drop-shadow(0 0 8px rgba(34, 197, 94, 0.6))'
+                      : 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))'
+                  }}
                 >
                   {updateDialogState.isDownloadReady ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   )}
                 </svg>
               </div>
               
               {updateDialogState.isDownloadReady ? (
                 <>
-                  <h3 className="text-2xl font-bold text-white mb-2">Actualización Lista</h3>
-                  <p className="text-white/80 mb-6">
+                  <h3 className="text-3xl font-bold text-white mb-3 animate-fade-in-up" style={{ animationDelay: '0.2s', animationFillMode: 'both' }}>
+                    Actualización Lista
+                  </h3>
+                  <p className="text-white/70 mb-8 leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.3s', animationFillMode: 'both' }}>
                     Hay una actualización descargada y lista para instalar. La aplicación se reiniciará después de la instalación.
                   </p>
                   
-                  <div className="flex gap-3 justify-center">
+                  <div className="flex gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.4s', animationFillMode: 'both' }}>
                     <button
                       onClick={async () => {
                         setUpdateDialogOpen(false);
+                        await new Promise(resolve => setTimeout(resolve, 200));
                         try {
                           const result = await UpdaterService.installUpdate();
                           if (result.success) {
@@ -1465,20 +1496,23 @@ function App() {
                           addToast('Error al instalar la actualización', 'error');
                         }
                       }}
-                      className="px-6 py-3 rounded-xl border-2 border-green-400/60 text-green-200 transition-all duration-200 font-medium"
+                      className="px-8 py-3.5 rounded-xl font-semibold text-green-100 transition-all duration-300 hover:scale-105 active:scale-95"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                        backdropFilter: 'blur(20px)',
-                        WebkitBackdropFilter: 'blur(20px)',
-                        boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.15) 100%)',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                        border: '1.5px solid rgba(34, 197, 94, 0.4)',
+                        boxShadow: '0 4px 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                        e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(34, 197, 94, 0.3)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.3) 0%, rgba(22, 163, 74, 0.25) 100%)';
+                        e.currentTarget.style.boxShadow = '0 8px 30px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)';
+                        e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.6)';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                        e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.15) 100%)';
+                        e.currentTarget.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.4)';
                       }}
                     >
                       Instalar Ahora
@@ -1487,24 +1521,24 @@ function App() {
                 </>
               ) : updateDialogState.hasUpdateAvailable ? (
                 <>
-                  <h3 className="text-2xl font-bold text-white mb-2">Actualización Disponible</h3>
-                  <p className="text-white/80 mb-6">
+                  <h3 className="text-3xl font-bold text-white mb-3 animate-fade-in-up" style={{ animationDelay: '0.2s', animationFillMode: 'both' }}>
+                    Actualización Disponible
+                  </h3>
+                  <p className="text-white/70 mb-8 leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.3s', animationFillMode: 'both' }}>
                     Hay una nueva versión disponible ({updateDialogState.version}). ¿Quieres descargarla ahora?
                   </p>
                   
-                  <div className="flex gap-3 justify-center">
+                  <div className="flex gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.4s', animationFillMode: 'both' }}>
                     <button
                       onClick={async () => {
                         setUpdateDialogOpen(false);
+                        await new Promise(resolve => setTimeout(resolve, 200));
                         try {
-                          // Descarga automática (desde diálogo), NO manual
                           const result = await UpdaterService.downloadUpdateSilent(false);
                           if (result.success) {
                             addToast('Actualización descargada correctamente', 'success');
-                            // Verificar el estado después de descargar
                             const newState = await UpdaterService.getUpdateState();
                             if (newState.download_ready) {
-                              // Mostrar diálogo de instalación
                               setUpdateDialogState({ isDownloadReady: true, hasUpdateAvailable: false, version: newState.available_version });
                               setTimeout(() => setUpdateDialogOpen(true), 500);
                             }
@@ -1515,43 +1549,47 @@ function App() {
                           addToast('Error al descargar la actualización', 'error');
                         }
                       }}
-                      className="px-6 py-3 rounded-xl border-2 border-blue-400/60 text-blue-200 transition-all duration-200 font-medium"
+                      className="px-8 py-3.5 rounded-xl font-semibold text-blue-100 transition-all duration-300 hover:scale-105 active:scale-95"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                        backdropFilter: 'blur(20px)',
-                        WebkitBackdropFilter: 'blur(20px)',
-                        boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.15) 100%)',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                        border: '1.5px solid rgba(59, 130, 246, 0.4)',
+                        boxShadow: '0 4px 20px rgba(59, 130, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                        e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(59, 130, 246, 0.3)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.25) 100%)';
+                        e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)';
+                        e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.6)';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                        e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.15) 100%)';
+                        e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
                       }}
                     >
                       Descargar
                     </button>
                     
                     <button
-                      onClick={() => {
-                        setUpdateDialogOpen(false);
-                      }}
-                      className="px-6 py-3 rounded-xl border-2 border-gray-400/60 text-gray-200 transition-all duration-200 font-medium"
+                      onClick={() => setUpdateDialogOpen(false)}
+                      className="px-8 py-3.5 rounded-xl font-semibold text-gray-100 transition-all duration-300 hover:scale-105 active:scale-95"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                        backdropFilter: 'blur(20px)',
-                        WebkitBackdropFilter: 'blur(20px)',
-                        boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                        background: 'linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(75, 85, 99, 0.1) 100%)',
+                        backdropFilter: 'blur(16px)',
+                        WebkitBackdropFilter: 'blur(16px)',
+                        border: '1.5px solid rgba(107, 114, 128, 0.3)',
+                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                        e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(156, 163, 175, 0.3)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.25) 0%, rgba(75, 85, 99, 0.2) 100%)';
+                        e.currentTarget.style.boxShadow = '0 8px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                        e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.5)';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                        e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(75, 85, 99, 0.1) 100%)';
+                        e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.3)';
                       }}
                     >
                       Más Tarde
@@ -1566,79 +1604,112 @@ function App() {
 
       {/* Diálogo de confirmación de cierre durante descarga */}
       {closeDialogOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+          style={{
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setCloseDialogOpen(false);
+            }
+          }}
+        >
           <div 
-            className="rounded-2xl border-2 border-orange-400/60 p-8 max-w-md w-full mx-4 shadow-2xl"
+            className="rounded-3xl p-10 max-w-md w-full mx-4 animate-slide-up"
             style={{
-              background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(0, 0, 0, 0.7) 100%)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6)'
+              background: 'linear-gradient(145deg, rgba(17, 24, 39, 0.98) 0%, rgba(31, 41, 55, 0.95) 100%)',
+              backdropFilter: 'blur(32px)',
+              WebkitBackdropFilter: 'blur(32px)',
+              boxShadow: '0 25px 80px -12px rgba(234, 88, 12, 0.5), 0 0 0 1px rgba(234, 88, 12, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(234, 88, 12, 0.25)'
             }}
           >
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              <div 
+                className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-scale-in"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.2) 0%, rgba(0, 0, 0, 0.4) 100%)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '2px solid rgba(234, 88, 12, 0.4)'
+                  animationDelay: '0.1s',
+                  animationFillMode: 'both',
+                  background: 'radial-gradient(circle, rgba(234, 88, 12, 0.25) 0%, rgba(234, 88, 12, 0.1) 100%)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  border: '2px solid rgba(234, 88, 12, 0.4)',
+                  boxShadow: '0 0 30px rgba(234, 88, 12, 0.3), inset 0 0 20px rgba(234, 88, 12, 0.1)'
                 }}
               >
-                <svg className="w-8 h-8 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg 
+                  className="w-10 h-10 text-orange-400" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  style={{
+                    filter: 'drop-shadow(0 0 8px rgba(234, 88, 12, 0.6))'
+                  }}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               
-              <h3 className="text-2xl font-bold text-white mb-2">Descarga en progreso</h3>
-              <p className="text-white/80 mb-6">
+              <h3 className="text-3xl font-bold text-white mb-3 animate-fade-in-up" style={{ animationDelay: '0.2s', animationFillMode: 'both' }}>
+                Descarga en progreso
+              </h3>
+              <p className="text-white/70 mb-8 leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.3s', animationFillMode: 'both' }}>
                 Hay una descarga en progreso. Si cierras la aplicación ahora, la descarga se cancelará. ¿Estás seguro de que quieres cerrar?
               </p>
               
-              <div className="flex gap-3 justify-center">
+              <div className="flex gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.4s', animationFillMode: 'both' }}>
                 <button
                   onClick={async () => {
                     setCloseDialogOpen(false);
-                    // Permitir cierre forzado
+                    await new Promise(resolve => setTimeout(resolve, 200));
                     await invoke('set_downloading_state', { isDownloading: false });
                     const { getCurrentWindow } = await import('@tauri-apps/api/window');
                     await getCurrentWindow().close();
                   }}
-                  className="px-6 py-3 rounded-xl border-2 border-red-400/60 text-red-200 transition-all duration-200 font-medium"
+                  className="px-8 py-3.5 rounded-xl font-semibold text-red-100 transition-all duration-300 hover:scale-105 active:scale-95"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.15) 100%)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    border: '1.5px solid rgba(239, 68, 68, 0.4)',
+                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(239, 68, 68, 0.3)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(185, 28, 28, 0.25) 100%)';
+                    e.currentTarget.style.boxShadow = '0 8px 30px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.6)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.15) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(239, 68, 68, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
                   }}
                 >
-                  Cerrar de todas formas
+                  Cerrar
                 </button>
                 
                 <button
                   onClick={() => setCloseDialogOpen(false)}
-                  className="px-6 py-3 rounded-xl border-2 border-gray-400/60 text-gray-200 transition-all duration-200 font-medium"
+                  className="px-8 py-3.5 rounded-xl font-semibold text-gray-100 transition-all duration-300 hover:scale-105 active:scale-95"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.4)'
+                    background: 'linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(75, 85, 99, 0.1) 100%)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    border: '1.5px solid rgba(107, 114, 128, 0.3)',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px 0 rgba(156, 163, 175, 0.3)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.25) 0%, rgba(75, 85, 99, 0.2) 100%)';
+                    e.currentTarget.style.boxShadow = '0 8px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.5)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(156, 163, 175, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.4)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(75, 85, 99, 0.1) 100%)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.3)';
                   }}
                 >
                   Cancelar
