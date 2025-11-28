@@ -729,7 +729,30 @@ pub fn build_minecraft_classpath_from_json(instance_dir: &Path, version_json_pat
     }
     
     // Convert HashMap values to Vec
-    let jars: Vec<String> = jar_map.into_values().collect();
+    let mut jars: Vec<String> = jar_map.into_values().collect();
+    
+    // Add mods from mods directory (for remote instances that might not have complete metadata)
+    let mods_dir = instance_dir.join("mods");
+    if mods_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |e| e == "jar") {
+                    if let Ok(normalized) = dunce::canonicalize(&path) {
+                        let normalized_str = if cfg!(target_os = "windows") {
+                            normalized.to_string_lossy()
+                                .strip_prefix("\\\\?\\").unwrap_or(&normalized.to_string_lossy())
+                                .replace("/", "\\")
+                        } else {
+                            normalized.to_string_lossy().to_string()
+                        };
+                        jars.push(normalized_str);
+                    }
+                }
+            }
+        }
+    }
+    
     Ok(jars.join(classpath_separator))
 }
 

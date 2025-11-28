@@ -166,6 +166,15 @@ async fn launch_minecraft_with_auth(
     
     // Buscar el JSON del mod loader o usar el de la versión vanilla
     let version_json_path = find_version_json_path(&instance_dir, minecraft_version)?;
+    log::info!("ℹ️  Using version JSON: {}", version_json_path.display());
+    
+    // Extraer el version_id del path del JSON para usarlo en select_main_class
+    let version_id = version_json_path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string());
+    
     let classpath = crate::launcher::build_minecraft_classpath_from_json(&instance_dir, &version_json_path)?;
     {
         let mut has_lwjgl = false;
@@ -224,7 +233,8 @@ async fn launch_minecraft_with_auth(
     mc_args.push("--height".to_string());
     mc_args.push(window_height.to_string());
 
-    let main_class = crate::launcher::select_main_class(&instance_dir, None);
+    // Usar el version_id del JSON encontrado para obtener la main class correcta
+    let main_class = crate::launcher::select_main_class(&instance_dir, version_id.as_deref());
     
     log::info!("🎮 Launching with main class: {}", main_class);
     log::info!("📦 Classpath length: {} bytes", classpath.len());
