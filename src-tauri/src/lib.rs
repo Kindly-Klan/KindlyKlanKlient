@@ -91,6 +91,62 @@ async fn launch_minecraft_with_java(
     launch_minecraft_with_auth(&app_handle, &instance_id, &minecraft_version, &java_path, &access_token, min_ram_gb, max_ram_gb).await
 }
 
+/// Busca el JSON del mod loader o usa el de la versión vanilla como fallback
+fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::PathBuf;
+    
+    let versions_dir = instance_dir.join("versions");
+    if !versions_dir.exists() {
+        // Fallback: usar el JSON de la versión vanilla
+        let vanilla_json = versions_dir.join(minecraft_version).join(format!("{}.json", minecraft_version));
+        if vanilla_json.exists() {
+            return Ok(vanilla_json);
+        }
+        return Err(format!("Versions directory does not exist: {}", versions_dir.display()));
+    }
+    
+    // Buscar el JSON del mod loader (Fabric/Forge/NeoForge)
+    if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let dir_name = entry.file_name();
+                let dir_name_str = dir_name.to_string_lossy();
+                let json_path = path.join(format!("{}.json", dir_name_str));
+                
+                if json_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&json_path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            // Verificar que sea un mod loader (tiene mainClass de mod loader o arguments.jvm)
+                            let is_mod_loader = json.get("mainClass")
+                                .and_then(|v| v.as_str())
+                                .map(|mc| mc.contains("forge") || mc.contains("neoforge") || mc.contains("fabric") || mc.contains("Knot"))
+                                .unwrap_or(false)
+                                || json.get("arguments")
+                                    .and_then(|a| a.get("jvm"))
+                                    .is_some();
+                            
+                            if is_mod_loader {
+                                log::info!("ℹ️  Found mod loader JSON: {}", json_path.display());
+                                return Ok(json_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback: usar el JSON de la versión vanilla
+    let vanilla_json = versions_dir.join(minecraft_version).join(format!("{}.json", minecraft_version));
+    if vanilla_json.exists() {
+        log::info!("ℹ️  Using vanilla version JSON: {}", vanilla_json.display());
+        return Ok(vanilla_json);
+    }
+    
+    Err(format!("No version JSON found for {}", minecraft_version))
+}
+
 async fn launch_minecraft_with_auth(
     app_handle: &tauri::AppHandle,
     instance_id: &str,
@@ -107,7 +163,10 @@ async fn launch_minecraft_with_auth(
 
     let _ = std::fs::create_dir_all(instance_dir.join("libraries"));
     let _ = std::fs::create_dir_all(instance_dir.join("mods"));
-    let classpath = crate::launcher::build_minecraft_classpath(&instance_dir)?;
+    
+    // Buscar el JSON del mod loader o usar el de la versión vanilla
+    let version_json_path = find_version_json_path(&instance_dir, minecraft_version)?;
+    let classpath = crate::launcher::build_minecraft_classpath_from_json(&instance_dir, &version_json_path)?;
     {
         let mut has_lwjgl = false;
         for entry in walkdir::WalkDir::new(instance_dir.join("libraries")) {
