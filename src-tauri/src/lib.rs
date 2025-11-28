@@ -92,6 +92,7 @@ async fn launch_minecraft_with_java(
 }
 
 /// Busca el JSON del mod loader o usa el de la versión vanilla como fallback
+/// Usa la misma lógica que get_mod_loader_jvm_args para detectar mod loaders
 fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &str) -> Result<std::path::PathBuf, String> {
     use std::path::PathBuf;
     
@@ -105,7 +106,10 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
         return Err(format!("Versions directory does not exist: {}", versions_dir.display()));
     }
     
-    // Buscar el JSON del mod loader (Fabric/Forge/NeoForge)
+    // Buscar el JSON del mod loader usando la misma lógica que get_mod_loader_jvm_args
+    let mut candidate_json: Option<PathBuf> = None;
+    let mut fallback_json: Option<PathBuf> = None;
+    
     if let Ok(entries) = std::fs::read_dir(&versions_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -118,6 +122,7 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
                     if let Ok(content) = std::fs::read_to_string(&json_path) {
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                             // Verificar que sea un mod loader (tiene mainClass de mod loader o arguments.jvm)
+                            // Esta es la misma lógica que usa get_mod_loader_jvm_args
                             let is_mod_loader = json.get("mainClass")
                                 .and_then(|v| v.as_str())
                                 .map(|mc| mc.contains("forge") || mc.contains("neoforge") || mc.contains("fabric") || mc.contains("Knot"))
@@ -127,8 +132,26 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
                                     .is_some();
                             
                             if is_mod_loader {
-                                log::info!("ℹ️  Found mod loader JSON: {}", json_path.display());
-                                return Ok(json_path);
+                                let json_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                
+                                let is_clear_mod_loader = json_id.starts_with("fabric-loader-") 
+                                    || json_id.starts_with("forge-") 
+                                    || json_id.starts_with("neoforge-")
+                                    || dir_name_str.starts_with("fabric-loader-")
+                                    || dir_name_str.starts_with("forge-")
+                                    || dir_name_str.starts_with("neoforge-");
+                                
+                                if is_clear_mod_loader {
+                                    log::info!("ℹ️  Found mod loader JSON: {} (id: {})", json_path.display(), json_id);
+                                    candidate_json = Some(json_path);
+                                    break; // Priorizar el primero encontrado que sea claramente un mod loader
+                                } else {
+                                    // Mod loader detectado por mainClass/arguments pero sin ID claro
+                                    if fallback_json.is_none() {
+                                        log::info!("ℹ️  Found potential mod loader JSON: {} (id: {})", json_path.display(), json_id);
+                                        fallback_json = Some(json_path);
+                                    }
+                                }
                             }
                         }
                     }
@@ -137,10 +160,15 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
         }
     }
     
+    // Usar el candidato claro primero, o el fallback si no hay candidato
+    if let Some(json_path) = candidate_json.or(fallback_json) {
+        return Ok(json_path);
+    }
+    
     // Fallback: usar el JSON de la versión vanilla
     let vanilla_json = versions_dir.join(minecraft_version).join(format!("{}.json", minecraft_version));
     if vanilla_json.exists() {
-        log::info!("ℹ️  Using vanilla version JSON: {}", vanilla_json.display());
+        log::info!("ℹ️  No mod loader found, using vanilla version JSON: {}", vanilla_json.display());
         return Ok(vanilla_json);
     }
     
