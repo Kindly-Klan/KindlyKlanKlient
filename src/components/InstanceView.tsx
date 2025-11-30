@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import LaunchButton from './LaunchButton';
 import type { LocalInstance } from '@/types/local-instances';
+import { logger } from '@/utils/logger';
 
 
 import minecraftIcon from '@/assets/icons/minecraft.svg';
@@ -134,7 +135,7 @@ const InstanceView: React.FC<InstanceViewProps> = ({
           videoCache.set(cacheKey, { blobUrl, loaded: false });
         })
         .catch((error) => {
-          console.error('Error downloading video:', error);
+          void logger.error('Error downloading video', error, 'InstanceView');
           setLocalVideoPath(null);
         });
     } else {
@@ -189,11 +190,9 @@ const InstanceView: React.FC<InstanceViewProps> = ({
               filter: 'blur(2px)'
             }}
             onError={(e) => {
-              console.error('Error loading video:', e);
-              console.error('Video path:', localVideoPath);
+              void logger.error('Error loading video', e, 'InstanceView');
             }}
             onLoadedData={() => {
-              console.log('Video loaded successfully:', localVideoPath);
               setVideoLoaded(true);
               // Actualizar caché cuando el video se carga
               const cacheKey = `${instanceId}-${instance?.background_video}`;
@@ -446,7 +445,7 @@ const PlayTimeStats: React.FC<{ instanceId: string }> = ({ instanceId }) => {
           setTotalHours(hours);
         }
       } catch (error) {
-        console.error('Error loading play time:', error);
+        void logger.error('Error loading play time', error, 'InstanceView');
       }
     };
     

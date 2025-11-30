@@ -4,6 +4,7 @@ import { SkinData, SkinModel } from '@/types/skin';
 import { SkinStorageService } from '@/services/skin/skinStorage';
 import { invoke } from '@tauri-apps/api/core';
 import { useDropzone } from 'react-dropzone';
+import { logger } from '@/utils/logger';
 
 interface SkinManagerProps {
   currentUser: any;
@@ -177,7 +178,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
                 const blobUrl = URL.createObjectURL(blob);
                 blobUrlsRef.current.set(skin.id, blobUrl);
               } catch (err) {
-                console.error('Error creando blob URL para skin:', skin.id, err);
+                void logger.error(`Error creating blob URL for skin ${skin.id}`, err, 'SkinManager');
               }
             }
           }
@@ -313,7 +314,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
 
       addToast?.('Skin guardada', 'success');
     } catch (error) {
-      console.error('❌ Error al guardar skin:', error);
+      void logger.error('Error saving skin', error, 'SkinManager');
       addToast?.(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`, 'error');
     } finally {
       setIsUploading(false);
@@ -461,12 +462,11 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
           addToast?.('Sesión expirada. Skin activa localmente', 'info');
         } else {
           // Otros errores: la skin sigue activa localmente
-          console.warn('Error al subir a Mojang (skin activa localmente):', uploadError);
+          void logger.warn('Error uploading to Mojang (skin active locally)', uploadError, 'SkinManager');
         }
       }
     } catch (error) {
-      // Error al obtener fileData o token: la skin ya está activa localmente
-      console.warn('⚠️ Error al procesar skin para Mojang (skin activa localmente):', error);
+      void logger.warn('Error processing skin for Mojang (skin active locally)', String(error), 'SkinManager');
     } finally {
       setIsUploading(false);
     }
@@ -494,7 +494,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
       addToast?.('Skin eliminada', 'success');
       refreshAvatars();
     } catch (error) {
-      console.error('❌ Error al eliminar skin:', error);
+      void logger.error('Error deleting skin', error, 'SkinManager');
       addToast?.('Error al eliminar skin', 'error');
     }
   }, [selectedSkinId, addToast]);
@@ -585,7 +585,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
         addToast?.('Formato actualizado localmente', 'success');
       }
     } catch (error) {
-      console.error('❌ Error al cambiar formato:', error);
+      void logger.error('Error changing format', error, 'SkinManager');
       addToast?.('Error al cambiar formato', 'error');
     } finally {
       setIsUploading(false);

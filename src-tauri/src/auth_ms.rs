@@ -213,8 +213,6 @@ pub async fn complete_microsoft_auth_internal(auth_code: String, port: u16) -> R
 
     let username = profile["name"].as_str().unwrap_or("Unknown");
     let uuid = profile["id"].as_str().unwrap_or("unknown");
-    // Usamos una expiración larga basada en el refresh token de MS (suele durar meses).
-    // Mantenemos la renovación del access token en validate_and_refresh_token.
     let expires_at = (chrono::Utc::now() + chrono::Duration::days(90)).timestamp();
 
     Ok(crate::AuthSession {

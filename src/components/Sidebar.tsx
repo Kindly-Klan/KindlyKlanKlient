@@ -3,6 +3,7 @@ import Tooltip from '@/components/ui/Tooltip';
 import type { LocalInstance } from '@/types/local-instances';
 import { invoke } from '@tauri-apps/api/core';
 import { Avatar } from '@/components/Avatar';
+import { logger } from '@/utils/logger';
 
 interface Instance {
   id: string;
@@ -100,7 +101,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         addToast('Instancia eliminada correctamente', 'success');
       }
     } catch (error) {
-      console.error('Error deleting instance:', error);
+      void logger.error('Error deleting instance', error, 'Sidebar');
       if (addToast) {
         addToast(`Error al eliminar instancia: ${error}`, 'error');
       }

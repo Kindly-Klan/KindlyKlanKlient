@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { UpdaterService, UpdateInfo } from '@/services/updater';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from '@/utils/logger';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -23,7 +24,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [isTestingUrl, setIsTestingUrl] = useState(false);
 
   const handleReload = () => {
-    console.log('SettingsPanel: Reloading distribution');
     onReloadDistribution();
     onClose();
   };
@@ -34,7 +34,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       const info = await UpdaterService.checkForUpdates();
       setUpdateInfo(info);
     } catch (error) {
-      console.error('Error checking updates:', error);
+      void logger.error('Error checking updates', error, 'handleCheckUpdates');
       setUpdateInfo({
         version: '',
         available: false,
@@ -51,12 +51,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     try {
       const result = await UpdaterService.installUpdate();
       if (result.success) {
-        // Mostrar notificación personalizada en lugar de alert
         const toast = document.createElement('div');
         toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
         toast.textContent = '✓ Actualización instalada. Reiniciando...';
         document.body.appendChild(toast);
-        // La aplicación se reiniciará automáticamente después de la instalación
       } else {
         const toast = document.createElement('div');
         toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
@@ -65,7 +63,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         setTimeout(() => toast.remove(), 3000);
       }
     } catch (error) {
-      console.error('Error installing update:', error);
+      void logger.error('Error installing update', error, 'handleInstallUpdate');
       const toast = document.createElement('div');
       toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
       toast.textContent = '✗ Error al instalar la actualización';

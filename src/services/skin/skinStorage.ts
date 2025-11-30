@@ -1,16 +1,13 @@
 import { SkinData } from '@/types/skin';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from '@/utils/logger';
 
 const SKINS_METADATA_KEY = 'kkk_user_skins_metadata';
 const ACTIVE_SKIN_KEY = 'kkk_active_skin';
 
 export class SkinStorageService {
-  /**
-   * Guarda una skin: el archivo PNG se guarda en disco, solo metadatos en localStorage
-   */
   static async saveSkin(skinData: SkinData): Promise<void> {
     try {
-      // Guardar el archivo PNG en disco
       if (skinData.fileData && skinData.fileData instanceof ArrayBuffer && skinData.fileData.byteLength > 0) {
         const uint8Array = new Uint8Array(skinData.fileData);
         await invoke('save_skin_file', {
@@ -19,7 +16,6 @@ export class SkinStorageService {
         });
       }
 
-      // Guardar solo metadatos en localStorage (sin fileData)
       const existingMetadata = await this.getSkinsMetadata();
       const metadata = {
         id: skinData.id,
@@ -36,16 +32,12 @@ export class SkinStorageService {
       updatedMetadata.push(metadata);
 
       localStorage.setItem(SKINS_METADATA_KEY, JSON.stringify(updatedMetadata));
-      console.log('✅ Skin saved:', skinData.id);
     } catch (error) {
-      console.error('❌ Error saving skin:', error);
+      void logger.error('Error saving skin', error, 'SkinStorageService');
       throw new Error('Error al guardar skin');
     }
   }
 
-  /**
-   * Obtiene todas las skins: carga metadatos desde localStorage y fileData desde archivos
-   */
   static async getStoredSkins(): Promise<SkinData[]> {
     try {
       const metadata = await this.getSkinsMetadata();
@@ -54,7 +46,6 @@ export class SkinStorageService {
       return await Promise.all(metadata.map(async (meta) => {
         let fileData: ArrayBuffer | undefined = undefined;
 
-        // Cargar fileData desde archivo si existe
         if (skinFiles.includes(meta.id)) {
           try {
             const fileDataArray = await invoke<number[]>('load_skin_file', { skinId: meta.id });
@@ -64,7 +55,7 @@ export class SkinStorageService {
             view.set(uint8Array);
             fileData = buffer;
           } catch (err) {
-            console.error(`❌ Error loading fileData for skin ${meta.id}:`, err);
+            void logger.error(`Error loading fileData for skin ${meta.id}`, err, 'SkinStorageService');
           }
         }
 
@@ -81,48 +72,35 @@ export class SkinStorageService {
         };
       }));
     } catch (error) {
-      console.error('❌ Error loading skins:', error);
+      void logger.error('Error loading skins', error, 'SkinStorageService');
       return [];
     }
   }
 
-  /**
-   * Obtiene solo los metadatos desde localStorage
-   */
   private static async getSkinsMetadata(): Promise<any[]> {
     try {
       const stored = localStorage.getItem(SKINS_METADATA_KEY);
       if (!stored) return [];
       return JSON.parse(stored);
     } catch (error) {
-      console.error('❌ Error loading metadata:', error);
+      void logger.error('Error loading metadata', error, 'SkinStorageService');
       return [];
     }
   }
 
-  /**
-   * Elimina una skin: elimina archivo y metadatos
-   */
   static async deleteSkin(skinId: string): Promise<void> {
     try {
-      // Eliminar archivo
       await invoke('delete_skin_file', { skinId });
 
-      // Eliminar metadatos
       const metadata = await this.getSkinsMetadata();
       const filtered = metadata.filter(m => m.id !== skinId);
       localStorage.setItem(SKINS_METADATA_KEY, JSON.stringify(filtered));
-
-      console.log('✅ Skin deleted:', skinId);
     } catch (error) {
-      console.error('❌ Error deleting skin:', error);
+      void logger.error('Error deleting skin', error, 'SkinStorageService');
       throw new Error('Error al eliminar skin');
     }
   }
 
-  /**
-   * Establece la skin activa. Si skinId es vacío, desmarca todas las skins.
-   */
   static async setActiveSkin(skinId: string): Promise<void> {
     try {
       const metadata = await this.getSkinsMetadata();
@@ -133,17 +111,12 @@ export class SkinStorageService {
 
       localStorage.setItem(SKINS_METADATA_KEY, JSON.stringify(updated));
       localStorage.setItem(ACTIVE_SKIN_KEY, skinId || '');
-
-      console.log('✅ Active skin set:', skinId || '(ninguna)');
     } catch (error) {
-      console.error('❌ Error setting active skin:', error);
+      void logger.error('Error setting active skin', error, 'SkinStorageService');
       throw new Error('Error al establecer skin activa');
     }
   }
 
-  /**
-   * Obtiene la skin activa
-   */
   static async getActiveSkin(): Promise<SkinData | null> {
     try {
       const activeSkinId = localStorage.getItem(ACTIVE_SKIN_KEY);
@@ -152,33 +125,26 @@ export class SkinStorageService {
       const skins = await this.getStoredSkins();
       return skins.find(s => s.id === activeSkinId) || null;
     } catch (error) {
-      console.error('❌ Error getting active skin:', error);
+      void logger.error('Error getting active skin', error, 'SkinStorageService');
       return null;
     }
   }
 
-  /**
-   * Limpia todas las skins
-   */
   static async clearAllSkins(): Promise<void> {
     try {
       const metadata = await this.getSkinsMetadata();
       
-      // Eliminar todos los archivos
       for (const meta of metadata) {
         try {
           await invoke('delete_skin_file', { skinId: meta.id });
         } catch (err) {
-          // Ignorar errores al eliminar archivos
         }
       }
 
       localStorage.removeItem(SKINS_METADATA_KEY);
       localStorage.removeItem(ACTIVE_SKIN_KEY);
-
-      console.log('✅ All skins cleared');
     } catch (error) {
-      console.error('❌ Error clearing skins:', error);
+      void logger.error('Error clearing skins', error, 'SkinStorageService');
       throw new Error('Error al limpiar skins');
     }
   }

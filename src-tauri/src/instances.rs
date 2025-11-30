@@ -277,7 +277,6 @@ pub fn verify_file_md5(file_path: &Path, expected_md5: &str) -> Result<(), Strin
     }
 }
 
-/// Carga el historial de manifest de una instancia
 pub fn load_manifest_history(instance_dir: &Path) -> Result<Option<crate::models::ManifestHistory>, String> {
     let history_path = instance_dir.join(".manifest_history.json");
     
@@ -294,7 +293,6 @@ pub fn load_manifest_history(instance_dir: &Path) -> Result<Option<crate::models
     Ok(Some(history))
 }
 
-/// Guarda el historial de manifest de una instancia
 pub async fn save_manifest_history(instance_dir: &Path, instance: &crate::models::InstanceManifest) -> Result<(), String> {
     let mut history_files = crate::models::ManifestHistoryFiles {
         mods: Vec::new(),
@@ -304,7 +302,6 @@ pub async fn save_manifest_history(instance_dir: &Path, instance: &crate::models
         root_files: Vec::new(),
     };
     
-    // Recopilar archivos del manifest actual
     for mod_file in &instance.files.mods {
         history_files.mods.push(mod_file.name.clone());
     }
@@ -532,7 +529,6 @@ pub async fn ensure_mod_loader_libraries(instance_dir: &Path, version_id: &str) 
                 }
                 
                 if !lib_path.exists() {
-                    log::info!("📥 Downloading mod loader library: {}", artifact.path);
                     download_file_with_retry(&artifact.url, &lib_path).await?;
                 }
             }
@@ -543,7 +539,6 @@ pub async fn ensure_mod_loader_libraries(instance_dir: &Path, version_id: &str) 
 }
 
 pub async fn install_mod_loader(minecraft_version: &str, mod_loader: &ModLoader, instance_dir: &Path) -> Result<Option<String>, String> {
-    // Retorna el version_id exacto creado por el instalador (ej. "neoforge-21.8.51")
     match mod_loader.r#type.as_str() {
         "fabric" => install_fabric(minecraft_version, &mod_loader.version, instance_dir).await,
         "forge" => install_forge(minecraft_version, &mod_loader.version, instance_dir).await,
@@ -582,9 +577,8 @@ async fn install_fabric(minecraft_version: &str, fabric_version: &str, instance_
 }
 
 async fn install_forge(minecraft_version: &str, forge_version: &str, instance_dir: &Path) -> Result<Option<String>, String> {
-    log::info!("🔨 Instalando Forge {} para Minecraft {}", forge_version, minecraft_version);
+    log::info!("Installing Forge {} for Minecraft {}", forge_version, minecraft_version);
     
-    // Verificar si ya está instalado
     let forge_marker = instance_dir
         .join("libraries")
         .join("net")
@@ -594,8 +588,6 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
         .join(format!("forge-{}.jar", forge_version));
     
     if forge_marker.exists() {
-        log::info!("✅ Forge {} ya está instalado", forge_version);
-        // Si ya está instalado, buscar el version_id existente
         return Ok(find_version_id_in_versions_dir(instance_dir, "forge"));
     }
     
@@ -603,46 +595,29 @@ async fn install_forge(minecraft_version: &str, forge_version: &str, instance_di
     tokio::fs::create_dir_all(&libraries_dir).await
         .map_err(|e| format!("Failed to create libraries directory: {}", e))?;
     
-    // Descargar el instalador de Forge
     let installer_url = format!(
         "https://maven.minecraftforge.net/net/minecraftforge/forge/{}/forge-{}-installer.jar",
         forge_version, forge_version
     );
     
-    log::info!("📥 Descargando instalador de Forge desde: {}", installer_url);
-    
     let installer_path = libraries_dir.join(format!("forge-installer-{}.jar", forge_version));
     download_file_with_retry(&installer_url, &installer_path).await?;
     
-    log::info!("✅ Instalador de Forge descargado");
-    
-    // Ejecutar el instalador de Forge
-    log::info!("🚀 Ejecutando instalador de Forge...");
     run_forge_installer(&installer_path, instance_dir, minecraft_version).await?;
-    
-    log::info!("✅ Forge {} instalado correctamente", forge_version);
-    
-    // Asegurar que el cliente de Minecraft esté presente
+    log::info!("Forge {} installed successfully", forge_version);
     ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
     
-    // Buscar el version_id creado por el instalador
     Ok(find_version_id_in_versions_dir(instance_dir, "forge"))
 }
 
 async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
-    // Crear launcher_profiles.json si no existe
     ensure_launcher_profile(instance_dir)?;
     
-    // Obtener Java para la versión de Minecraft correcta
-    log::info!("☕ Obteniendo Java para Minecraft {}", minecraft_version);
     let java_path = crate::launcher::find_or_install_java_for_minecraft(minecraft_version).await?;
-    log::info!("✅ Usando Java en: {}", java_path);
     
-    // Crear directorio temporal para el instalador
     let temp_dir = std::env::temp_dir().join("kindlyklanklient_forge_install");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
     
-    // Copiar instalador al directorio temporal
     let temp_installer = temp_dir.join(installer.file_name().unwrap());
     std::fs::copy(installer, &temp_installer).map_err(|e| format!("Failed to copy installer: {}", e))?;
     
@@ -655,7 +630,7 @@ async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_ve
     }
     
     let output = cmd
-        .current_dir(&temp_dir) // Ejecutar desde temp para que pueda escribir logs
+        .current_dir(&temp_dir)
         .args(&[
             "-jar",
             &temp_installer.to_string_lossy(),
@@ -665,26 +640,23 @@ async fn run_forge_installer(installer: &Path, instance_dir: &Path, minecraft_ve
         .output()
         .map_err(|e| format!("Failed to run Forge installer: {}", e))?;
     
-    // Limpiar archivos temporales
     let _ = std::fs::remove_file(&temp_installer);
     let _ = std::fs::remove_dir_all(&temp_dir);
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        log::error!("❌ Forge installer stderr: {}", stderr);
-        log::error!("❌ Forge installer stdout: {}", stdout);
+        log::error!("Forge installer stderr: {}", stderr);
+        log::error!("Forge installer stdout: {}", stdout);
         return Err(format!("Forge installer failed: {}", stderr));
     }
     
-    log::info!("✅ Instalador de Forge ejecutado correctamente");
     Ok(())
 }
 
 async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, instance_dir: &Path) -> Result<Option<String>, String> {
-    log::info!("🔨 Instalando NeoForge {} para Minecraft {}", neoforge_version, minecraft_version);
+    log::info!("Installing NeoForge {} for Minecraft {}", neoforge_version, minecraft_version);
     
-    // Verificar si ya está instalado
     let neoforge_marker = instance_dir
         .join("libraries")
         .join("net")
@@ -694,8 +666,6 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
         .join(format!("neoforge-{}.jar", neoforge_version));
     
     if neoforge_marker.exists() {
-        log::info!("✅ NeoForge {} ya está instalado", neoforge_version);
-        // Si ya está instalado, buscar el version_id existente
         return Ok(find_version_id_in_versions_dir(instance_dir, "neoforge"));
     }
     
@@ -703,46 +673,29 @@ async fn install_neoforge(minecraft_version: &str, neoforge_version: &str, insta
     tokio::fs::create_dir_all(&libraries_dir).await
         .map_err(|e| format!("Failed to create libraries directory: {}", e))?;
     
-    // Descargar el instalador de NeoForge
     let installer_url = format!(
         "https://maven.neoforged.net/releases/net/neoforged/neoforge/{}/neoforge-{}-installer.jar",
         neoforge_version, neoforge_version
     );
     
-    log::info!("📥 Descargando instalador de NeoForge desde: {}", installer_url);
-    
     let installer_path = libraries_dir.join(format!("neoforge-installer-{}.jar", neoforge_version));
     download_file_with_retry(&installer_url, &installer_path).await?;
     
-    log::info!("✅ Instalador de NeoForge descargado");
-    
-    // Ejecutar el instalador de NeoForge
-    log::info!("🚀 Ejecutando instalador de NeoForge...");
     run_neoforge_installer(&installer_path, instance_dir, minecraft_version).await?;
-    
-    log::info!("✅ NeoForge {} instalado correctamente", neoforge_version);
-    
-    // Asegurar que el cliente de Minecraft esté presente
+    log::info!("NeoForge {} installed successfully", neoforge_version);
     ensure_minecraft_client_present(instance_dir, minecraft_version).await?;
     
-    // Buscar el version_id creado por el instalador
     Ok(find_version_id_in_versions_dir(instance_dir, "neoforge"))
 }
 
 async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft_version: &str) -> Result<(), String> {
-    // Crear launcher_profiles.json si no existe
     ensure_launcher_profile(instance_dir)?;
     
-    // Obtener Java para la versión de Minecraft correcta
-    log::info!("☕ Obteniendo Java para Minecraft {}", minecraft_version);
     let java_path = crate::launcher::find_or_install_java_for_minecraft(minecraft_version).await?;
-    log::info!("✅ Usando Java en: {}", java_path);
     
-    // Crear directorio temporal para el instalador
     let temp_dir = std::env::temp_dir().join("kindlyklanklient_neoforge_install");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
     
-    // Copiar instalador al directorio temporal
     let temp_installer = temp_dir.join(installer.file_name().unwrap());
     std::fs::copy(installer, &temp_installer).map_err(|e| format!("Failed to copy installer: {}", e))?;
     
@@ -755,7 +708,7 @@ async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft
     }
     
     let output = cmd
-        .current_dir(&temp_dir) // Ejecutar desde temp para que pueda escribir logs
+        .current_dir(&temp_dir)
         .args(&[
             "-jar",
             &temp_installer.to_string_lossy(),
@@ -765,23 +718,19 @@ async fn run_neoforge_installer(installer: &Path, instance_dir: &Path, minecraft
         .output()
         .map_err(|e| format!("Failed to run NeoForge installer: {}", e))?;
     
-    // Limpiar archivos temporales
     let _ = std::fs::remove_file(&temp_installer);
     let _ = std::fs::remove_dir_all(&temp_dir);
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        log::error!("❌ NeoForge installer stderr: {}", stderr);
-        log::error!("❌ NeoForge installer stdout: {}", stdout);
+        log::error!("NeoForge installer stderr: {}", stderr);
+        log::error!("NeoForge installer stdout: {}", stdout);
         return Err(format!("NeoForge installer failed: {}", stderr));
     }
     
-    log::info!("✅ Instalador de NeoForge ejecutado correctamente");
     Ok(())
 }
-
-/// Busca el version_id en el directorio versions/ basándose en el tipo de mod loader
 pub fn find_version_id_in_versions_dir(instance_dir: &Path, loader_type: &str) -> Option<String> {
     let versions_dir = instance_dir.join("versions");
     if !versions_dir.exists() {
@@ -822,12 +771,10 @@ pub fn find_version_id_in_versions_dir(instance_dir: &Path, loader_type: &str) -
     None
 }
 
-/// Crea un launcher_profiles.json dummy si no existe
 fn ensure_launcher_profile(instance_dir: &Path) -> Result<(), String> {
     let profile_path = instance_dir.join("launcher_profiles.json");
     
     if !profile_path.exists() {
-        log::info!("📝 Creando launcher_profiles.json");
         
         let profile_content = serde_json::json!({
             "profiles": {
@@ -850,7 +797,6 @@ fn ensure_launcher_profile(instance_dir: &Path) -> Result<(), String> {
         std::fs::write(&profile_path, serde_json::to_string_pretty(&profile_content).unwrap())
             .map_err(|e| format!("Failed to create launcher_profiles.json: {}", e))?;
         
-        log::info!("✅ launcher_profiles.json creado");
     }
     
     Ok(())

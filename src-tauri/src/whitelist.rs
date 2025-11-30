@@ -9,20 +9,18 @@ pub fn get_supabase_config() -> (String, String) {
     let key = std::env::var("SUPABASE_ANON_KEY")
         .unwrap_or_else(|_| env!("SUPABASE_ANON_KEY").to_string());
     if url == "https://your-project.supabase.co" || key == "your-anon-key" {
-        log::warn!(" Supabase not configured - using fallback values");
+        log::warn!("Supabase not configured - using fallback values");
     } else {
-        log::info!("✅ Supabase configured successfully");
     }
     (url, key)
 }
 
 #[tauri::command]
 pub async fn check_whitelist_access(username: String) -> Result<AccessCheck, String> {
-    log::info!("🔍 Checking whitelist access for user: {} (always querying database, no cache)", username);
     let (supabase_url, supabase_key) = get_supabase_config();
 
     if supabase_url == "https://your-project.supabase.co" || supabase_key == "your-anon-key" {
-        log::warn!("⚠️  Whitelist disabled - allowing access for user: {}", username);
+        log::warn!("Whitelist disabled - allowing access for user: {}", username);
         return Ok(AccessCheck { has_access: true, allowed_instances: Vec::new(), global_access: true });
     }
 
@@ -38,43 +36,36 @@ pub async fn check_whitelist_access(username: String) -> Result<AccessCheck, Str
         .send()
         .await
         .map_err(|e| {
-            log::error!("❌ Failed to send request to Supabase: {}", e);
+            log::error!("Failed to send request to Supabase: {}", e);
             format!("Failed to query whitelist: {}", e)
         })?;
 
     let status = response.status();
-    log::info!("📡 Response status: {}", status);
     if !status.is_success() {
         let error_text = response.text().await.unwrap_or_default();
-        log::error!("❌ API error response: {}", error_text);
+        log::error!("API error response: {}", error_text);
         return Err(format!("Whitelist API error: {} - {}", status, error_text));
     }
 
     let response_text = response.text().await.map_err(|e| {
-        log::error!("❌ Failed to read response: {}", e);
+        log::error!("Failed to read response: {}", e);
         format!("Failed to read whitelist response: {}", e)
     })?;
-    log::info!("📄 Response body: {}", response_text);
 
     let entries: Vec<WhitelistEntry> = serde_json::from_str(&response_text).map_err(|e| {
-        log::error!("❌ Failed to parse JSON: {}", e);
-        log::error!("❌ Raw response: {}", response_text);
+        log::error!("Failed to parse JSON: {}", e);
+        log::error!("Raw response: {}", response_text);
         format!("Failed to parse whitelist response: {}", e)
     })?;
 
-    log::info!("📊 Found {} entries for user: {}", entries.len(), username);
     let result = if entries.is_empty() {
-        log::warn!("❌ User not found in whitelist: {}", username);
+        log::warn!("User not found in whitelist: {}", username);
         AccessCheck { has_access: false, allowed_instances: Vec::new(), global_access: false }
     } else {
         let entry = &entries[0];
-        log::info!("✅ User found in whitelist: {}", username);
-        log::info!("   Global access: {}", entry.global_access);
-        log::info!("   Allowed instances: {:?}", entry.allowed_instances);
         AccessCheck { has_access: true, allowed_instances: entry.allowed_instances.clone().unwrap_or_default(), global_access: entry.global_access }
     };
 
-    // No cache - always return fresh result from database
     Ok(result)
 }
 

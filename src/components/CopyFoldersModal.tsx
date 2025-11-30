@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from '@/utils/logger';
 import { listen } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { LocalInstance } from '@/types/local-instances';
@@ -199,7 +200,7 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
       }
       onClose();
     } catch (error) {
-      console.error('Error copying folders:', error);
+      void logger.error('Error copying folders', error, 'CopyFoldersModal');
       if (addToast) {
         addToast(`Error al copiar carpetas: ${error}`, 'error');
       } else {
@@ -253,7 +254,7 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
           {/* Source instance selection */}
           <div>
-            <label className="block text-white/80 mb-2 flex items-center gap-2">
+            <label className="flex text-white/80 mb-2 items-center gap-2">
               <svg className="w-4 h-4 text-[#ffff00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
@@ -290,7 +291,7 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
 
           {/* Folders selection */}
           <div>
-            <label className="block text-white/80 mb-3 flex items-center gap-2">
+            <label className="flex text-white/80 mb-3 items-center gap-2">
               <svg className="w-4 h-4 text-[#ffff00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
@@ -358,7 +359,7 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
           {/* Worlds selection (only if saves is selected) */}
           {selectedFolders.has('saves') && (
             <div>
-              <label className="block text-white/80 mb-3 flex items-center gap-2">
+              <label className="flex text-white/80 mb-3 items-center gap-2">
                 <svg className="w-4 h-4 text-[#ffff00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { UpdaterService } from '@/services/updater';
 import type { UpdateState, UpdateProgress } from '@/types/updater';
+import { logger } from '@/utils/logger';
 
 interface SettingsViewProps {
   addToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
@@ -85,7 +86,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
         setWindowHeight(savedHeight);
         
       } catch (error) {
-        console.error('Error initializing config:', error);
+        void logger.error('Error initializing config', error, 'SettingsView');
         // Use defaults if loading fails
         setMinRam(2.0);
         setMaxRam(4.0);
@@ -120,7 +121,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
         // Start listening to update events
         await UpdaterService.startListeningToEvents();
       } catch (error) {
-        console.error('Error initializing updates:', error);
+        void logger.error('Error initializing updates', error, 'SettingsView');
       }
     };
 
@@ -135,7 +136,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
         maxRam: newMaxRam 
       });
     } catch (error) {
-      console.error('Error saving RAM config:', error);
+      void logger.error('Error saving RAM config', error, 'SettingsView');
     }
   };
 
@@ -149,7 +150,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
         windowHeight
       });
     } catch (error) {
-      console.error('Error saving advanced config:', error);
+      void logger.error('Error saving advanced config', error, 'SettingsView');
     }
   };
 
@@ -174,7 +175,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
       }
       // Si no hay actualizaciones, NO mostrar toast (más limpio)
     } catch (error) {
-      console.error('Error checking for updates:', error);
+      void logger.error('Error checking for updates', error, 'SettingsView');
       if (addToast) {
         addToast('Error al verificar actualizaciones', 'error');
       }
@@ -204,7 +205,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
         }
       }
     } catch (error) {
-      console.error('Error downloading update:', error);
+      void logger.error('Error downloading update', error, 'SettingsView');
       if (addToast) {
         addToast('Error al descargar la actualización', 'error');
       }
@@ -240,7 +241,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
           }
         }
       } catch (error) {
-        console.error('Error installing update:', error);
+        void logger.error('Error installing update', error, 'SettingsView');
         if (addToast) {
           addToast('Error al instalar la actualización', 'error');
         }
@@ -785,7 +786,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
                     try {
                       await invoke('open_frontend_log_folder');
                     } catch (error) {
-                      console.error('Failed to open frontend log folder:', error);
+                      void logger.error('Failed to open frontend log folder', error, 'SettingsView');
                     }
                   }}
                   className="px-4 py-2 rounded-xl border-2 border-yellow-400/60 text-yellow-200 transition-all duration-200 flex items-center gap-2"
@@ -818,7 +819,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
                     try {
                       await invoke('open_backend_log_folder');
                     } catch (error) {
-                      console.error('Failed to open backend log folder:', error);
+                      void logger.error('Failed to open backend log folder', error, 'SettingsView');
                     }
                   }}
                   className="px-4 py-2 rounded-xl border-2 border-yellow-400/60 text-yellow-200 transition-all duration-200 flex items-center gap-2"

@@ -4,8 +4,21 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 class FrontendLogger {
   private static instance: FrontendLogger;
+  private isLogging = false;
+  private originalError: typeof console.error;
+  private originalWarn: typeof console.warn;
+  private originalLog: typeof console.log;
+  private originalInfo: typeof console.info;
+  private originalDebug: typeof console.debug;
   
   private constructor() {
+    // Guardar los métodos originales antes de interceptar
+    this.originalError = console.error.bind(console);
+    this.originalWarn = console.warn.bind(console);
+    this.originalLog = console.log.bind(console);
+    this.originalInfo = console.info.bind(console);
+    this.originalDebug = console.debug.bind(console);
+    
     this.setupGlobalErrorHandlers();
   }
   
@@ -20,6 +33,9 @@ class FrontendLogger {
    * Configura los manejadores globales de errores
    */
   private setupGlobalErrorHandlers() {
+    // Interceptar console.error, console.warn, console.log, etc.
+    this.interceptConsole();
+    
     // Capturar errores no manejados
     window.addEventListener('error', (event) => {
       const errorObject = event.error ?? { message: event.message };
@@ -43,38 +59,105 @@ class FrontendLogger {
   }
   
   /**
+   * Intercepta los métodos de console para capturar todos los logs
+   */
+  private interceptConsole() {
+    // Interceptar console.error
+    console.error = (...args: any[]) => {
+      this.originalError.apply(console, args);
+      if (!this.isLogging) {
+        const message = this.formatConsoleArgs(args);
+        void this.log('error', message, 'console.error');
+      }
+    };
+    
+    // Interceptar console.warn
+    console.warn = (...args: any[]) => {
+      this.originalWarn.apply(console, args);
+      if (!this.isLogging) {
+        const message = this.formatConsoleArgs(args);
+        void this.log('warn', message, 'console.warn');
+      }
+    };
+    
+    // Interceptar console.log
+    console.log = (...args: any[]) => {
+      this.originalLog.apply(console, args);
+      if (!this.isLogging) {
+        const message = this.formatConsoleArgs(args);
+        void this.log('info', message, 'console.log');
+      }
+    };
+    
+    // Interceptar console.info
+    console.info = (...args: any[]) => {
+      this.originalInfo.apply(console, args);
+      if (!this.isLogging) {
+        const message = this.formatConsoleArgs(args);
+        void this.log('info', message, 'console.info');
+      }
+    };
+    
+    // Interceptar console.debug
+    console.debug = (...args: any[]) => {
+      this.originalDebug.apply(console, args);
+      if (!this.isLogging) {
+        const message = this.formatConsoleArgs(args);
+        void this.log('debug', message, 'console.debug');
+      }
+    };
+  }
+  
+  /**
+   * Formatea los argumentos de console para crear un mensaje legible
+   */
+  private formatConsoleArgs(args: any[]): string {
+    return args.map(arg => {
+      if (arg instanceof Error) {
+        return `${arg.message}${arg.stack ? '\n' + arg.stack : ''}`;
+      } else if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    }).join(' ');
+  }
+  
+  /**
    * Registra un mensaje en los logs
    */
   private async log(level: LogLevel, message: string, context?: string, data?: any) {
-    // Log en consola (siempre mostrar errores y warnings, incluso en producción)
-    const isDev = import.meta.env.DEV;
-    const shouldLogToConsole = isDev || level === 'error' || level === 'warn';
-    
-    if (shouldLogToConsole) {
-      const logMethod = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
-      logMethod(`[${level.toUpperCase()}]${context ? ` [${context}]` : ''} ${message}`, data || '');
+    // Evitar recursión infinita
+    if (this.isLogging) {
+      return;
     }
     
-    // Construir el mensaje completo con datos adicionales
-    let fullMessage = message;
-    if (data) {
-      try {
-        fullMessage += '\n' + JSON.stringify(data, null, 2);
-      } catch (e) {
-        fullMessage += '\n[Data serialization failed]';
-      }
-    }
+    this.isLogging = true;
     
-    // Enviar al backend para guardar en archivo
     try {
-      await invoke('log_frontend_error', {
-        level,
-        message: fullMessage,
-        context: context || undefined,
-      });
-    } catch (error) {
-      // Si falla el logging, solo mostrar en consola
-      console.error('Failed to log to backend:', error);
+      let fullMessage = message;
+      if (data) {
+        try {
+          fullMessage += '\n' + JSON.stringify(data, null, 2);
+        } catch (e) {
+          fullMessage += '\n[Data serialization failed]';
+        }
+      }
+      
+      try {
+        await invoke('log_frontend_error', {
+          level,
+          message: fullMessage,
+          context: context || undefined,
+        });
+      } catch (error) {
+        this.originalError('Failed to log to backend:', error);
+      }
+    } finally {
+      this.isLogging = false;
     }
   }
   

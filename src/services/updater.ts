@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { UpdateState, UpdateProgress } from '@/types/updater';
+import { logger } from '@/utils/logger';
 
 export interface UpdateInfo {
   version: string;
@@ -18,8 +19,8 @@ export class UpdaterService {
     try {
       return await invoke<UpdateState>('get_update_state');
     } catch (error) {
-      console.error('Error getting update state:', error);
-      throw error; // No usar fallback, el backend siempre debe responder
+      void logger.error('Error getting update state', error, 'UpdaterService');
+      throw error;
     }
   }
 
@@ -53,7 +54,7 @@ export class UpdaterService {
         message: result
       };
     } catch (error) {
-      console.error('Error downloading update:', error);
+      void logger.error('Error downloading update', error, 'UpdaterService');
       return {
         success: false,
         message: 'Error al descargar la actualización'
@@ -94,7 +95,7 @@ export class UpdaterService {
       const state = await this.getUpdateState();
       return state.current_version;
     } catch (error) {
-      console.error('Error getting current version:', error);
+      void logger.error('Error getting current version', error, 'UpdaterService');
       try {
         const resp = await fetch('/package.json');
         if (resp.ok) {
@@ -201,7 +202,7 @@ export class UpdaterService {
       // Verificar cada 30 minutos (en lugar de 6 horas)
       return minutesDiff >= 30;
     } catch (error) {
-      console.error('Error checking if should update:', error);
+      void logger.error('Error checking if should update', error, 'UpdaterService');
       return true;
     }
   }

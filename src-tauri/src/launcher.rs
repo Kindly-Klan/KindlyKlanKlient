@@ -115,7 +115,6 @@ impl MinecraftLauncher {
         let natives_dir = version_dir.join("natives");
         fs::create_dir_all(&natives_dir).await?;
 
-        // Download version manifest
         let version_response = reqwest::get(&version.url).await?;
         let version_data = version_response.text().await?;
         let version_file = version_dir.join(format!("{}.json", version.id));
@@ -153,7 +152,6 @@ impl MinecraftLauncher {
             out.write_all(&bytes)?;
         }
 
-        // Download libraries for Windows
         let os_name = "windows";
         for lib in &version_json.libraries {
             if !crate::versions::is_library_allowed(lib, os_name) { continue; }
@@ -196,7 +194,6 @@ impl MinecraftLauncher {
 
             let asset_index_json: AssetIndexJson = serde_json::from_str(&index_data)?;
 
-            // Download missing asset objects in chunks
             let mut missing_assets = Vec::new();
             for (_key, obj) in &asset_index_json.objects {
                 let hash_prefix = &obj.hash[0..2];
@@ -373,42 +370,33 @@ pub fn get_total_ram_mb() -> anyhow::Result<u32> {
     Ok(4096)
 }
 
-/// Determina la versión de Java requerida según la versión de Minecraft
 pub fn get_required_java_version_for_minecraft(mc_version: &str) -> u8 {
-    // Parsear la versión de Minecraft
     let version_parts: Vec<&str> = mc_version.split('.').collect();
     
     if version_parts.len() < 2 {
-        return 8; // Por defecto Java 8
+        return 8;
     }
     
     let major = version_parts.get(0).and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
     let minor = version_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
     let patch = version_parts.get(2).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
     
-    // Minecraft 1.20.5+ requiere Java 21
     if major == 1 && (minor > 20 || (minor == 20 && patch >= 5)) {
         return 21;
     }
     
-    // Minecraft 1.18 - 1.20.4 requiere Java 17
     if major == 1 && minor >= 18 && minor <= 20 {
         return 17;
     }
     
-    // Minecraft 1.17.x requiere Java 16
     if major == 1 && minor == 17 {
         return 16;
     }
-    
-    // Minecraft < 1.17 requiere Java 8
     8
 }
 
-/// Busca o instala automáticamente el ejecutable de Java requerido para una versión de Minecraft
 #[allow(dead_code)]
 pub async fn find_java_executable() -> Result<String, String> {
-    // Primero intentar encontrar Java en rutas comunes del sistema
     let common_paths = [
         "java",
         "/usr/bin/java",
@@ -480,19 +468,15 @@ pub async fn find_or_install_java_for_minecraft(mc_version: &str) -> Result<Stri
         .join(if cfg!(target_os = "windows") { "java.exe" } else { "java" });
     
     if java_path.exists() {
-        log::info!("✅ Java {} encontrado en: {}", required_java_version, java_path.display());
         return Ok(java_path.to_string_lossy().to_string());
     }
     
     log::warn!("⚠️  Java {} no encontrado, se requiere para Minecraft {}", required_java_version, mc_version);
     log::info!("🔽 Descargando Java {} automáticamente...", required_java_version);
     
-    // Descargar Java automáticamente sin UI
     download_java_silent(required_java_version).await?;
     
-    // Verificar que se instaló correctamente
     if java_path.exists() {
-        log::info!("✅ Java {} descargado e instalado correctamente", required_java_version);
         return Ok(java_path.to_string_lossy().to_string());
     }
     
@@ -531,7 +515,7 @@ async fn download_java_silent(java_version: u8) -> Result<(), String> {
         version_str, os, arch
     );
     
-    log::info!("📥 Descargando Java {} desde: {}", version_str, jre_url);
+    log::info!("Downloading Java {} from: {}", version_str, jre_url);
     
     let client = reqwest::Client::new();
     let response = client
@@ -553,9 +537,6 @@ async fn download_java_silent(java_version: u8) -> Result<(), String> {
     tokio::fs::write(&temp_file, &bytes).await
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
     
-    log::info!("📦 Extrayendo Java {}...", version_str);
-    
-    // Extraer el archivo
     if java_dir.exists() {
         let _ = std::fs::remove_dir_all(&java_dir);
     }
@@ -618,7 +599,7 @@ async fn download_java_silent(java_version: u8) -> Result<(), String> {
     
     let _ = std::fs::remove_file(&temp_file);
     
-    log::info!("✅ Java {} instalado correctamente", version_str);
+    log::info!("Java {} installed successfully", version_str);
     Ok(())
 }
 
@@ -642,12 +623,6 @@ fn get_java_path_from_env() -> String {
         })
 }
 
-/// Builds the classpath FROM THE VERSION JSON, respecting `include_in_classpath` field
-/// This is the CORRECT way to build the classpath, like Modrinth does it
-/// IMPORTANT: Handles `inheritsFrom` to include base Minecraft libraries (like LWJGL)
-/// IMPORTANT: Deduplicates by artifact ID (groupId:artifactId:classifier) to prevent version conflicts
-/// Example: Fabric's asm-9.9 overrides vanilla MC's asm-9.6 (same artifact ID without classifier)
-/// Example: lwjgl-tinyfd:natives-windows and lwjgl-tinyfd are kept separate (different classifiers)
 pub fn build_minecraft_classpath_from_json(instance_dir: &Path, version_json_path: &Path) -> Result<String, String> {
     let json_content = std::fs::read_to_string(version_json_path)
         .map_err(|e| format!("Failed to read version JSON: {}", e))?;
@@ -847,11 +822,13 @@ fn maven_to_path(maven_coords: &str) -> Result<String, String> {
 }
 
 /// Legacy function for backward compatibility - DO NOT USE FOR NEW CODE
+#[allow(dead_code)]
 pub fn build_minecraft_classpath(instance_dir: &Path) -> Result<String, String> {
 	build_minecraft_classpath_excluding(instance_dir, &std::collections::HashSet::new())
 }
 
 /// Legacy function for backward compatibility - DO NOT USE FOR NEW CODE
+#[allow(dead_code)]
 pub fn build_minecraft_classpath_excluding(instance_dir: &Path, exclude_jars: &std::collections::HashSet<String>) -> Result<String, String> {
 	let mut jars: Vec<String> = Vec::new();
 	
@@ -867,6 +844,7 @@ pub fn build_minecraft_classpath_excluding(instance_dir: &Path, exclude_jars: &s
 }
 
 
+#[allow(dead_code)]
 fn collect_jars_recursively_excluding(dir: &Path, out: &mut Vec<String>, exclude_jars: &std::collections::HashSet<String>) -> Result<(), String> {
 	for entry in walkdir::WalkDir::new(dir) {
 		let entry = entry.map_err(|e| e.to_string())?;
@@ -916,8 +894,6 @@ fn collect_jars_recursively_excluding(dir: &Path, out: &mut Vec<String>, exclude
 						.to_string();
 					
 					out.push(normalized_path);
-				} else {
-					log::debug!("🚫 Excluding JAR from classpath: {}", p.display());
 				}
 			}
 		}
@@ -927,36 +903,20 @@ fn collect_jars_recursively_excluding(dir: &Path, out: &mut Vec<String>, exclude
 
 
 pub fn select_main_class(instance_dir: &Path, version_id: Option<&str>) -> String {
-    // Si tenemos el version_id exacto, usarlo directamente
     if let Some(vid) = version_id {
         let versions_dir = instance_dir.join("versions");
         let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
-        
-        log::info!("🔍 Buscando mainClass en JSON: {}", json_path.display());
         
         if json_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&json_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
-                        log::info!("✅ Main class encontrada en {}: {}", vid, main_class);
                         return main_class.to_string();
-                    } else {
-                        log::warn!("⚠️  mainClass no encontrado en JSON: {}", json_path.display());
                     }
-                } else {
-                    log::warn!("⚠️  Error al parsear JSON: {}", json_path.display());
                 }
-            } else {
-                log::warn!("⚠️  Error al leer JSON: {}", json_path.display());
             }
-        } else {
-            log::warn!("⚠️  JSON no encontrado: {}", json_path.display());
         }
-    } else {
-        log::info!("ℹ️  No hay version_id, usando fallback para buscar mainClass");
     }
-    
-    // Fallback: buscar archivos JSON en versions/ que no sean versiones vanilla
     let versions_dir = instance_dir.join("versions");
     if versions_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&versions_dir) {
@@ -970,15 +930,11 @@ pub fn select_main_class(instance_dir: &Path, version_id: Option<&str>) -> Strin
                         if let Ok(content) = std::fs::read_to_string(&json_path) {
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                                 if let Some(main_class) = json.get("mainClass").and_then(|v| v.as_str()) {
-                                    // Detectar el tipo de mod loader por el mainClass
                                     if main_class.contains("neoforge") || main_class.contains("neoforged") {
-                                        log::info!("🔨 Detected NeoForge mod loader: {}", main_class);
                                         return main_class.to_string();
                                     } else if main_class.contains("minecraftforge") || main_class.contains("forge") {
-                                        log::info!("⚒️  Detected Forge mod loader: {}", main_class);
                                         return main_class.to_string();
                                     } else if main_class.contains("fabricmc") || main_class.contains("fabric") {
-                                        log::info!("🧵 Detected Fabric mod loader: {}", main_class);
                                         return main_class.to_string();
                                     }
                                 }
@@ -990,73 +946,55 @@ pub fn select_main_class(instance_dir: &Path, version_id: Option<&str>) -> Strin
         }
     }
     
-    // Último fallback: detectar por directorios de libraries
     let neoforge_loader_dir = instance_dir.join("libraries").join("net").join("neoforged");
     if neoforge_loader_dir.exists() { 
-        log::info!("🔨 Detected NeoForge mod loader (fallback)");
         return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string(); 
     }
     
     let forge_loader_dir = instance_dir.join("libraries").join("net").join("minecraftforge");
     if forge_loader_dir.exists() { 
-        log::info!("⚒️  Detected Forge mod loader (fallback)");
         return "cpw.mods.bootstraplauncher.BootstrapLauncher".to_string();
     }
     
 	let fabric_loader_dir = instance_dir.join("libraries").join("net").join("fabricmc");
     if fabric_loader_dir.exists() { 
-        log::info!("🧵 Detected Fabric mod loader (fallback)");
         return "net.fabricmc.loader.impl.launch.knot.KnotClient".to_string();
     }
     
-    log::info!("🎮 Using vanilla Minecraft");
     "net.minecraft.client.main.Main".to_string()
 }
 
-/// Extrae argumentos JVM adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
-/// version_id: ID exacto del JSON generado por el instalador (ej. "neoforge-21.8.51")
-/// mod_loader_type: Tipo de mod loader desde metadata ("neoforge", "forge", "fabric")
 pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mod_loader_type: Option<&str>, _mod_loader_version: Option<&str>) -> Vec<String> {
     let mut additional_args = Vec::new();
     let loader_type = mod_loader_type;
     
-    // Si tenemos el version_id exacto, usarlo directamente
     let selected_json = if let Some(vid) = version_id {
         let versions_dir = instance_dir.join("versions");
         let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
         
-        log::info!("🔍 Buscando JSON del mod loader en: {}", json_path.display());
-        
         if json_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&json_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    log::info!("✅ JSON del mod loader cargado: {} (id: {})", vid, json.get("id").and_then(|v| v.as_str()).unwrap_or("unknown"));
                     Some((json_path, json))
                 } else {
-                    log::warn!("⚠️  Error al parsear JSON: {}", json_path.display());
                     None
                 }
             } else {
-                log::warn!("⚠️  Error al leer JSON: {}", json_path.display());
                 None
             }
         } else {
-            log::warn!("⚠️  JSON del mod loader no encontrado: {}", json_path.display());
             None
         }
     } else {
-        log::info!("ℹ️  No hay version_id, usando fallback para buscar JSON");
         None
     };
     
-    // Si no encontramos el JSON con version_id, buscar en el directorio (fallback)
     let selected_json = selected_json.or_else(|| {
         let versions_dir = instance_dir.join("versions");
         if !versions_dir.exists() {
             return None;
         }
         
-        // Buscar el JSON específico del mod loader
         let mut candidate_json: Option<(std::path::PathBuf, serde_json::Value)> = None;
         let mut fallback_json: Option<(std::path::PathBuf, serde_json::Value)> = None;
         
@@ -1071,7 +1009,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                     if json_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&json_path) {
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                                // Verificar que sea un mod loader (tiene mainClass de mod loader o arguments.jvm)
                                 let is_mod_loader = json.get("mainClass")
                                     .and_then(|v| v.as_str())
                                     .map(|mc| mc.contains("forge") || mc.contains("neoforge") || mc.contains("fabric"))
@@ -1081,7 +1018,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                                         .is_some();
                                 
                                 if is_mod_loader {
-                                    // Verificar si este JSON coincide con el mod loader esperado
                                     let json_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("");
                                     let matches_loader = if let Some(loader) = loader_type {
                                         match loader {
@@ -1201,7 +1137,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                                     if path.exists() {
                                         valid_paths.push(normalized_path);
                                     } else {
-                                        log::warn!("⚠️  Module path JAR not found: {}", normalized_path);
                                     }
                                 }
                                 
@@ -1209,7 +1144,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                                     additional_args.pop();
                                     additional_args.push("-p".to_string());
                                     let final_module_path = valid_paths.join(classpath_separator);
-                                    log::info!("📦 Normalized module path: {}", final_module_path);
                                     additional_args.push(final_module_path);
                                 }
                                 continue;
@@ -1277,8 +1211,6 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
                 }
                 _ => {}
             }
-        } else {
-            log::warn!("⚠️  No mod loader type available, no JVM arguments added");
         }
     }
     
@@ -1289,11 +1221,9 @@ pub fn get_mod_loader_jvm_args(instance_dir: &Path, version_id: Option<&str>, mo
     additional_args
 }
 
-/// Extrae argumentos de juego adicionales del JSON del mod loader (Forge/NeoForge/Fabric)
 pub fn get_mod_loader_game_args(instance_dir: &Path, version_id: Option<&str>) -> Vec<String> {
     let mut game_args = Vec::new();
     
-    // Si tenemos el version_id exacto, usarlo directamente
     let selected_json = if let Some(vid) = version_id {
         let versions_dir = instance_dir.join("versions");
         let json_path = versions_dir.join(vid).join(format!("{}.json", vid));
@@ -1323,10 +1253,6 @@ pub fn get_mod_loader_game_args(instance_dir: &Path, version_id: Option<&str>) -
                         if let Some(arg_str) = arg.as_str() {
                             game_args.push(arg_str.to_string());
                         }
-                    }
-                    
-                    if !game_args.is_empty() {
-                        log::info!("✅ Extracted {} game arguments from mod loader JSON", game_args.len());
                     }
                 }
             }

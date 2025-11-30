@@ -1,19 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AccessCheck } from '@/types/whitelist';
+import { logger } from '@/utils/logger';
 
 export class WhitelistService {
-  /**
-   * Check if a username has access to the launcher
-   * Always queries the database directly 
-   */
   static async checkAccess(username: string): Promise<AccessCheck> {
     try {
-      // Always query database directly - no cache
       const result = await invoke<AccessCheck>('check_whitelist_access', { username });
       return result;
     } catch (error) {
-      console.error('Error checking whitelist access:', error);
-      // Return no access on error
+      void logger.error('Error checking whitelist access', error, 'WhitelistService');
       return {
         has_access: false,
         allowed_instances: [],
@@ -22,9 +17,6 @@ export class WhitelistService {
     }
   }
 
-  /**
-   * Get accessible instances for a user
-   */
   static async getAccessibleInstances(username: string, allInstances: any[]): Promise<any[]> {
     try {
       const instanceIds = allInstances.map(instance => instance.id);
@@ -33,29 +25,21 @@ export class WhitelistService {
         allInstances: instanceIds 
       });
 
-      // Filter instances based on accessible IDs
       return allInstances.filter(instance => accessibleIds.includes(instance.id));
     } catch (error) {
-      console.error('Error getting accessible instances:', error);
+      void logger.error('Error getting accessible instances', error, 'WhitelistService');
       return [];
     }
   }
 
-  /**
-   * Clear the whitelist cache (no-op, cache is disabled)
-   */
   static async clearCache(): Promise<void> {
     try {
       await invoke('clear_whitelist_cache');
-      // Cache is disabled - always queries database
     } catch (error) {
-      console.error('Error clearing whitelist cache:', error);
+      void logger.error('Error clearing whitelist cache', error, 'WhitelistService');
     }
   }
 
-  /**
-   * Check if user has access to a specific instance
-   */
   static async hasInstanceAccess(username: string, instanceId: string): Promise<boolean> {
     const accessCheck = await this.checkAccess(username);
     

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { SkinData } from '@/types/skin';
+import { logger } from '@/utils/logger';
 
 interface SkinUploaderProps {
   onUploadSuccess: (skinData: SkinData) => void;
@@ -50,7 +51,7 @@ export const SkinUploader: React.FC<SkinUploaderProps> = ({
       onUploadSuccess(skinData);
 
     } catch (error) {
-      console.error('Error procesando skin:', error);
+      void logger.error('Error processing skin', error, 'SkinUploader');
       onUploadError(error instanceof Error ? error.message : 'Error desconocido');
     } finally {
       setIsProcessing(false);

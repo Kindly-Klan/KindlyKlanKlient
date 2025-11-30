@@ -142,13 +142,10 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
                                     || dir_name_str.starts_with("neoforge-");
                                 
                                 if is_clear_mod_loader {
-                                    log::info!("ℹ️  Found mod loader JSON: {} (id: {})", json_path.display(), json_id);
                                     candidate_json = Some(json_path);
-                                    break; // Priorizar el primero encontrado que sea claramente un mod loader
+                                    break;
                                 } else {
-                                    // Mod loader detectado por mainClass/arguments pero sin ID claro
                                     if fallback_json.is_none() {
-                                        log::info!("ℹ️  Found potential mod loader JSON: {} (id: {})", json_path.display(), json_id);
                                         fallback_json = Some(json_path);
                                     }
                                 }
@@ -160,15 +157,12 @@ fn find_version_json_path(instance_dir: &std::path::Path, minecraft_version: &st
         }
     }
     
-    // Usar el candidato claro primero, o el fallback si no hay candidato
     if let Some(json_path) = candidate_json.or(fallback_json) {
         return Ok(json_path);
     }
     
-    // Fallback: usar el JSON de la versión vanilla
     let vanilla_json = versions_dir.join(minecraft_version).join(format!("{}.json", minecraft_version));
     if vanilla_json.exists() {
-        log::info!("ℹ️  No mod loader found, using vanilla version JSON: {}", vanilla_json.display());
         return Ok(vanilla_json);
     }
     
@@ -192,11 +186,8 @@ async fn launch_minecraft_with_auth(
     let _ = std::fs::create_dir_all(instance_dir.join("libraries"));
     let _ = std::fs::create_dir_all(instance_dir.join("mods"));
     
-    // Buscar el JSON del mod loader o usar el de la versión vanilla
     let version_json_path = find_version_json_path(&instance_dir, minecraft_version)?;
-    log::info!("ℹ️  Using version JSON: {}", version_json_path.display());
     
-    // Extraer el version_id del path del JSON para usarlo en select_main_class
     let version_id = version_json_path
         .parent()
         .and_then(|p| p.file_name())
@@ -228,11 +219,8 @@ async fn launch_minecraft_with_auth(
     
     let mut jvm_args = crate::launcher::build_minecraft_jvm_args(access_token, min_ram, max_ram, &gc_config, &jvm_args_config)?;
     
-    // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
-    // En lib.rs no tenemos el metadata, así que pasamos None y la función intentará detectar desde JSON
     let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(&instance_dir, None, None, None);
     if !mod_loader_jvm_args.is_empty() {
-        log::info!("🔧 Adding {} mod loader JVM arguments", mod_loader_jvm_args.len());
         jvm_args.extend(mod_loader_jvm_args);
     }
     
@@ -261,13 +249,9 @@ async fn launch_minecraft_with_auth(
     mc_args.push("--height".to_string());
     mc_args.push(window_height.to_string());
 
-    // Usar el version_id del JSON encontrado para obtener la main class correcta
     let main_class = crate::launcher::select_main_class(&instance_dir, version_id.as_deref());
     
-    log::info!("🎮 Launching with main class: {}", main_class);
-    log::info!("📦 Classpath length: {} bytes", classpath.len());
-    log::info!("🔧 JVM args: {:?}", jvm_args);
-    log::info!("🎯 MC args: {:?}", mc_args);
+    log::info!("Launching instance {} with main class: {}", instance_id, main_class);
     
     let mut command = Command::new(java_path);
     #[cfg(target_os = "windows")]
@@ -276,7 +260,6 @@ async fn launch_minecraft_with_auth(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     
-    // Capturar stdout y stderr para debugging
     command
         .args(&jvm_args)
         .arg("-cp")
@@ -294,15 +277,12 @@ async fn launch_minecraft_with_auth(
     
     if let Some(state) = app_handle.try_state::<Arc<Mutex<HashMap<String, u32>>>>() {
         if let Ok(mut processes) = state.lock() {
-            log::info!("💾 Guardando proceso para instancia: {} con PID: {}", instance_id, pid);
             processes.insert(instance_id.to_string(), pid);
-            log::info!("📋 Procesos activos: {:?}", processes.keys().collect::<Vec<_>>());
         }
     } else {
-        log::warn!("⚠️ No se pudo obtener el estado de procesos");
+        log::warn!("Failed to get processes state");
     }
     
-    // Capturar stdout
     if let Some(stdout) = child.stdout.take() {
         use std::io::{BufRead, BufReader};
         std::thread::spawn(move || {
@@ -334,7 +314,7 @@ async fn launch_minecraft_with_auth(
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
-                log::info!("🎮 Minecraft exited with status: {:?}", status);
+                log::info!("Minecraft exited for instance {} with status: {:?}", instance_id_owned, status.code());
                 if let Ok(mut processes) = processes_state.lock() {
                     processes.remove(&instance_id_owned);
                 }
@@ -345,7 +325,7 @@ async fn launch_minecraft_with_auth(
                 }));
             }
             Err(e) => {
-                log::error!("❌ Error waiting for Minecraft: {}", e);
+                log::error!("Error waiting for Minecraft process {}: {}", instance_id_owned, e);
                 if let Ok(mut processes) = processes_state.lock() {
                     processes.remove(&instance_id_owned);
                 }

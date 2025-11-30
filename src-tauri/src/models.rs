@@ -85,15 +85,31 @@ pub struct InstanceAsset {
     pub target: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateState {
+    #[serde(default)]
     pub last_check: String,
+    #[serde(default)]
     pub available_version: Option<String>,
+    #[serde(default = "default_current_version")]
     pub current_version: String,
+    #[serde(default)]
     pub downloaded: bool,
+    #[serde(default)]
     pub download_ready: bool,
     #[serde(default)]
     pub manual_download: bool,
+}
+
+fn default_current_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+impl UpdateState {
+    pub fn with_current_version(mut self) -> Self {
+        self.current_version = env!("CARGO_PKG_VERSION").to_string();
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,6 +314,84 @@ pub struct ForgeVersion {
 pub struct NeoForgeVersion {
     pub version: String,
     pub minecraft_version: String,
+}
+
+// Configuración unificada del launcher
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LauncherConfig {
+    #[serde(default)]
+    pub update_state: UpdateState,
+    #[serde(default)]
+    pub ram_config: RamConfig,
+    #[serde(default)]
+    pub advanced_config: AdvancedConfig,
+    #[serde(default)]
+    pub last_updated: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RamConfig {
+    #[serde(default = "default_min_ram")]
+    pub min_ram: f64,
+    #[serde(default = "default_max_ram")]
+    pub max_ram: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvancedConfig {
+    #[serde(default)]
+    pub jvm_args: String,
+    #[serde(default = "default_gc")]
+    pub garbage_collector: String,
+    #[serde(default = "default_width")]
+    pub window_width: u32,
+    #[serde(default = "default_height")]
+    pub window_height: u32,
+}
+
+fn default_min_ram() -> f64 { 2.0 }
+fn default_max_ram() -> f64 { 4.0 }
+fn default_gc() -> String { "G1".to_string() }
+fn default_width() -> u32 { 1280 }
+fn default_height() -> u32 { 720 }
+
+impl Default for LauncherConfig {
+    fn default() -> Self {
+        let real_version = env!("CARGO_PKG_VERSION").to_string();
+        Self {
+            update_state: UpdateState {
+                last_check: String::new(),
+                available_version: None,
+                current_version: real_version,
+                downloaded: false,
+                download_ready: false,
+                manual_download: false,
+            },
+            ram_config: RamConfig::default(),
+            advanced_config: AdvancedConfig::default(),
+            last_updated: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+impl Default for RamConfig {
+    fn default() -> Self {
+        Self {
+            min_ram: 2.0,
+            max_ram: 4.0,
+        }
+    }
+}
+
+impl Default for AdvancedConfig {
+    fn default() -> Self {
+        Self {
+            jvm_args: String::new(),
+            garbage_collector: "G1".to_string(),
+            window_width: 1280,
+            window_height: 720,
+        }
+    }
 }
 
 

@@ -8,6 +8,7 @@ use reqwest;
 use tauri::{AppHandle, State};
 use tauri::Emitter;
 use crate::UpdateState;
+use crate::models::{LauncherConfig, RamConfig, AdvancedConfig};
 use crate::{DistributionManifest, InstanceManifest};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -479,6 +480,13 @@ pub async fn install_update(app_handle: AppHandle) -> Result<String, String> {
     }
 }
 
+fn launcher_config_path() -> std::path::PathBuf {
+    let base = std::env::var("USERPROFILE")
+        .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
+        .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
+    base.join("launcher.json")
+}
+
 fn update_state_path() -> std::path::PathBuf {
     let base = std::env::var("USERPROFILE")
         .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
@@ -486,11 +494,97 @@ fn update_state_path() -> std::path::PathBuf {
     base.join("update_state.json")
 }
 
-async fn save_update_state(state: &UpdateState) -> Result<(), String> {
-    let path = update_state_path();
-    if let Some(dir) = path.parent() { tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?; }
-    let data = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+async fn load_launcher_config() -> LauncherConfig {
+    let path = launcher_config_path();
+    
+    // Intentar cargar desde launcher.json
+    if let Ok(text) = tokio::fs::read_to_string(&path).await {
+        if let Ok(mut config) = serde_json::from_str::<LauncherConfig>(&text) {
+            // Asegurar que la versión actual sea correcta
+            let real_version = env!("CARGO_PKG_VERSION").to_string();
+            config.update_state.current_version = real_version;
+            return config;
+        }
+    }
+    
+    // Si no existe, intentar migrar desde archivos antiguos
+    let mut config = LauncherConfig::default();
+    
+    // Migrar update_state desde update_state.json
+    if let Some(old_state) = read_update_state_file().await {
+        config.update_state = old_state;
+        let real_version = env!("CARGO_PKG_VERSION").to_string();
+        config.update_state.current_version = real_version;
+    }
+    
+    // Migrar ram_config desde ram_config.json
+    if let Ok((min_ram, max_ram)) = load_ram_config_legacy().await {
+        config.ram_config = RamConfig { min_ram, max_ram };
+    }
+    
+    // Migrar advanced_config desde advanced_config.json
+    if let Ok((jvm_args, gc, width, height)) = load_advanced_config_legacy().await {
+        config.advanced_config = AdvancedConfig {
+            jvm_args,
+            garbage_collector: gc,
+            window_width: width,
+            window_height: height,
+        };
+    }
+    
+    // Guardar el config unificado
+    let _ = save_launcher_config_internal(&config).await;
+    
+    config
+}
+
+async fn save_launcher_config_internal(config: &LauncherConfig) -> Result<(), String> {
+    let path = launcher_config_path();
+    if let Some(dir) = path.parent() {
+        tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
+    }
+    
+    let mut config_to_save = config.clone();
+    config_to_save.last_updated = chrono::Utc::now().to_rfc3339();
+    
+    let data = serde_json::to_string_pretty(&config_to_save).map_err(|e| e.to_string())?;
     tokio::fs::write(&path, data).await.map_err(|e| e.to_string())
+}
+
+async fn load_ram_config_legacy() -> Result<(f64, f64), String> {
+    use std::fs;
+    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
+    let config_file = config_dir.join("ram_config.json");
+    if !config_file.exists() {
+        return Err("File not found".to_string());
+    }
+    let config_content = fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config file: {}", e))?;
+    let config: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("Failed to parse config file: {}", e))?;
+    let min_ram = config["min_ram"].as_f64().unwrap_or(2.0);
+    let max_ram = config["max_ram"].as_f64().unwrap_or(4.0);
+    Ok((min_ram, max_ram))
+}
+
+async fn load_advanced_config_legacy() -> Result<(String, String, u32, u32), String> {
+    use std::fs;
+    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
+    let config_file = config_dir.join("advanced_config.json");
+    if !config_file.exists() {
+        return Err("File not found".to_string());
+    }
+    let config_content = fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config file: {}", e))?;
+    let config: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("Failed to parse config file: {}", e))?;
+    let jvm_args = config["jvm_args"].as_str().unwrap_or("").to_string();
+    let garbage_collector = config["garbage_collector"].as_str().unwrap_or("G1").to_string();
+    let window_width = config["window_width"].as_u64().unwrap_or(1280) as u32;
+    let window_height = config["window_height"].as_u64().unwrap_or(720) as u32;
+    Ok((jvm_args, garbage_collector, window_width, window_height))
+}
+
+async fn save_update_state(state: &UpdateState) -> Result<(), String> {
+    let mut config = load_launcher_config().await;
+    config.update_state = state.clone();
+    save_launcher_config_internal(&config).await
 }
 
 async fn read_update_state_file() -> Option<UpdateState> {
@@ -500,15 +594,11 @@ async fn read_update_state_file() -> Option<UpdateState> {
 }
 
 async fn load_update_state() -> UpdateState {
+    let config = load_launcher_config().await;
     let real_version = env!("CARGO_PKG_VERSION").to_string();
-    if let Some(mut state) = read_update_state_file().await {
-        // Always use the real version from Cargo.toml, not the saved one
-        state.current_version = real_version;
-        // Si es un estado antiguo sin manual_download, establecerlo a false por defecto
-        // serde debería manejar esto, pero por si acaso:
-        return state;
-    }
-    UpdateState { last_check: String::new(), available_version: None, current_version: real_version, downloaded: false, download_ready: false, manual_download: false }
+    let mut state = config.update_state;
+    state.current_version = real_version;
+    state
 }
 
 #[tauri::command]
@@ -749,12 +839,11 @@ pub async fn download_instance_assets(
             
             for result in results {
                 if let Err(e) = result {
-                    log::warn!("⚠️  Error descargando mod: {}", e);
+                    log::warn!("Error downloading mod: {}", e);
                 }
             }
         }
         
-        // Limpiar mods: solo borrar si estaba en el historial pero ya no está en el manifest actual
         if let Some(history) = &previous_history {
             let mods_dir = instance_dir.join("mods");
             if mods_dir.exists() {
@@ -858,7 +947,7 @@ pub async fn download_instance_assets(
             
             for result in results {
                 if let Err(e) = result {
-                    log::warn!("⚠️  Error descargando config: {}", e);
+                    log::warn!("Error downloading config: {}", e);
                 }
             }
         }
@@ -1124,66 +1213,38 @@ pub async fn save_advanced_config(
     window_width: u32,
     window_height: u32
 ) -> Result<(), String> {
-    use std::fs;
-    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
-    fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config directory: {}", e))?;
-    let config_file = config_dir.join("advanced_config.json");
-    let config = serde_json::json!({
-        "jvm_args": jvm_args,
-        "garbage_collector": garbage_collector,
-        "window_width": window_width,
-        "window_height": window_height,
-        "last_updated": chrono::Utc::now().to_rfc3339()
-    });
-    fs::write(&config_file, serde_json::to_string_pretty(&config).unwrap())
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
-    Ok(())
+    let mut config = load_launcher_config().await;
+    config.advanced_config = AdvancedConfig {
+        jvm_args,
+        garbage_collector,
+        window_width,
+        window_height,
+    };
+    save_launcher_config_internal(&config).await
 }
 
 #[tauri::command]
 pub async fn load_advanced_config() -> Result<(String, String, u32, u32), String> {
-    use std::fs;
-    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
-    let config_file = config_dir.join("advanced_config.json");
-    if !config_file.exists() {
-        return Ok((String::new(), "G1".to_string(), 1280, 720));
-    }
-    let config_content = fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config file: {}", e))?;
-    let config: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("Failed to parse config file: {}", e))?;
-    let jvm_args = config["jvm_args"].as_str().unwrap_or("").to_string();
-    let garbage_collector = config["garbage_collector"].as_str().unwrap_or("G1").to_string();
-    let window_width = config["window_width"].as_u64().unwrap_or(1280) as u32;
-    let window_height = config["window_height"].as_u64().unwrap_or(720) as u32;
-    Ok((jvm_args, garbage_collector, window_width, window_height))
+    let config = load_launcher_config().await;
+    Ok((
+        config.advanced_config.jvm_args,
+        config.advanced_config.garbage_collector,
+        config.advanced_config.window_width,
+        config.advanced_config.window_height,
+    ))
 }
 
 #[tauri::command]
 pub async fn save_ram_config(min_ram: f64, max_ram: f64) -> Result<(), String> {
-    use std::fs;
-    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
-    fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config directory: {}", e))?;
-    let config_file = config_dir.join("ram_config.json");
-    let config = serde_json::json!({
-        "min_ram": min_ram,
-        "max_ram": max_ram,
-        "last_updated": chrono::Utc::now().to_rfc3339()
-    });
-    fs::write(&config_file, serde_json::to_string_pretty(&config).unwrap())
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
-    Ok(())
+    let mut config = load_launcher_config().await;
+    config.ram_config = RamConfig { min_ram, max_ram };
+    save_launcher_config_internal(&config).await
 }
 
 #[tauri::command]
 pub async fn load_ram_config() -> Result<(f64, f64), String> {
-    use std::fs;
-    let config_dir = dirs::config_dir().ok_or("Could not find config directory")?.join("KindlyKlanKlient");
-    let config_file = config_dir.join("ram_config.json");
-    if !config_file.exists() { return Ok((2.0, 4.0)); }
-    let config_content = fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config file: {}", e))?;
-    let config: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("Failed to parse config file: {}", e))?;
-    let min_ram = config["min_ram"].as_f64().unwrap_or(2.0);
-    let max_ram = config["max_ram"].as_f64().unwrap_or(4.0);
-    Ok((min_ram, max_ram))
+    let config = load_launcher_config().await;
+    Ok((config.ram_config.min_ram, config.ram_config.max_ram))
 }
 
 #[tauri::command]
@@ -1258,11 +1319,9 @@ pub async fn restart_application() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn get_forge_versions(minecraft_version: String) -> Result<Vec<ForgeVersion>, String> {
-    log::info!("🔍 Obteniendo versiones de Forge para Minecraft {}", minecraft_version);
     
     let client = reqwest::Client::new();
     
-    // Intentar obtener desde el API de maven-metadata.xml
     let url = format!(
         "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
     );
@@ -1285,7 +1344,7 @@ pub async fn get_forge_versions(minecraft_version: String) -> Result<Vec<ForgeVe
             }
         }
         Err(e) => {
-            log::error!("❌ Error al obtener versiones de Forge: {}", e);
+            log::error!("Error getting Forge versions: {}", e);
             Err(format!("Error de red: {}", e))
         }
     }
@@ -1293,16 +1352,13 @@ pub async fn get_forge_versions(minecraft_version: String) -> Result<Vec<ForgeVe
 
 #[tauri::command]
 pub async fn get_recommended_forge_version(minecraft_version: String) -> Result<String, String> {
-    log::info!("🔍 Obteniendo versión recomendada de Forge para Minecraft {}", minecraft_version);
     
     let versions = get_forge_versions(minecraft_version.clone()).await?;
     
-    // Buscar la primera versión recomendada
     if let Some(recommended) = versions.iter().find(|v| v.recommended) {
         return Ok(recommended.version.clone());
     }
     
-    // Si no hay recomendada, devolver la última
     if let Some(latest) = versions.first() {
         return Ok(latest.version.clone());
     }
@@ -1360,7 +1416,6 @@ fn extract_xml_tag_content(line: &str, tag: &str) -> Option<String> {
 
 #[tauri::command]
 pub async fn get_neoforge_versions(minecraft_version: String) -> Result<Vec<NeoForgeVersion>, String> {
-    log::info!("🔍 Obteniendo versiones de NeoForge para Minecraft {}", minecraft_version);
     
     // NeoForge solo está disponible para Minecraft 1.20.1+
     let version_parts: Vec<&str> = minecraft_version.split('.').collect();
@@ -1393,7 +1448,7 @@ pub async fn get_neoforge_versions(minecraft_version: String) -> Result<Vec<NeoF
             }
         }
         Err(e) => {
-            log::error!("❌ Error al obtener versiones de NeoForge: {}", e);
+            log::error!("Error getting NeoForge versions: {}", e);
             Err(format!("Error de red: {}", e))
         }
     }
@@ -1401,7 +1456,6 @@ pub async fn get_neoforge_versions(minecraft_version: String) -> Result<Vec<NeoF
 
 #[tauri::command]
 pub async fn get_recommended_neoforge_version(minecraft_version: String) -> Result<String, String> {
-    log::info!("🔍 Obteniendo versión recomendada de NeoForge para Minecraft {}", minecraft_version);
     
     let versions = get_neoforge_versions(minecraft_version.clone()).await?;
     
@@ -1492,7 +1546,6 @@ pub async fn log_frontend_error(level: String, message: String, context: Option<
     let context_str = context.map(|c| format!(" [{}]", c)).unwrap_or_default();
     let log_line = format!("[{}] {}{}: {}\n", timestamp, level.to_uppercase(), context_str, message);
     
-    // Escribir al archivo
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -1502,7 +1555,6 @@ pub async fn log_frontend_error(level: String, message: String, context: Option<
     file.write_all(log_line.as_bytes())
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
     
-    // También loggear en el sistema de logs de Rust
     match level.to_lowercase().as_str() {
         "error" => log::error!("[Frontend]{} {}", context_str, message),
         "warn" => log::warn!("[Frontend]{} {}", context_str, message),
@@ -1724,7 +1776,7 @@ pub async fn download_modrinth_mod_with_dependencies(
     loader: String,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!("📦 Downloading mod {} with dependencies for instance {}", version_id, instance_id);
+    log::info!("Downloading mod {} with dependencies for instance {}", version_id, instance_id);
 
     // Obtener información de la versión directamente por ID
     let version = crate::modrinth::get_version_by_id(&version_id)
@@ -1751,8 +1803,6 @@ pub async fn download_modrinth_mod_with_dependencies(
                 if let Some(dep_version_id) = &dep.version_id {
                     dependencies_to_download.push((project_id.clone(), dep_version_id.clone()));
                 } else {
-                    // Si no hay version_id, buscar la última versión compatible del proyecto
-                    log::info!("🔍 Dependency {} doesn't have version_id, fetching latest compatible version", project_id);
                     match crate::modrinth::get_project_versions(project_id, Some(&minecraft_version), Some(&loader)).await {
                         Ok(dep_versions) => {
                             if let Some(latest_dep_version) = dep_versions.first() {
@@ -1768,21 +1818,16 @@ pub async fn download_modrinth_mod_with_dependencies(
         }
     }
 
-    // Descargar dependencias requeridas
     for (_project_id, dep_version_id) in dependencies_to_download {
-        // Obtener información de la versión de la dependencia
         match crate::modrinth::get_version_by_id(&dep_version_id).await {
             Ok(dep_version) => {
-                // Verificar que la versión sea compatible
                 let is_compatible = dep_version.game_versions.contains(&minecraft_version)
                     && dep_version.loaders.contains(&loader);
 
                 if !is_compatible {
-                    log::warn!("⚠️  Skipping incompatible dependency version: {}", dep_version_id);
                     continue;
                 }
 
-                // Obtener el archivo principal
                 if let Some(primary_file) = dep_version.files.iter().find(|f| f.primary) {
                     let filename = &primary_file.filename;
                     
@@ -1819,11 +1864,9 @@ pub async fn download_modrinth_mod_with_dependencies(
         }
     }
 
-    // Descargar el mod principal
     if let Some(primary_file) = version.files.iter().find(|f| f.primary) {
         let filename = &primary_file.filename;
         
-        log::info!("⬇️  Downloading main mod: {}", filename);
         
         let _ = app_handle.emit("modrinth-download-progress", serde_json::json!({
             "instance_id": instance_id,
@@ -2139,11 +2182,10 @@ pub async fn copy_instance_folders(
         };
 
         if !source_folder.exists() {
-            log::warn!("⚠️  Source folder does not exist: {}", source_folder.display());
+            log::warn!("Source folder does not exist: {}", source_folder.display());
             continue;
         }
 
-        // Emitir progreso
         let _ = app_handle.emit("copy-folders-progress", serde_json::json!({
             "source_instance_id": source_instance_id,
             "target_instance_id": target_instance_id,
@@ -2186,7 +2228,7 @@ pub async fn copy_instance_folders(
             "percentage": 100
         }));
 
-        log::info!("✅ Copied folder: {} -> {}", source_folder.display(), target_folder.display());
+        log::info!("Copied folder: {} -> {}", source_folder.display(), target_folder.display());
     }
 
     Ok(format!("Successfully copied {} folder(s)", copied_count))

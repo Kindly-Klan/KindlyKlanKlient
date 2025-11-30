@@ -97,7 +97,6 @@ pub fn is_library_allowed(lib: &Library, os_name: &str) -> bool {
 
 #[tauri::command]
 pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVersionInfo>, String> {
-    log::info!("🔍 Fetching Minecraft versions from Mojang");
     
     let client = reqwest::Client::new();
     let url = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
@@ -107,7 +106,7 @@ pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVers
         .send()
         .await
         .map_err(|e| {
-            log::error!("❌ Failed to fetch Minecraft versions: {}", e);
+            log::error!("Failed to fetch Minecraft versions: {}", e);
             format!("Failed to fetch Minecraft versions: {}", e)
         })?;
     
@@ -122,11 +121,10 @@ pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVers
         .json()
         .await
         .map_err(|e| {
-            log::error!("❌ Failed to parse Minecraft versions: {}", e);
+            log::error!("Failed to parse Minecraft versions: {}", e);
             format!("Failed to parse Minecraft versions: {}", e)
         })?;
     
-    // Filter only release versions and take the latest 20
     let releases: Vec<crate::models::MinecraftVersionInfo> = manifest
         .versions
         .into_iter()
@@ -134,13 +132,11 @@ pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVers
         .take(20)
         .collect();
     
-    log::info!("✅ Found {} release versions", releases.len());
     Ok(releases)
 }
 
 #[tauri::command]
 pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec<crate::models::FabricLoaderVersion>, String> {
-    log::info!("🔍 Fetching Fabric Loader versions for Minecraft {}", minecraft_version);
     
     let client = reqwest::Client::new();
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{}", minecraft_version);
@@ -150,7 +146,7 @@ pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec
         .send()
         .await
         .map_err(|e| {
-            log::error!("❌ Failed to fetch Fabric Loader versions: {}", e);
+            log::error!("Failed to fetch Fabric Loader versions: {}", e);
             format!("Failed to fetch Fabric Loader versions: {}", e)
         })?;
     
@@ -165,12 +161,10 @@ pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec
         .json()
         .await
         .map_err(|e| {
-            log::error!("❌ Failed to parse Fabric Loader versions: {}", e);
+            log::error!("Failed to parse Fabric Loader versions: {}", e);
             format!("Failed to parse Fabric Loader versions: {}", e)
         })?;
     
-    // Return all versions (not just stable)
-    log::info!("✅ Found {} Fabric Loader versions", versions.len());
     Ok(versions)
 }
 

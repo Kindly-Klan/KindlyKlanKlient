@@ -3,11 +3,9 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
 use serde_json;
 
-// Generate a slugified ID from name with random suffix
 fn generate_instance_id(name: &str) -> String {
     use rand::Rng;
     
-    // Slugify the name
     let slug = name
         .to_lowercase()
         .chars()
@@ -26,7 +24,6 @@ fn generate_instance_id(name: &str) -> String {
         .collect::<Vec<&str>>()
         .join("-");
     
-    // Generate random suffix (5 chars alphanumeric)
     let mut rng = rand::thread_rng();
     let suffix: String = (0..5)
         .map(|_| {
@@ -52,20 +49,17 @@ fn get_local_instances_dir() -> Result<PathBuf, String> {
     Ok(base.join(".kindlyklanklient").join("local_instances"))
 }
 
-// Get instance directory (works for both local and remote instances)
 pub fn get_instance_directory_smart(instance_id: &str) -> PathBuf {
     let base = std::env::var("USERPROFILE")
         .map(|p| std::path::Path::new(&p).join(".kindlyklanklient"))
         .unwrap_or_else(|_| std::path::Path::new(".").join(".kindlyklanklient"));
     
-    // Check if it's a local instance
     let local_instances_dir = base.join("local_instances");
     let local_instance_dir = local_instances_dir.join(instance_id);
     
     if local_instance_dir.exists() {
         local_instance_dir
     } else {
-        // Fallback to remote instance directory
         base.join(instance_id)
     }
 }
@@ -78,22 +72,18 @@ pub async fn create_local_instance(
     mod_loader_version: String,
     app_handle: AppHandle,
 ) -> Result<LocalInstance, String> {
-    log::info!("🏗️  Creating local instance: {} (MC: {}, Loader: {} {})", name, minecraft_version, mod_loader_type, mod_loader_version);
+    log::info!("Creating local instance: {} (MC: {}, Loader: {} {})", name, minecraft_version, mod_loader_type, mod_loader_version);
     
     let instance_id = generate_instance_id(&name);
-    log::info!("📝 Generated instance ID: {}", instance_id);
     
     let local_instances_dir = get_local_instances_dir()?;
     let instance_dir = local_instances_dir.join(&instance_id);
     
-    // Create instance directory
     tokio::fs::create_dir_all(&instance_dir)
         .await
         .map_err(|e| format!("Failed to create instance directory: {}", e))?;
     
-    log::info!("📁 Instance directory created: {}", instance_dir.display());
     
-    // Emit progress: Starting
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
         "instance_id": instance_id,
         "stage": "starting",
@@ -101,7 +91,6 @@ pub async fn create_local_instance(
         "message": "Iniciando creación de instancia..."
     }));
     
-    // Download Minecraft client
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
         "instance_id": instance_id,
         "stage": "minecraft_client",
@@ -111,7 +100,6 @@ pub async fn create_local_instance(
     
     crate::instances::ensure_minecraft_client_present(&instance_dir, &minecraft_version).await?;
     
-    log::info!("✅ Minecraft client downloaded");
     
     // Download Minecraft libraries
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
@@ -123,9 +111,6 @@ pub async fn create_local_instance(
     
     crate::instances::ensure_version_libraries(&instance_dir, &minecraft_version).await?;
     
-    log::info!("✅ Minecraft libraries downloaded");
-    
-    // Ensure Java is installed BEFORE installing mod loader
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
         "instance_id": instance_id,
         "stage": "java_check",
@@ -133,18 +118,15 @@ pub async fn create_local_instance(
         "message": "Verificando Java..."
     }));
     
-    log::info!("🔍 Verificando Java para Minecraft {}", minecraft_version);
     match crate::launcher::find_or_install_java_for_minecraft(&minecraft_version).await {
-        Ok(java_path) => {
-            log::info!("✅ Java disponible en: {}", java_path);
+        Ok(_java_path) => {
         }
         Err(e) => {
-            log::error!("❌ Error al instalar Java: {}", e);
+            log::error!("Error installing Java: {}", e);
             return Err(format!("Error al instalar Java: {}", e));
         }
     }
     
-    // Install Mod Loader (if not vanilla)
     let version_id = if mod_loader_type != "vanilla" {
         let loader_display_name = match mod_loader_type.as_str() {
             "fabric" => "Fabric",
@@ -165,20 +147,14 @@ pub async fn create_local_instance(
             version: mod_loader_version.clone(),
         };
         
-        // Instalar mod loader y obtener el version_id creado
         let vid = crate::instances::install_mod_loader(&minecraft_version, &mod_loader, &instance_dir).await?;
         
-        log::info!("✅ {} {} installed", loader_display_name, mod_loader_version);
-        if let Some(ref v) = vid {
-            log::info!("📋 Version ID creado: {}", v);
-        }
+        log::info!("{} {} installed", loader_display_name, mod_loader_version);
         vid
     } else {
-        log::info!("✅ Vanilla instance, skipping mod loader installation");
         None
     };
     
-    // Download Minecraft assets
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
         "instance_id": instance_id,
         "stage": "minecraft_assets",
@@ -188,14 +164,10 @@ pub async fn create_local_instance(
     
     crate::instances::ensure_assets_present(&app_handle, &instance_dir, &minecraft_version).await?;
     
-    log::info!("✅ Minecraft assets downloaded");
-    
-    // Create mods directory
     tokio::fs::create_dir_all(instance_dir.join("mods"))
         .await
         .map_err(|e| format!("Failed to create mods directory: {}", e))?;
     
-    // Save instance metadata
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
         "instance_id": instance_id,
         "stage": "saving_metadata",
@@ -216,7 +188,7 @@ pub async fn create_local_instance(
         id: instance_id.clone(),
         name: name.clone(),
         minecraft_version: minecraft_version.clone(),
-        fabric_version: mod_loader_version.clone(), // Mantener compatibilidad retroactiva
+            fabric_version: mod_loader_version.clone(),
         mod_loader: mod_loader_obj.clone(),
         version_id: version_id.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -230,7 +202,6 @@ pub async fn create_local_instance(
         .await
         .map_err(|e| format!("Failed to write metadata: {}", e))?;
     
-    log::info!("✅ Metadata saved");
     
     // Emit completion
     let _ = app_handle.emit("local-instance-progress", serde_json::json!({
@@ -244,26 +215,24 @@ pub async fn create_local_instance(
         id: instance_id.clone(),
         name: name.clone(),
         minecraft_version: minecraft_version.clone(),
-        fabric_version: mod_loader_version.clone(), // Mantener compatibilidad retroactiva
+            fabric_version: mod_loader_version.clone(),
         mod_loader: mod_loader_obj,
         created_at: metadata.created_at.clone(),
         is_local: true,
         background: None,
     };
     
-    log::info!("🎉 Local instance created successfully: {}", instance_id);
+    log::info!("Local instance created successfully: {}", instance_id);
     
     Ok(local_instance)
 }
 
 #[tauri::command]
 pub async fn get_local_instances() -> Result<Vec<LocalInstance>, String> {
-    log::info!("📋 Listing local instances");
     
     let local_instances_dir = get_local_instances_dir()?;
     
     if !local_instances_dir.exists() {
-        log::info!("📂 Local instances directory does not exist, returning empty list");
         return Ok(Vec::new());
     }
     
@@ -309,14 +278,14 @@ pub async fn get_local_instances() -> Result<Vec<LocalInstance>, String> {
                         }
                     }
                     Err(e) => {
-                        log::warn!("⚠️  Failed to read metadata for {}: {}", path.display(), e);
+                        log::warn!("Failed to read metadata for {}: {}", path.display(), e);
                     }
                 }
             }
         }
     }
     
-    log::info!("✅ Found {} local instances", instances.len());
+    log::info!("Found {} local instances", instances.len());
     Ok(instances)
 }
 
@@ -327,7 +296,7 @@ pub async fn sync_mods_from_remote(
     distribution_url: String,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    log::info!("🔄 Syncing mods from remote {} to local {}", remote_instance_id, local_instance_id);
+    log::info!("Syncing mods from remote {} to local {}", remote_instance_id, local_instance_id);
     
     let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
         "local_id": local_instance_id,
@@ -341,7 +310,6 @@ pub async fn sync_mods_from_remote(
     let base_url = crate::instances::build_distribution_url(&distribution_url);
     let manifest = crate::instances::load_instance_manifest(&base_url, &remote_instance_id).await?;
     
-    log::info!("📦 Remote instance loaded: {} mods, {} configs", manifest.files.mods.len(), manifest.files.configs.len());
     
     // Get local instance directory
     let local_instances_dir = get_local_instances_dir()?;
@@ -357,9 +325,6 @@ pub async fn sync_mods_from_remote(
         .await
         .map_err(|e| format!("Failed to create config directory: {}", e))?;
     
-    log::info!("📁 Directories ready (preserving existing mods)");
-    
-    // Download mods from remote instance (only if they don't exist or are different)
     let total_mods = manifest.files.mods.len();
     let mut downloaded_mods = 0;
     let mut skipped_mods = 0;
@@ -402,14 +367,11 @@ pub async fn sync_mods_from_remote(
         if should_download {
             crate::instances::download_file_with_retry(&asset.url, &target_path).await?;
             downloaded_mods += 1;
-            log::info!("✅ Downloaded mod: {}", mod_file.name);
         } else {
             skipped_mods += 1;
-            log::info!("⏭️  Skipped mod (already exists): {}", mod_file.name);
         }
     }
     
-    // Download configs from remote instance
     let total_configs = manifest.files.configs.len();
     let mut downloaded_configs = 0;
     
@@ -434,14 +396,12 @@ pub async fn sync_mods_from_remote(
         
         let asset = crate::instances::create_asset_from_file_entry(config_file, &remote_instance_id, &base_url);
         
-        // Determine target path (respect target if specified, otherwise use name)
         let target_path = if let Some(target) = &config_file.target {
             config_dir.join(target)
         } else {
             config_dir.join(&config_file.name)
         };
         
-        // Create parent directories if needed
         if let Some(parent) = target_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -450,7 +410,6 @@ pub async fn sync_mods_from_remote(
         
         crate::instances::download_file_with_retry(&asset.url, &target_path).await?;
         downloaded_configs += 1;
-        log::info!("✅ Downloaded config: {}", config_file.name);
     }
     
     let _ = app_handle.emit("mod-sync-progress", serde_json::json!({
@@ -461,14 +420,13 @@ pub async fn sync_mods_from_remote(
         "message": format!("¡Sincronización completada! {} mods, {} configs", downloaded_mods, downloaded_configs)
     }));
     
-    log::info!("🎉 Sync completed: {} mods downloaded ({} skipped), {} configs downloaded", downloaded_mods, skipped_mods, downloaded_configs);
+    log::info!("Sync completed: {} mods downloaded ({} skipped), {} configs downloaded", downloaded_mods, skipped_mods, downloaded_configs);
     
     Ok(format!("Successfully synced {} mods ({} skipped, {} new) and {} configs", downloaded_mods + skipped_mods, skipped_mods, downloaded_mods, downloaded_configs))
 }
 
 #[tauri::command]
 pub async fn open_instance_folder(instance_id: String) -> Result<(), String> {
-    log::info!("📂 Opening folder for instance: {}", instance_id);
     
     let local_instances_dir = get_local_instances_dir()?;
     let instance_dir = local_instances_dir.join(&instance_id);
@@ -502,7 +460,6 @@ pub async fn open_instance_folder(instance_id: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
     
-    log::info!("✅ Folder opened successfully");
     Ok(())
 }
 
@@ -520,28 +477,18 @@ pub async fn launch_local_instance(
     #[cfg(target_os = "windows")]
     use std::os::windows::process::CommandExt;
     
-    log::info!("🚀 Launching local instance: {}", instance_id);
+    log::info!("Launching local instance: {}", instance_id);
     
-    // Validate and refresh token before launching
-    log::info!("🔐 Validating and refreshing token for user: {}", username);
     let (validated_access_token, validated_uuid) = match crate::sessions_api::validate_and_refresh_token(app_handle.clone(), username.clone()).await {
-        Ok(crate::EnsureSessionResponse::Ok { session, refreshed }) => {
-            if refreshed {
-                log::info!("✅ Token refreshed successfully");
-            } else {
-                log::info!("✅ Token is still valid");
-            }
-            // Use the validated/refreshed token and UUID from session
+        Ok(crate::EnsureSessionResponse::Ok { session, .. }) => {
             (session.access_token, session.uuid)
         }
         Ok(crate::EnsureSessionResponse::Err { code, message }) => {
-            log::warn!("⚠️  Token validation failed: {} - {}, using provided token", code, message);
-            // Fallback to provided token if validation fails
+            log::warn!("Token validation failed: {} - {}, using provided token", code, message);
             (access_token, uuid)
         }
         Err(e) => {
-            log::warn!("⚠️  Token validation error: {}, using provided token", e);
-            // Fallback to provided token if validation fails
+            log::warn!("Token validation error: {}, using provided token", e);
             (access_token, uuid)
         }
     };
@@ -562,7 +509,6 @@ pub async fn launch_local_instance(
     let mut metadata: LocalInstanceMetadata = serde_json::from_str(&metadata_content)
         .map_err(|e| format!("Failed to parse instance metadata: {}", e))?;
     
-    // Si no hay version_id (instancias antiguas), intentar detectarlo
     if metadata.version_id.is_none() && metadata.mod_loader.is_some() {
         if let Some(ref mod_loader) = metadata.mod_loader {
             let detected_version_id = crate::instances::find_version_id_in_versions_dir(
@@ -571,36 +517,15 @@ pub async fn launch_local_instance(
             );
             
             if let Some(ref vid) = detected_version_id {
-                log::info!("🔍 Detectado version_id para instancia antigua: {}", vid);
                 metadata.version_id = detected_version_id.clone();
                 
-                // Guardar el metadata actualizado
                 if let Ok(updated_metadata_json) = serde_json::to_string_pretty(&metadata) {
                     let _ = tokio::fs::write(&metadata_path, updated_metadata_json).await;
-                    log::info!("✅ Metadata actualizado con version_id");
                 }
             }
         }
     }
     
-    // Log metadata con información correcta del mod loader
-    if let Some(ref mod_loader) = metadata.mod_loader {
-        log::info!("📋 Instance metadata loaded: MC {}, {} {}", 
-            metadata.minecraft_version, 
-            mod_loader.r#type.to_uppercase(), 
-            mod_loader.version
-        );
-        if let Some(ref vid) = metadata.version_id {
-            log::info!("📋 Version ID: {}", vid);
-        }
-    } else {
-        log::info!("📋 Instance metadata loaded: MC {}, Vanilla (legacy: {})", 
-            metadata.minecraft_version, 
-            metadata.fabric_version
-        );
-    }
-    
-    // Verify all required files (emit progress events)
     let _ = app_handle.emit("asset-download-progress", serde_json::json!({
         "current": 0,
         "total": 100,
@@ -649,12 +574,8 @@ pub async fn launch_local_instance(
     
     let _ = app_handle.emit("asset-download-completed", serde_json::json!({ "phase": "complete" }));
     
-    log::info!("✅ All files verified, launching Minecraft...");
-    
-    // Create mods directory if it doesn't exist
     let _ = tokio::fs::create_dir_all(instance_dir.join("mods")).await;
     
-    // Get mod loader JVM args usando el version_id del metadata
     let mod_loader_jvm_args = crate::launcher::get_mod_loader_jvm_args(
         &instance_dir,
         metadata.version_id.as_deref(),
@@ -670,7 +591,6 @@ pub async fn launch_local_instance(
     
     let classpath = crate::launcher::build_minecraft_classpath_from_json(&instance_dir, &version_json_path)?;
     
-    // Check for lwjgl
     {
         let mut has_lwjgl = false;
         if let Ok(entries) = std::fs::read_dir(instance_dir.join("libraries")) {
@@ -686,12 +606,10 @@ pub async fn launch_local_instance(
         }
     }
     
-    // Load advanced config
     let (jvm_args_config, gc_config, window_width, window_height) = crate::commands::load_advanced_config()
         .await
         .unwrap_or((String::new(), "G1".to_string(), 1280, 720));
     
-    // Build JVM args using validated token
     let mut jvm_args = crate::launcher::build_minecraft_jvm_args(
         &validated_access_token,
         min_ram_gb,
@@ -700,7 +618,6 @@ pub async fn launch_local_instance(
         &jvm_args_config,
     )?;
     
-    // Add mod loader specific JVM args (Forge/NeoForge/Fabric)
     if !mod_loader_jvm_args.is_empty() {
         jvm_args.extend(mod_loader_jvm_args);
     }
@@ -742,8 +659,6 @@ pub async fn launch_local_instance(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     
-    log::info!("📋 userProperties being passed: {}", user_properties);
-    log::info!("📋 userProperties length: {} chars", user_properties.len());
     
     command.args(&jvm_args);
     command.arg("-cp").arg(&classpath);
@@ -759,12 +674,10 @@ pub async fn launch_local_instance(
     
     if let Some(state) = app_handle.try_state::<std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>>() {
         if let Ok(mut processes) = state.lock() {
-            log::info!("💾 Guardando proceso local para instancia: {} con PID: {}", instance_id, pid);
             processes.insert(instance_id.clone(), pid);
-            log::info!("📋 Procesos activos: {:?}", processes.keys().collect::<Vec<_>>());
         }
     } else {
-        log::warn!("⚠️ No se pudo obtener el estado de procesos");
+        log::warn!("Failed to get processes state");
     }
     
     if let Some(stdout) = child.stdout.take() {
@@ -799,7 +712,7 @@ pub async fn launch_local_instance(
     std::thread::spawn(move || {
         match child.wait() {
             Ok(status) => {
-                log::info!("🎮 Minecraft exited with status: {:?}", status);
+                log::info!("Minecraft exited for instance {} with status: {:?}", instance_id_clone, status.code());
                 if let Ok(mut processes) = processes_state.lock() {
                     processes.remove(&instance_id_clone);
                 }
@@ -810,7 +723,7 @@ pub async fn launch_local_instance(
                 }));
             }
             Err(e) => {
-                log::error!("❌ Error waiting for Minecraft: {}", e);
+                log::error!("Error waiting for Minecraft process {}: {}", instance_id_clone, e);
                 if let Ok(mut processes) = processes_state.lock() {
                     processes.remove(&instance_id_clone);
                 }
@@ -823,14 +736,13 @@ pub async fn launch_local_instance(
         }
     });
     
-    log::info!("🎮 Minecraft process spawned successfully");
     
     Ok(format!("Local instance {} launched successfully", instance_id))
 }
 
 #[tauri::command]
 pub async fn delete_local_instance(instance_id: String) -> Result<String, String> {
-    log::info!("🗑️  Deleting local instance: {}", instance_id);
+    log::info!("Deleting local instance: {}", instance_id);
     
     let local_instances_dir = get_local_instances_dir()?;
     let instance_dir = local_instances_dir.join(&instance_id);
@@ -843,7 +755,7 @@ pub async fn delete_local_instance(instance_id: String) -> Result<String, String
         .await
         .map_err(|e| format!("Failed to delete instance directory: {}", e))?;
     
-    log::info!("✅ Local instance deleted successfully: {}", instance_id);
+    log::info!("Local instance deleted successfully: {}", instance_id);
     
     Ok(format!("Local instance {} deleted successfully", instance_id))
 }

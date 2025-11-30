@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as skinview3d from 'skinview3d';
+import { logger } from '@/utils/logger';
 
 interface SkinPreview3DProps {
   skinUrl?: string;
@@ -118,7 +119,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 
         setIsLoading(false);
       } catch (err: any) {
-        console.error('Error loading skin:', err);
+        void logger.error('Error loading skin', err, 'SkinPreview3D');
         setError('Error loading skin');
         setIsLoading(false);
         currentSkinUrlRef.current = null;

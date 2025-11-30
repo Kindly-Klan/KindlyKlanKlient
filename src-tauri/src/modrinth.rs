@@ -107,7 +107,6 @@ pub async fn search_projects(
     url.push_str(&format!("&limit={}", limit.unwrap_or(20)));
     url.push_str("&index=downloads");
 
-    log::info!("🔍 Searching Modrinth: {}", url);
 
     let response = client
         .get(&url)
@@ -117,12 +116,11 @@ pub async fn search_projects(
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        log::error!("Modrinth API error: {} - {}", status, text);
         return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
     }
 
     let result: ModrinthSearchResult = response.json().await?;
-    log::info!("✅ Found {} projects", result.total_hits);
     
     Ok(result)
 }
@@ -135,7 +133,6 @@ pub async fn get_version_by_id(version_id: &str) -> Result<ModrinthVersion> {
 
     let url = format!("{}/version/{}", MODRINTH_API_BASE, version_id);
 
-    log::info!("📦 Fetching version {}: {}", version_id, url);
 
     let response = client
         .get(&url)
@@ -145,12 +142,11 @@ pub async fn get_version_by_id(version_id: &str) -> Result<ModrinthVersion> {
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        log::error!("Modrinth API error: {} - {}", status, text);
         return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
     }
 
     let version: ModrinthVersion = response.json().await?;
-    log::info!("✅ Found version: {}", version.version_number);
     
     Ok(version)
 }
@@ -178,12 +174,11 @@ pub async fn get_version_from_hash(sha512: &str) -> Result<Option<ModrinthVersio
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        log::error!("Modrinth API error: {} - {}", status, text);
         return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
     }
 
     let version: ModrinthVersion = response.json().await?;
-    log::info!("✅ Versión encontrada por hash: {} (project: {})", version.version_number, version.project_id);
     
     Ok(Some(version))
 }
@@ -225,12 +220,11 @@ pub async fn get_project_versions(
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        log::error!("Modrinth API error: {} - {}", status, text);
         return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
     }
 
     let versions: Vec<ModrinthVersion> = response.json().await?;
-    log::info!("✅ Found {} versions", versions.len());
     
     Ok(versions)
 }
@@ -253,7 +247,7 @@ pub async fn get_version_dependencies(version_id: &str) -> Result<ModrinthDepend
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        log::error!("❌ Modrinth API error: {} - {}", status, text);
+        log::error!("Modrinth API error: {} - {}", status, text);
         return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
     }
 
@@ -292,7 +286,6 @@ pub async fn download_mod_file(
     
     tokio::fs::write(file_path, &bytes).await?;
     
-    log::info!("✅ Downloaded mod to: {}", file_path.display());
     
     Ok(())
 }

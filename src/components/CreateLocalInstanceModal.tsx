@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { MinecraftVersionInfo, FabricLoaderVersion, ForgeVersion, NeoForgeVersion, LocalInstance } from '@/types/local-instances';
+import { logger } from '@/utils/logger';
 import fabricIcon from '@/assets/icons/fabricmc.svg';
 import neoforgeIcon from '@/assets/icons/neoforge.svg';
 
@@ -83,9 +84,8 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
     try {
       const versions = await invoke<MinecraftVersionInfo[]>('get_minecraft_versions');
       setMinecraftVersions(versions);
-      console.log('Loaded Minecraft versions:', versions.length);
     } catch (error) {
-      console.error('Error loading Minecraft versions:', error);
+      void logger.error('Error loading Minecraft versions', error, 'loadMinecraftVersions');
       setError('Error al cargar versiones de Minecraft');
     } finally {
       setIsLoadingVersions(false);
@@ -104,7 +104,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             minecraftVersion: selectedMinecraftVersion,
           });
           setFabricVersions(fabricVers);
-          console.log('Loaded Fabric versions:', fabricVers.length);
           break;
           
         case 'forge':
@@ -112,7 +111,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             minecraftVersion: selectedMinecraftVersion,
           });
           setForgeVersions(forgeVers);
-          console.log('Loaded Forge versions:', forgeVers.length);
           break;
           
         case 'neoforge':
@@ -120,11 +118,10 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             minecraftVersion: selectedMinecraftVersion,
           });
           setNeoforgeVersions(neoforgeVers);
-          console.log('Loaded NeoForge versions:', neoforgeVers.length);
           break;
       }
     } catch (error) {
-      console.error(`Error loading ${modLoaderType} versions:`, error);
+      void logger.error(`Error loading ${modLoaderType} versions`, error, 'loadModLoaderVersions');
       setError(`Error al cargar versiones de ${modLoaderType}: ${error}`);
     } finally {
       setIsLoadingVersions(false);
@@ -198,11 +195,11 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
         modLoaderVersion: selectedModLoaderVersion || 'none',
       });
       
-      console.log('Instance created successfully:', instance);
+      void logger.info(`Instance created successfully: ${instance.name}`, 'handleCreate');
       onInstanceCreated(instance);
       onClose();
     } catch (error) {
-      console.error('Error creating instance:', error);
+      void logger.error('Error creating instance', error, 'handleCreate');
       setError(`Error al crear instancia: ${error}`);
     } finally {
       setIsCreating(false);

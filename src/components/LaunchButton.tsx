@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
+import { logger } from '@/utils/logger';
 
 interface LaunchButtonProps {
 	onLaunch: () => Promise<void>;
@@ -135,7 +136,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 			setPlayTime(0);
 			launchStateCache.set(instanceId, { state: 'playing', startTime: playStartTime });
 		} catch (error) {
-			console.error(`[LaunchButton ${instanceId}] Error during launch:`, error);
+			void logger.error(`Error during launch for instance ${instanceId}`, error, 'LaunchButton');
 			setState('idle');
 			setPlayTime(0);
 			launchStateCache.delete(instanceId);
@@ -162,7 +163,7 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 			setPlayTime(0);
 			launchStateCache.delete(instanceId);
 		} catch (error) {
-			console.error(`[LaunchButton] Error stopping Minecraft:`, error);
+			void logger.error('Error stopping Minecraft', error, 'LaunchButton');
 		}
 	};
 

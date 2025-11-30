@@ -37,7 +37,6 @@ pub async fn debug_env_vars() -> Result<String, String> {
         std::env::current_dir().unwrap_or_default()
     );
     
-    log::info!("🔍 Environment debug info:\n{}", result);
     Ok(result)
 }
 

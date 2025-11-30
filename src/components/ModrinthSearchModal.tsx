@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Input } from '@/components/ui/input';
+import { logger } from '@/utils/logger';
 
 interface ModrinthProject {
   project_id: string;
@@ -89,7 +90,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
           const mods = await invoke<InstalledMod[]>('list_installed_mods', { instanceId });
           setInstalledMods(mods || []);
         } catch (error) {
-          console.error('Error loading installed mods:', error);
+          void logger.error('Error loading installed mods', error, 'ModrinthSearchModal');
           setInstalledMods([]);
         }
       })();
@@ -163,7 +164,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
 
       setSearchResults(result.hits || []);
     } catch (error) {
-      console.error('Error searching mods:', error);
+      void logger.error('Error searching mods', error, 'ModrinthSearchModal');
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -181,7 +182,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
       });
       setVersions(versions);
     } catch (error) {
-      console.error('Error loading versions:', error);
+      void logger.error('Error loading versions', error, 'ModrinthSearchModal');
       setVersions([]);
       if (addToast) {
         addToast('Error al cargar versiones del mod', 'error');
@@ -211,7 +212,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
       const latestVersion = versions[0];
       await handleDownloadMod(latestVersion);
     } catch (error) {
-      console.error('Error downloading latest version:', error);
+      void logger.error('Error downloading latest version', error, 'ModrinthSearchModal');
       if (addToast) {
         addToast(`Error al descargar el mod: ${error}`, 'error');
       }
@@ -238,10 +239,10 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
         const mods = await invoke<InstalledMod[]>('list_installed_mods', { instanceId });
         setInstalledMods(mods || []);
       } catch (error) {
-        console.error('Error reloading installed mods:', error);
+        void logger.error('Error reloading installed mods', error, 'ModrinthSearchModal');
       }
     } catch (error) {
-      console.error('Error downloading mod:', error);
+      void logger.error('Error downloading mod', error, 'ModrinthSearchModal');
       if (addToast) {
         addToast(`Error al descargar el mod: ${error}`, 'error');
       } else {

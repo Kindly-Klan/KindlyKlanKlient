@@ -55,7 +55,7 @@ const checkJavaInstalled = async (javaVersion: string): Promise<boolean> => {
     const result = await invoke<string>('check_java_version', { version: javaVersion });
     return result === 'installed';
   } catch (error) {
-    console.error('Error checking Java version:', error);
+    void logger.error('Error checking Java version', error, 'checkJavaInstalled');
     return false;
   }
 };
@@ -100,7 +100,7 @@ const ensureJavaInstalled = async (
     await invoke<string>('download_java', { version: javaVersion });
     return javaVersion;
   } catch (error) {
-    console.error('Error downloading Java:', error);
+    void logger.error('Error downloading Java', error, 'ensureJavaInstalled');
     await hideProgressBar();
     throw error;
   }
@@ -139,7 +139,6 @@ const launchInstance = async (
 
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        // Mostrar indicador de progreso indeterminado al iniciar descarga
         void showIndeterminateProgressBar();
         
         const unlistenProgress = await listen('asset-download-progress', (e: any) => {
@@ -169,14 +168,13 @@ const launchInstance = async (
         unlistenProgress();
         unlistenCompleted();
       } catch (error) {
-        console.error('Error downloading assets:', error);
+        void logger.error('Error downloading assets', error, 'launchInstance');
         await hideProgressBar();
         addToast('Error descargando assets de la instancia', 'error');
         throw error;
       }
     }
 
-    // Validar y refrescar sesión antes de lanzar
     let accessToken = currentAccount?.user.access_token || '';
     if (currentAccount?.user.username) {
       try {
@@ -190,7 +188,6 @@ const launchInstance = async (
             addToast('Sesión renovada automáticamente', 'info', 2000);
           }
         } else if (sessionResponse.status === 'Err') {
-          // Error de sesión, pedir login
           addToast('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
           if (onAuthError) {
             onAuthError();
@@ -198,12 +195,10 @@ const launchInstance = async (
           return;
         }
       } catch (error) {
-        console.error('Error validating session:', error);
-        // Continuar con el token actual si hay error de red
+        void logger.error('Error validating session', error, 'launchInstance');
       }
     }
 
-    // Load saved RAM configuration
     const [minRam, maxRam] = await invoke<[number, number]>('load_ram_config');
     
     await invoke<string>('launch_minecraft_with_java', {
@@ -220,8 +215,9 @@ const launchInstance = async (
     if (setIsDownloadingAssets) setIsDownloadingAssets(false);
     if (setDownloadProgress) setDownloadProgress(null);
     addToast(`Instancia "${instance.name}" lanzada correctamente`, 'success');
+    void logger.info(`Instance launched successfully: ${instance.name}`, 'launchInstance');
   } catch (error) {
-    console.error('Error launching instance:', error);
+    void logger.error('Error launching instance', error, 'launchInstance');
     if (onComplete) {
       onComplete();
     }
@@ -233,7 +229,6 @@ const launchInstance = async (
       setDownloadProgress(null);
     }
 
-    // Handle authentication errors using structured codes
     if (error && typeof error === 'string') {
       try {
         const errorData = JSON.parse(error);
@@ -245,7 +240,6 @@ const launchInstance = async (
           return;
         }
       } catch {
-        // Si no es JSON, ignorar y continuar con el error genérico
       }
     }
 
@@ -388,9 +382,7 @@ function App() {
 
   useEffect(() => {
     void logger.info('Aplicación iniciada', 'APP');
-    // Inicializar permisos de notificaciones al inicio
     void initializeNotificationPermissions();
-    // Forzar modo oscuro en la ventana
     (async () => {
       try {
         await getCurrentWindow().setTheme('dark');
@@ -413,7 +405,6 @@ function App() {
   
   useEffect(() => {}, [distributionLoaded]);
   
-  // Manejar evento de cierre durante descarga
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen('close-requested-during-download', () => {
@@ -432,40 +423,30 @@ function App() {
   
   const DISTRIBUTION_URL = 'http://files.kindlyklan.com:26500/dist/manifest.json';
 
-  // Check for updates on startup - verificar si ya estamos en la nueva versión y limpiar estado si es así
   const checkForUpdatesOnStartup = async () => {
     try {
       const state = await UpdaterService.getUpdateState();
       const currentVersion = state.current_version;
       
-      // Si la versión actual coincide con la disponible, significa que ya se instaló
-      // Limpiar el estado automáticamente para evitar mostrar "necesita instalar"
       if (state.available_version && state.available_version === currentVersion) {
-        console.log('La versión actual coincide con la disponible, limpiando estado...');
         await invoke('clear_update_state');
-        // Continuar con la verificación después de limpiar para buscar nuevas actualizaciones
       }
       
-      // Si hay una actualización descargada y lista, instalar automáticamente al reiniciar
       if (state.download_ready) {
-        console.log('Actualización descargada encontrada al iniciar, instalando automáticamente...');
         try {
           const result = await UpdaterService.installUpdate();
           if (result.success) {
             addToast('Actualización instalada. La aplicación se reiniciará.', 'success');
-            // La aplicación se reiniciará automáticamente después de la instalación
             return;
           } else {
-            console.error('Error instalando actualización automática:', result.message);
-            // Si falla, mostrar toast de actualización lista para que el usuario pueda instalar manualmente
+            void logger.error('Error instalando actualización automática', result.message, 'checkForUpdatesOnStartup');
             if (state.available_version) {
               setUpdateReadyVersion(state.available_version);
             }
             return;
           }
         } catch (error) {
-          console.error('Error instalando actualización automática:', error);
-          // Si falla, mostrar toast de actualización lista para que el usuario pueda instalar manualmente
+          void logger.error('Error instalando actualización automática', error, 'checkForUpdatesOnStartup');
           if (state.available_version) {
             setUpdateReadyVersion(state.available_version);
           }
@@ -473,13 +454,11 @@ function App() {
         }
       }
 
-      console.log('Verifying updates...');
       const result = await UpdaterService.checkForUpdates();
       
       if (result.available) {
         const newState = await UpdaterService.getUpdateState();
         if (newState.available_version && !newState.downloaded) {
-          console.log('New update available, starting download...');
           setUpdateDownloadVersion(newState.available_version);
           setUpdateDownloadProgress(0);
           
@@ -495,11 +474,9 @@ function App() {
             }
           } 
         }
-      } else {
-        console.log('No updates available');
       }
     } catch (error) {
-      console.error('Error checking for updates on startup:', error);
+      void logger.error('Error checking for updates on startup', error, 'checkForUpdatesOnStartup');
     }
   };
 
@@ -532,11 +509,9 @@ function App() {
             }
           }
         }
-      } else {
-        console.log('No updates available in periodic check');
       }
     } catch (error) {
-      console.error('Error checking for updates in periodic check:', error);
+      void logger.error('Error checking for updates in periodic check', error, 'checkForUpdatesPeriodic');
     }
   };
 
@@ -552,7 +527,9 @@ function App() {
     setTimeout(hideInitialLoader, 100);
 
     loadDistribution();
-    checkExistingSession().catch(console.error);
+    checkExistingSession().catch((error) => {
+      void logger.error('Error in checkExistingSession', error, 'useEffect');
+    });
     
     setTimeout(() => {
       checkForUpdatesOnStartup();
@@ -569,7 +546,6 @@ function App() {
     (async () => {
       try {
         unlistenUpdateStart = await listen('update-download-start', async () => {
-          console.log('Update download started');
           void showIndeterminateProgressBar();
           try {
             const state = await UpdaterService.getUpdateState();
@@ -578,7 +554,7 @@ function App() {
               setUpdateDownloadProgress(0);
             }
           } catch (error) {
-            console.error('Error getting update state:', error);
+            void logger.error('Error getting update state', error, 'update-download-start');
             setUpdateDownloadProgress(0);
           }
         });
@@ -589,7 +565,6 @@ function App() {
         });
         
         unlistenUpdateComplete = await listen('update-download-complete', async () => {
-          console.log('Update download completed');
           setUpdateDownloadProgress(100);
           await hideProgressBar();
           setTimeout(async () => {
@@ -608,7 +583,7 @@ function App() {
           }, 500);
         });
       } catch (error) {
-        console.error('Error setting up update event listeners:', error);
+        void logger.error('Error setting up update event listeners', error, 'useEffect');
       }
     })();
 
@@ -644,7 +619,7 @@ function App() {
         if (isValid) {
           validAccounts.push(account);
         } else {
-          console.warn(`Invalid token for account ${account.user.username}, deleting...`);
+          void logger.warn(`Invalid token for account ${account.user.username}, deleting...`, 'validateAllTokens');
         }
       }
 
@@ -670,7 +645,6 @@ function App() {
   }, [accounts, currentAccount]);
 
 
-  /* TOASTS */
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 5000) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setToasts(prev => [...prev, { id, message, type, duration }]);
@@ -711,11 +685,9 @@ function App() {
         isActive: acc.id === account.id
       }));
       setAccounts(updatedAccounts);
-      // DB es fuente de verdad, no sincronizar a localStorage
-
       addToast(`Cambiado a cuenta: ${account.user.username}`, 'success');
     }).catch(error => {
-      console.error('Error switching account:', error);
+      void logger.error('Error switching account', error, 'handleSwitchAccount');
       addToast('Error al cambiar de cuenta', 'error');
     });
   };
@@ -723,14 +695,13 @@ function App() {
   const validateAccountToken = async (account: Account): Promise<boolean> => {
     try {
       const refreshed = await SessionService.validateAndRefreshToken(account.user.username);
-      // Actualizar en memoria si el backend renovó el token
       if (refreshed && refreshed.access_token && refreshed.username === account.user.username) {
         account.user.access_token = refreshed.access_token;
         account.user.expires_at = refreshed.expires_at;
       }
       return true;
     } catch (error) {
-      console.error(`Token validation/refresh failed for account ${account.user.username}:`, error);
+      void logger.error(`Token validation/refresh failed for account ${account.user.username}`, error, 'validateAccountToken');
       return false;
     }
   };
@@ -739,11 +710,10 @@ function App() {
     const updatedAccounts = accounts.filter(acc => acc.id !== accountId);
 
     if (updatedAccounts.length === 0) {
-      // Si no quedan cuentas, limpiar todo
       try {
         await SessionService.clearAllSessions();
       } catch (error) {
-        console.error('Error clearing all sessions from database:', error);
+        void logger.error('Error clearing all sessions from database', error, 'handleLogoutAccount');
       }
 
       setAccounts([]);
@@ -751,23 +721,19 @@ function App() {
       setIsLoginVisible(true);
       addToast('Todas las cuentas cerradas. Vuelve a iniciar sesión.', 'info');
     } else {
-      // Si quedan cuentas, establecer la primera como activa
       const newActiveAccount = updatedAccounts[0];
       setCurrentAccount(newActiveAccount);
 
-      // También limpiar sesión de la base de datos para la cuenta cerrada
       try {
         const accountToRemove = accounts.find(acc => acc.id === accountId);
         if (accountToRemove) {
           await SessionService.deleteSession(accountToRemove.user.username);
         }
       } catch (error) {
-        console.error('Error deleting session from database:', error);
+        void logger.error('Error deleting session from database', error, 'handleLogoutAccount');
       }
 
       setAccounts(updatedAccounts);
-      // DB es fuente de verdad, no sincronizar a localStorage
-
       addToast(`Sesión cerrada.`, 'info');
     }
 
@@ -835,9 +801,8 @@ function App() {
     try {
       const admin = await AdminService.checkIsAdmin(currentAccount.user.username);
       setIsAdmin(admin);
-      console.log(`Admin status for ${currentAccount.user.username}: ${admin}`);
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      void logger.error('Error checking admin status', error, 'checkAdminStatus');
       setIsAdmin(false);
     }
   };
@@ -851,9 +816,8 @@ function App() {
     try {
       const instances = await invoke<LocalInstance[]>('get_local_instances');
       setLocalInstances(instances);
-      console.log('Local instances loaded:', instances.length);
     } catch (error) {
-      console.error('Error loading local instances:', error);
+      void logger.error('Error loading local instances', error, 'loadLocalInstances');
       addToast('Error al cargar instancias locales', 'error');
     }
   };
@@ -865,7 +829,6 @@ function App() {
     }, 2000);
   };
 
-  // Handle sync mods from remote
   const handleSyncMods = (localId: string) => {
     setSyncingLocalId(localId);
     setSyncModsModalOpen(true);
@@ -886,7 +849,7 @@ function App() {
       setSyncModsModalOpen(false);
       setSyncingLocalId(null);
     } catch (error) {
-      console.error('Error syncing mods:', error);
+      void logger.error('Error syncing mods', error, 'handleSyncModsConfirm');
       addToast(`Error al sincronizar mods: ${error}`, 'error');
     } finally {
       setShowLoader(false);
@@ -894,12 +857,11 @@ function App() {
     }
   };
 
-  // Handle open instance folder
   const handleOpenFolder = async (instanceId: string) => {
     try {
       await invoke('open_instance_folder', { instanceId });
     } catch (error) {
-      console.error('Error opening folder:', error);
+      void logger.error('Error opening folder', error, 'handleOpenFolder');
       addToast('Error al abrir carpeta de la instancia', 'error');
     }
   };
@@ -937,11 +899,9 @@ function App() {
       if (isUnmounted) return;
       
       const progress = event.payload;
-      console.log('Local instance progress:', progress);
       
       if (progress.stage === 'completed') {
         addToast(progress.message, 'success');
-        // Reload instances after a small delay to ensure the instance is completely created
         setTimeout(() => {
           if (!isUnmounted) {
             loadLocalInstances();
@@ -961,7 +921,6 @@ function App() {
     
     listen('mod-sync-progress', (event: any) => {
       const progress = event.payload;
-      console.log('Mod sync progress:', progress);
       
       if (progress.stage === 'completed') {
         addToast(progress.message, 'success');
@@ -978,7 +937,7 @@ function App() {
       }
       await SessionService.clearAllSessions();
     } catch (error) {
-      console.error('Error clearing sessions from database:', error);
+      void logger.error('Error clearing sessions from database', error, 'handleLogout');
     }
 
     setAccounts([]);
@@ -993,13 +952,7 @@ function App() {
       const activeSession = await SessionService.getActiveSession();
 
       if (activeSession) {
-        console.log('Found active session for user:', activeSession.username);
-        console.log('Session expires at:', new Date(activeSession.expires_at * 1000));
-        console.log('Current time:', new Date());
-        console.log('Is expired:', SessionService.isSessionExpired(activeSession));
-
         if (SessionService.isSessionExpired(activeSession)) {
-          console.log('Session expired, removing...');
           await SessionService.deleteSession(activeSession.username);
           setShowNoAccessScreen(true);
           return;
@@ -1007,21 +960,18 @@ function App() {
 
         if (SessionService.isSessionExpiringSoon(activeSession, 10)) {
           try {
-            const refreshed = await SessionService.refreshActiveSession(activeSession.username);
-            console.log('Session refreshed until:', new Date(refreshed.expires_at * 1000));
+            await SessionService.refreshActiveSession(activeSession.username);
           } catch (refreshError) {
-            console.error('Session refresh failed:', refreshError);
-            // si falla, permanecer con la sesión actual hasta que realmente expire
+            void logger.error('Session refresh failed', refreshError, 'checkExistingSession');
           }
         }
 
-        // Crear cuenta desde la sesión con id=username para evitar duplicados
         const account: Account = {
           id: activeSession.username,
           user: {
             access_token: activeSession.access_token,
             username: activeSession.username,
-            uuid: activeSession.uuid, // UUID real de Minecraft para la skin
+            uuid: activeSession.uuid,
             user_type: 'microsoft',
             expires_at: activeSession.expires_at
           },
@@ -1041,15 +991,12 @@ function App() {
             return;
           }
         } catch (whitelistError) {
-          console.error('Error checking whitelist for existing session:', whitelistError);
-          // No eliminar la sesión por error de whitelist, solo mostrar advertencia
+          void logger.error('Error checking whitelist for existing session', whitelistError, 'checkExistingSession');
           addToast('Advertencia: No se pudo verificar el acceso. Contacta a un administrador si hay problemas.', 'info');
         }
       }
-      // NO borrar localStorage aquí - la DB es la fuente de verdad
     } catch (error) {
-      console.error('Error checking existing session:', error);
-      // Si hay error con la base de datos, intentar fallback a localStorage
+      void logger.error('Error checking existing session', error, 'checkExistingSession');
       const savedAccounts = localStorage.getItem('kkk_accounts');
       const activeAccountId = localStorage.getItem('kkk_active_account');
 
@@ -1063,8 +1010,7 @@ function App() {
             setCurrentAccount(activeAccount);
           }
         } catch (parseError) {
-          console.error('Error parsing saved accounts:', parseError);
-          // NO borrar localStorage por errores de parsing - puede ser temporal
+          void logger.error('Error parsing saved accounts', parseError, 'checkExistingSession');
         }
       }
     }
@@ -1079,52 +1025,41 @@ function App() {
       const userSession = await invoke<AuthSession>('start_microsoft_auth');
 
       const newAccount: Account = {
-        id: userSession.username, // Usar username como id desde el inicio para evitar duplicados
+        id: userSession.username,
         user: userSession,
         isActive: true
       };
 
-      // Guardar sesión en la base de datos con tokens reales
-      // Backend devuelve expires_at en SEGUNDOS (timestamp UNIX), NO dividir por 1000
       const expiresAt = userSession.expires_at || Math.floor(Date.now() / 1000) + 3600;
-      console.log('Saving session for user:', userSession.username);
-      console.log('Expires at:', new Date(expiresAt * 1000));
-      console.log('Refresh token available:', !!userSession.refresh_token);
-      console.log('Raw expires_at from backend:', userSession.expires_at);
 
       try {
         await SessionService.saveSession(
           userSession.username,
           userSession.uuid,
           userSession.access_token,
-          userSession.refresh_token || null, // Convertir undefined a null
+          userSession.refresh_token || null,
           expiresAt
         );
-        console.log('✅ Session saved successfully to database with UUID:', userSession.uuid);
+        void logger.info(`Session saved successfully for user: ${userSession.username}`, 'handleMicrosoftAuth');
       } catch (sessionError) {
-        console.error('❌ CRITICAL: Error saving session to database:', sessionError);
+        void logger.error('CRITICAL: Error saving session to database', sessionError, 'handleMicrosoftAuth');
         addToast('Error crítico: No se pudo guardar la sesión. Contacta a soporte.', 'error', 10000);
         setIsLoading(false);
         setShowLoader(false);
-        throw sessionError; // NO continuar si no se puede guardar
+        throw sessionError;
       }
 
-      // Evitar duplicados: filtrar por username y agregar la nueva cuenta
       const updatedAccounts = [...accounts.filter(a => a.user.username !== newAccount.user.username), newAccount];
       setCurrentAccount(newAccount);
       setAccounts(updatedAccounts);
-      // DB es fuente de verdad, no sincronizar a localStorage
 
-      // Verificar whitelist después de autenticación exitosa
       setLoaderText("Verificando acceso...");
       try {
-        // Añadimos timeout a la verificación de whitelist para evitar bloqueo
         const whitelistPromise = WhitelistService.checkAccess(userSession.username);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Whitelist timeout')), 8000));
         const accessCheck = await Promise.race([whitelistPromise, timeoutPromise]) as any;
 
         if (!accessCheck.has_access) {
-          // Eliminar sesión de la base de datos si no tiene acceso
           await SessionService.deleteSession(userSession.username);
           setShowNoAccessScreen(true);
           setIsLoading(false);
@@ -1132,7 +1067,6 @@ function App() {
           return;
         }
 
-        // Si tiene acceso, continuar con el flujo normal
         addToast('Autenticación exitosa.', 'success');
         setIsTransitioning(true);
 
@@ -1147,14 +1081,14 @@ function App() {
         }, 1000);
         
       } catch (whitelistError) {
-        console.error('Whitelist check error:', whitelistError);
+        void logger.error('Whitelist check error', whitelistError, 'handleMicrosoftAuth');
         addToast('Error verificando acceso. Inténtalo de nuevo.', 'error');
         setIsLoading(false);
         setShowLoader(false);
       }
       
     } catch (error) {
-      console.error('Microsoft auth error:', error);
+      void logger.error('Microsoft auth error', error, 'handleMicrosoftAuth');
       addToast('Error en autenticación: ' + error, 'error');
       setIsLoading(false);
       setShowLoader(false);
@@ -1309,16 +1243,13 @@ function App() {
                        }
                        setShowLoader(true);
 
-                       // Check if it's a local instance
                        const isLocalInstance = localInstances.some(li => li.id === selectedInstance);
                        
                        if (isLocalInstance) {
-                         // Launch local instance
                          try {
                            const localInst = localInstances.find(li => li.id === selectedInstance);
                            if (!localInst) throw new Error('Local instance not found');
 
-                           // Load saved RAM configuration
                            const [minRam, maxRam] = await invoke<[number, number]>('load_ram_config');
 
                            await invoke('launch_local_instance', {
@@ -1334,13 +1265,12 @@ function App() {
                            setLoaderText("Iniciando sesión...");
                            addToast('Minecraft iniciado exitosamente', 'success');
                          } catch (error) {
-                           console.error('Error launching local instance:', error);
+                           void logger.error('Error launching local instance', error, 'onLaunch');
                            addToast(`Error al iniciar instancia: ${error}`, 'error');
                            setShowLoader(false);
                            setLoaderText("Iniciando sesión...");
                          }
                        } else {
-                         // Launch remote instance
                        await launchInstance(
                          instance,
                          currentAccount,
@@ -1352,7 +1282,6 @@ function App() {
                          setIsDownloadingAssets,
                          setDownloadProgress,
                          () => {
-                           // Auth error callback - clear account and show login
                            setCurrentAccount(null);
                            setIsLoginVisible(true);
                         },
