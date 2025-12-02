@@ -11,11 +11,22 @@ interface MinecraftWorld {
   icon_path: string | null;
 }
 
+interface RemoteInstance {
+  id: string;
+  name: string;
+  minecraft_version: string;
+  mod_loader?: {
+    type: string;
+    version: string;
+  };
+}
+
 interface CopyFoldersModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetInstanceId: string;
   localInstances: LocalInstance[];
+  remoteInstances?: RemoteInstance[];
   onFoldersCopied?: () => void;
   addToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void;
 }
@@ -25,6 +36,7 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
   onClose,
   targetInstanceId,
   localInstances,
+  remoteInstances = [],
   onFoldersCopied,
   addToast,
 }) => {
@@ -273,13 +285,28 @@ const CopyFoldersModal: React.FC<CopyFoldersModalProps> = ({
                 disabled={isCopying}
               >
                 <option value="">Selecciona una instancia...</option>
-                {localInstances
-                  .filter(inst => inst.id !== targetInstanceId)
-                  .map(inst => (
-                    <option key={inst.id} value={inst.id} className="bg-gray-900">
-                      {inst.name} (MC {inst.minecraft_version})
-                    </option>
-                  ))}
+                {localInstances.length > 0 && (
+                  <optgroup label="Instancias Locales" className="bg-gray-900">
+                    {localInstances
+                      .filter(inst => inst.id !== targetInstanceId)
+                      .map(inst => (
+                        <option key={inst.id} value={inst.id} className="bg-gray-900">
+                          {inst.name} (MC {inst.minecraft_version})
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {remoteInstances.length > 0 && (
+                  <optgroup label="Instancias Remotas" className="bg-gray-900">
+                    {remoteInstances
+                      .filter(inst => inst.id !== targetInstanceId)
+                      .map(inst => (
+                        <option key={inst.id} value={inst.id} className="bg-gray-900">
+                          {inst.name} (MC {inst.minecraft_version})
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                 <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">

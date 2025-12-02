@@ -138,22 +138,22 @@ class FrontendLogger {
     this.isLogging = true;
     
     try {
-      let fullMessage = message;
-      if (data) {
-        try {
-          fullMessage += '\n' + JSON.stringify(data, null, 2);
-        } catch (e) {
-          fullMessage += '\n[Data serialization failed]';
-        }
-      }
-      
+    let fullMessage = message;
+    if (data) {
       try {
-        await invoke('log_frontend_error', {
-          level,
-          message: fullMessage,
-          context: context || undefined,
-        });
-      } catch (error) {
+        fullMessage += '\n' + JSON.stringify(data, null, 2);
+      } catch (e) {
+        fullMessage += '\n[Data serialization failed]';
+      }
+    }
+    
+    try {
+      await invoke('log_frontend_error', {
+        level,
+        message: fullMessage,
+        context: context || undefined,
+      });
+    } catch (error) {
         this.originalError('Failed to log to backend:', error);
       }
     } finally {

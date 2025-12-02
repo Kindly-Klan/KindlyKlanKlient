@@ -276,7 +276,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="glass-card rounded-3xl border border-white/10 p-8 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-300"
+        className="glass-card rounded-2xl border border-white/10 p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-300"
         style={{
           background: 'rgba(10, 10, 10, 0.95)',
           backdropFilter: 'blur(24px)',
@@ -285,22 +285,22 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-[#00ffff]/10 border border-[#00ffff]/20">
-              <svg className="w-6 h-6 text-[#00ffff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-[#00ffff]/10 border border-[#00ffff]/20">
+              <svg className="w-5 h-5 text-[#00ffff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <h2 className="text-3xl font-bold text-white">
+            <h2 className="text-xl font-semibold text-white">
               {selectedProject ? selectedProject.title : 'Buscar Mods en Modrinth'}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 hover:scale-110 transition-all duration-200 cursor-pointer"
+            className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all duration-200 cursor-pointer"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -309,7 +309,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
         {!selectedProject ? (
           <>
             {/* Search Bar */}
-            <div className="flex gap-3 mb-6">
+            <div className="flex gap-2 mb-4">
               <div className="flex-1 relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -332,7 +332,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
               <button
                 onClick={handleSearch}
                 disabled={isSearching || !searchQuery.trim()}
-                className="px-6 py-2.5 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-[#00ffff]/20 border border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium text-sm cursor-pointer flex items-center gap-2"
               >
                 {isSearching ? (
                   <>
@@ -353,7 +353,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
             </div>
 
             {/* Search Results */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-3">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-2 pr-2">
               {searchResults.length === 0 && !isSearching && hasSearched && (
                 <div className="text-center text-white/60 py-12 flex flex-col items-center gap-3">
                   <svg className="w-16 h-16 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -363,32 +363,33 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                 </div>
               )}
               {searchResults.map((project, index) => (
-                <button
+                <div
                   key={project.project_id}
                   onClick={() => handleProjectSelect(project)}
-                  className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-left hover:bg-white/10 hover:border-[#00ffff]/30 transition-all duration-200 group cursor-pointer animate-in fade-in slide-in-from-bottom-4 overflow-hidden"
+                  className="w-full p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-[#00ffff]/30 transition-all duration-200 group cursor-pointer animate-in fade-in slide-in-from-bottom-4"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     {project.icon_url ? (
                       <img
                         src={project.icon_url}
-                        className="w-16 h-16 rounded-lg object-cover border border-white/10 group-hover:border-[#00ffff]/30 transition-colors"
+                        alt={project.title}
+                        className="w-12 h-12 rounded-lg object-cover border border-white/10 group-hover:border-[#00ffff]/30 transition-colors flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#00ffff]/20 to-[#00ffff]/5 border border-[#00ffff]/20 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-[#00ffff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#00ffff]/20 to-[#00ffff]/5 border border-[#00ffff]/20 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-6 h-6 text-[#00ffff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                         </svg>
                       </div>
                     )}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-white font-bold group-hover:text-[#00ffff] transition-colors">
+                        <h3 className="text-white font-semibold text-sm group-hover:text-[#00ffff] transition-colors truncate">
                           {project.title}
                         </h3>
                         {isModInstalled(project) && (
-                          <div className="px-2 py-0.5 rounded-md bg-green-500/20 border border-green-500/30 flex items-center gap-1">
+                          <div className="px-1.5 py-0.5 rounded bg-green-500/20 border border-green-500/30 flex items-center gap-1 flex-shrink-0">
                             <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -396,41 +397,41 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                           </div>
                         )}
                       </div>
-                      <p className="text-white/60 text-sm line-clamp-2 mt-1">
+                      <p className="text-white/60 text-xs line-clamp-2">
                         {project.description}
                       </p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-white/40">
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-white/40">
                         <div className="flex items-center gap-1">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                           </svg>
-                          <span>{project.downloads.toLocaleString()} descargas</span>
+                          <span>{project.downloads.toLocaleString()}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                           </svg>
-                          <span>{project.categories.join(', ')}</span>
+                          <span className="truncate">{project.categories.join(', ')}</span>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       {!isModInstalled(project) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDownloadLatest(project);
                           }}
-                          className="px-4 py-2 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 transition-all duration-200 font-medium text-sm cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2"
+                          className="px-3 py-1.5 rounded-lg bg-[#00ffff]/20 border border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 transition-all duration-200 font-medium text-xs cursor-pointer flex items-center gap-1.5"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                           </svg>
                           Descargar
                         </button>
                       )}
                       <svg
-                        className="w-6 h-6 text-white/40 group-hover:text-[#00ffff] transition-colors"
+                        className="w-5 h-5 text-white/40 group-hover:text-[#00ffff] transition-colors"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -439,7 +440,7 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                       </svg>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </>
@@ -451,16 +452,16 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                 setSelectedProject(null);
                 setVersions([]);
               }}
-              className="mb-4 text-[#00ffff] hover:text-[#00ffff]/80 transition-colors flex items-center gap-2 cursor-pointer group"
+              className="mb-3 text-[#00ffff] hover:text-[#00ffff]/80 transition-colors flex items-center gap-1.5 cursor-pointer group text-sm"
             >
-              <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Volver a búsqueda
+              Volver
             </button>
 
             {/* Versions List */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
               {isLoadingVersions ? (
                 <div className="text-center text-white/60 py-12 flex flex-col items-center gap-3">
                   <svg className="w-12 h-12 animate-spin text-[#00ffff]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -483,13 +484,13 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                   return (
                     <div
                       key={version.id}
-                      className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-[#00ffff]/30 transition-all duration-200 hover:bg-white/10 animate-in fade-in slide-in-from-bottom-4"
+                      className="p-3 rounded-lg bg-white/5 border border-white/10 hover:border-[#00ffff]/30 transition-all duration-200 hover:bg-white/10 animate-in fade-in slide-in-from-bottom-4"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <h3 className="text-white font-bold">{version.name || version.version_number}</h3>
-                          <p className="text-white/60 text-sm mt-1 flex items-center gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white font-semibold text-sm">{version.name || version.version_number}</h3>
+                          <p className="text-white/60 text-xs mt-1 flex items-center gap-2 flex-wrap">
                             <span className="flex items-center gap-1">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -503,19 +504,19 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                               {version.downloads.toLocaleString()} descargas
                             </span>
                           </p>
-                          <div className="flex items-center gap-2 mt-2 text-xs text-white/40">
-                            <span className="px-2 py-1 rounded bg-white/5 flex items-center gap-1">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-white/40 flex-wrap">
+                            <span className="px-1.5 py-0.5 rounded bg-white/5 flex items-center gap-1">
+                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                               </svg>
                               {version.version_type}
                             </span>
                             {version.dependencies.length > 0 && (
-                              <span className="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                                 </svg>
-                                {version.dependencies.length} dependencia(s)
+                                {version.dependencies.length} dep.
                               </span>
                             )}
                           </div>
@@ -523,18 +524,18 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                         <button
                           onClick={() => handleDownloadMod(version)}
                           disabled={isDownloading}
-                          className="ml-4 px-6 py-2.5 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium cursor-pointer hover:scale-105 active:scale-95 relative overflow-hidden min-w-[120px]"
+                          className="px-3 py-1.5 rounded-lg bg-[#00ffff]/20 border border-[#00ffff]/30 text-[#00ffff] hover:bg-[#00ffff]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium text-xs cursor-pointer relative overflow-hidden min-w-[90px] flex-shrink-0"
                         >
                           {isDownloading ? (
-                            <div className="flex items-center gap-2">
-                              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex items-center gap-1.5">
+                              <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                               </svg>
                               <span>{progress}%</span>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex items-center gap-1.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                               </svg>
                               Descargar
@@ -542,16 +543,16 @@ const ModrinthSearchModal: React.FC<ModrinthSearchModalProps> = ({
                           )}
                           {isDownloading && (
                             <div 
-                              className="absolute bottom-0 left-0 h-1 bg-[#00ffff] transition-all duration-300"
+                              className="absolute bottom-0 left-0 h-0.5 bg-[#00ffff] transition-all duration-300"
                               style={{ width: `${progress}%` }}
                             />
                           )}
                         </button>
                       </div>
                       {isDownloading && (
-                        <div className="mt-3 w-full bg-white/5 rounded-full h-2 overflow-hidden">
+                        <div className="mt-2 w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className="bg-gradient-to-r from-[#00ffff] to-[#00ffff]/60 h-full transition-all duration-300 shadow-lg shadow-[#00ffff]/50"
+                            className="bg-gradient-to-r from-[#00ffff] to-[#00ffff]/60 h-full transition-all duration-300"
                             style={{ width: `${progress}%` }}
                           />
                         </div>

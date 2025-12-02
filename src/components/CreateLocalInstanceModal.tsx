@@ -174,7 +174,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   const handleBack = () => {
     setError('');
     if (step > 1) {
-      // If coming back from step 5 and vanilla, skip step 4
       if (step === 5 && modLoaderType === 'vanilla') {
         setStep(3);
       } else {
@@ -228,7 +227,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        {/* Header */}
         <div className="mb-6">
           <h2 className="text-3xl font-bold text-white mb-2">
             Nueva Instancia Local
@@ -238,7 +236,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
           </p>
         </div>
 
-        {/* Progress bar */}
         <div className="mb-8">
           <div className="flex items-center gap-2">
             {Array.from({ length: totalSteps }).map((_, i) => (
@@ -252,9 +249,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
           </div>
         </div>
 
-        {/* Content */}
         <div className="min-h-[300px]">
-          {/* Step 1: Name */}
           {step === 1 && (
             <div className="space-y-6 animate-fade-in-up">
               <div>
@@ -280,7 +275,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             </div>
           )}
 
-          {/* Step 2: Minecraft Version */}
           {step === 2 && (
             <div className="space-y-6 animate-fade-in-up">
               <div>
@@ -317,7 +311,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             </div>
           )}
 
-          {/* Step 3: Mod Loader Type */}
           {step === 3 && (
             <div className="space-y-6 animate-fade-in-up">
               <div>
@@ -388,7 +381,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             </div>
           )}
 
-          {/* Step 4: Mod Loader Version */}
           {step === 4 && modLoaderType !== 'vanilla' && (
             <div className="space-y-6 animate-fade-in-up">
               <div>
@@ -443,7 +435,6 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
             </div>
           )}
 
-          {/* Step 5: Summary */}
           {step === 5 && (
             <div className="space-y-6 animate-fade-in-up">
               <div className="space-y-4">

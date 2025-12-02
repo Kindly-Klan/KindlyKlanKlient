@@ -4,6 +4,7 @@ import type { LocalInstance } from '@/types/local-instances';
 import { invoke } from '@tauri-apps/api/core';
 import { Avatar } from '@/components/Avatar';
 import { logger } from '@/utils/logger';
+import AllInstancesModal from './AllInstancesModal';
 
 interface Instance {
   id: string;
@@ -65,11 +66,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   addToast,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
-  const [localInstancesExpanded, setLocalInstancesExpanded] = useState(false);
+  const [showAllInstancesModal, setShowAllInstancesModal] = useState(false);
   const [hoveredInstance, setHoveredInstance] = useState<{ id: string; top: number } | null>(null);
   const [, setTooltipVisible] = useState(false);
   
-  // Animate tooltip on hover
   React.useEffect(() => {
     if (hoveredInstance) {
       setTooltipVisible(true);
@@ -78,11 +78,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [hoveredInstance]);
   
-  // Show max 3 local instances by default, then expand button
   const MAX_VISIBLE_LOCAL_INSTANCES = 3;
-  const visibleLocalInstances = localInstancesExpanded 
-    ? localInstances 
-    : localInstances.slice(0, MAX_VISIBLE_LOCAL_INSTANCES);
+  const visibleLocalInstances = localInstances.slice(0, MAX_VISIBLE_LOCAL_INSTANCES);
   const hasMoreLocalInstances = localInstances.length > MAX_VISIBLE_LOCAL_INSTANCES;
 
   const handleContextMenu = (e: React.MouseEvent, instanceId: string) => {
@@ -255,16 +252,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                       );
                     })}
 
-                    {/* Expand/Collapse button for more instances */}
+                    {/* Show all instances modal button */}
                     {hasMoreLocalInstances && (
-                      <Tooltip content={localInstancesExpanded ? "Mostrar menos" : `Mostrar ${localInstances.length - MAX_VISIBLE_LOCAL_INSTANCES} más`} side="right">
+                      <Tooltip content={`Ver todas las instancias (${localInstances.length})`} side="right">
                         <div
-                          onClick={() => setLocalInstancesExpanded(!localInstancesExpanded)}
+                          onClick={() => setShowAllInstancesModal(true)}
                           className="w-full aspect-square cursor-pointer transition-all duration-300 ease-out hover:scale-105 flex items-center justify-center"
                         >
                           <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50 bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center">
                             <span className="text-[#FFD700] font-bold text-2xl">
-                              {localInstancesExpanded ? '−' : '⋯'}
+                              +{localInstances.length - MAX_VISIBLE_LOCAL_INSTANCES}
                             </span>
                           </div>
                         </div>
@@ -387,6 +384,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       )}
+
+      <AllInstancesModal
+        isOpen={showAllInstancesModal}
+        onClose={() => setShowAllInstancesModal(false)}
+        localInstances={localInstances}
+        remoteInstances={instances}
+        selectedInstance={selectedInstance}
+        onInstanceSelect={onInstanceSelect}
+        distributionBaseUrl={distributionBaseUrl}
+      />
     </>
   );
 };

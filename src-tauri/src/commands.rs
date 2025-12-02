@@ -597,7 +597,7 @@ async fn load_update_state() -> UpdateState {
     let config = load_launcher_config().await;
     let real_version = env!("CARGO_PKG_VERSION").to_string();
     let mut state = config.update_state;
-    state.current_version = real_version;
+        state.current_version = real_version;
     state
 }
 
@@ -2058,6 +2058,9 @@ pub async fn list_installed_mods(instance_id: String) -> Result<Vec<InstalledMod
         .await
         .map_err(|e| format!("Failed to read mods directory: {}", e))?;
     
+    let mut jar_paths = Vec::new();
+    let mut filenames = Vec::new();
+    
     while let Some(entry) = entries.next_entry().await
         .map_err(|e| format!("Failed to read directory entry: {}", e))? {
         let path = entry.path();
@@ -2066,16 +2069,60 @@ pub async fn list_installed_mods(instance_id: String) -> Result<Vec<InstalledMod
             if let Some(extension) = path.extension() {
                 if extension == "jar" || extension == "JAR" {
                     if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                        // Usar el método mejorado que busca por hash SHA512 primero
-                        let project_id = get_modrinth_project_id(&path).await;
-                        mod_files.push(InstalledMod {
-                            filename: filename.to_string(),
-                            project_id,
-                        });
+                        jar_paths.push(path.clone());
+                        filenames.push(filename.to_string());
                     }
                 }
             }
         }
+    }
+    
+    if jar_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut hashes = Vec::new();
+    let mut hash_to_filename = std::collections::HashMap::new();
+    
+    for (idx, jar_path) in jar_paths.iter().enumerate() {
+        if let Some(sha512) = calculate_sha512(jar_path) {
+            hashes.push(sha512.clone());
+            hash_to_filename.insert(sha512, filenames[idx].clone());
+        }
+    }
+    
+    let mut project_id_map = std::collections::HashMap::new();
+    
+    if !hashes.is_empty() {
+        match crate::modrinth::get_versions_from_hashes(&hashes, "sha512").await {
+            Ok(versions) => {
+                for version in versions {
+                    for file in &version.files {
+                        if let Some(sha512) = &file.hashes.sha512 {
+                            if let Some(filename) = hash_to_filename.get(sha512) {
+                                project_id_map.insert(filename.clone(), version.project_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Error fetching versions from hashes: {}", e);
+            }
+        }
+    }
+    
+    for (idx, filename) in filenames.iter().enumerate() {
+        let project_id = if let Some(pid) = project_id_map.get(filename) {
+            Some(pid.clone())
+        } else {
+            get_modrinth_project_id(&jar_paths[idx]).await
+        };
+        
+        mod_files.push(InstalledMod {
+            filename: filename.clone(),
+            project_id,
+        });
     }
     
     Ok(mod_files)

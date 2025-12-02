@@ -522,9 +522,9 @@ pub async fn launch_local_instance(
                 if let Ok(updated_metadata_json) = serde_json::to_string_pretty(&metadata) {
                     let _ = tokio::fs::write(&metadata_path, updated_metadata_json).await;
                 }
+                }
             }
         }
-    }
     
     let _ = app_handle.emit("asset-download-progress", serde_json::json!({
         "current": 0,

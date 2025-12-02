@@ -151,6 +151,38 @@ pub async fn get_version_by_id(version_id: &str) -> Result<ModrinthVersion> {
     Ok(version)
 }
 
+/// Obtener versiones desde múltiples hashes (batch)
+pub async fn get_versions_from_hashes(hashes: &[String], algorithm: &str) -> Result<Vec<ModrinthVersion>> {
+    let client = reqwest::Client::builder()
+        .user_agent("KindlyKlanKlient/1.0.0 (github.com/kindlyklan/klient)")
+        .build()?;
+
+    let url = format!("{}/version_files", MODRINTH_API_BASE);
+    
+    let body = serde_json::json!({
+        "hashes": hashes,
+        "algorithm": algorithm
+    });
+
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        log::error!("Modrinth API error: {} - {}", status, text);
+        return Err(anyhow::anyhow!("Modrinth API error: {} - {}", status, text));
+    }
+
+    // La respuesta es un mapa de hash -> Version, necesitamos extraer solo los valores
+    let hash_to_version: std::collections::HashMap<String, ModrinthVersion> = response.json().await?;
+    let versions: Vec<ModrinthVersion> = hash_to_version.into_values().collect();
+    Ok(versions)
+}
+
 /// Obtener información de una versión desde el hash SHA512 del archivo
 pub async fn get_version_from_hash(sha512: &str) -> Result<Option<ModrinthVersion>> {
     let client = reqwest::Client::builder()
@@ -158,8 +190,6 @@ pub async fn get_version_from_hash(sha512: &str) -> Result<Option<ModrinthVersio
         .build()?;
 
     let url = format!("{}/version_file/{}?algorithm=sha512", MODRINTH_API_BASE, sha512);
-
-    log::info!("🔍 Buscando versión por hash SHA512: {}", sha512);
 
     let response = client
         .get(&url)

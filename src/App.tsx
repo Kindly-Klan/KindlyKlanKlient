@@ -1764,6 +1764,7 @@ function App() {
           }}
           targetInstanceId={copyFoldersInstanceId}
           localInstances={localInstances}
+          remoteInstances={filteredInstances.length > 0 ? filteredInstances : (distribution?.instances || [])}
           onFoldersCopied={() => {
             addToast('Carpetas copiadas correctamente', 'success');
           }}
