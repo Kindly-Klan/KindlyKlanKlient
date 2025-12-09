@@ -4,7 +4,6 @@ import type { LocalInstance } from '@/types/local-instances';
 import { invoke } from '@tauri-apps/api/core';
 import { Avatar } from '@/components/Avatar';
 import { logger } from '@/utils/logger';
-import AllInstancesModal from './AllInstancesModal';
 
 interface Instance {
   id: string;
@@ -66,9 +65,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   addToast,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; instanceId: string } | null>(null);
-  const [showAllInstancesModal, setShowAllInstancesModal] = useState(false);
   const [hoveredInstance, setHoveredInstance] = useState<{ id: string; top: number } | null>(null);
   const [, setTooltipVisible] = useState(false);
+  const [, forceUpdate] = useState(0);
   
   React.useEffect(() => {
     if (hoveredInstance) {
@@ -77,9 +76,32 @@ const Sidebar: React.FC<SidebarProps> = ({
       setTooltipVisible(false);
     }
   }, [hoveredInstance]);
+
+  React.useEffect(() => {
+    const handleLastPlayedUpdate = () => {
+      // Forzar re-render cuando se actualiza la última vez jugada
+      forceUpdate(prev => prev + 1);
+    };
+    window.addEventListener('last_played_updated', handleLastPlayedUpdate);
+    return () => window.removeEventListener('last_played_updated', handleLastPlayedUpdate);
+  }, []);
   
   const MAX_VISIBLE_LOCAL_INSTANCES = 3;
-  const visibleLocalInstances = localInstances.slice(0, MAX_VISIBLE_LOCAL_INSTANCES);
+  
+  const getLastPlayed = (instanceId: string): number => {
+    const lastPlayed = localStorage.getItem(`last_played_${instanceId}`);
+    return lastPlayed ? parseInt(lastPlayed, 10) : 0;
+  };
+
+  const sortedLocalInstances = [...localInstances].sort((a, b) => {
+    if (selectedInstance === a.id) return -1;
+    if (selectedInstance === b.id) return 1;
+    const aLastPlayed = getLastPlayed(a.id);
+    const bLastPlayed = getLastPlayed(b.id);
+    return bLastPlayed - aLastPlayed;
+  });
+
+  const visibleLocalInstances = sortedLocalInstances.slice(0, MAX_VISIBLE_LOCAL_INSTANCES);
   const hasMoreLocalInstances = localInstances.length > MAX_VISIBLE_LOCAL_INSTANCES;
 
   const handleContextMenu = (e: React.MouseEvent, instanceId: string) => {
@@ -117,36 +139,56 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="fixed left-0 top-0 h-full w-20 glass border-r border-white/10 z-40">
         <div className="h-full flex flex-col">
-          <div className="space-y-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <div className="flex flex-col gap-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {/* Remote instances */}
-            {instances.map((instance) => (
-              <div 
-                key={instance.id} 
-                className="relative group w-full "
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setHoveredInstance({ id: instance.id, top: rect.top + rect.height / 2 });
-                }}
-                onMouseLeave={() => setHoveredInstance(null)}
-              >
-                <div
-                  onClick={() => onInstanceSelect(instance.id)}
-                  className={`w-full aspect-square cursor-pointer transition-all duration-300 ease-out relative select-none ${
-                    selectedInstance === instance.id
-                      ? 'scale-105'
-                      : 'hover:scale-105'
-                  }`}
+            {instances.map((instance, index) => {
+              const isSelected = selectedInstance === instance.id;
+              const selectedOriginalIndex = selectedInstance ? instances.findIndex(i => i.id === selectedInstance) : -1;
+              
+              let translateY = 0;
+              if (selectedOriginalIndex !== -1 && selectedOriginalIndex !== 0 && selectedOriginalIndex !== index) {
+                if (isSelected) {
+                  translateY = -selectedOriginalIndex * (80 + 8);
+                } else if (index < selectedOriginalIndex) {
+                  translateY = (80 + 8);
+                }
+              }
+              
+              return (
+                <div 
+                  key={instance.id} 
+                  className="relative group w-full"
+                  style={{
+                    order: isSelected ? -1 : index,
+                    transform: `translateY(${translateY}px) ${isSelected ? 'scale(1.05)' : 'scale(1)'}`,
+                    transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), scale 0.3s ease-out',
+                    zIndex: isSelected ? 10 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoveredInstance({ id: instance.id, top: rect.top + rect.height / 2 });
+                  }}
+                  onMouseLeave={() => setHoveredInstance(null)}
                 >
-                  <div 
-                    className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                    selectedInstance === instance.id
-                        ? 'ring-2 ring-[#00ffff]'
-                      : 'ring-1 ring-white/10 hover:ring-white/20'
+                  <div
+                    onClick={() => onInstanceSelect(instance.id)}
+                    className={`w-full aspect-square cursor-pointer relative select-none ${
+                      isSelected ? '' : 'hover:scale-105'
                     }`}
-                    style={selectedInstance === instance.id ? {
-                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.6), 0 0 40px rgba(0, 255, 255, 0.4)'
-                    } : {}}
+                    style={{
+                      transition: 'transform 0.3s ease-out',
+                    }}
                   >
+                    <div 
+                      className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-500 ease-in-out ${
+                        isSelected
+                          ? 'ring-2 ring-[#00ffff]'
+                          : 'ring-1 ring-white/10 hover:ring-white/20'
+                      }`}
+                      style={isSelected ? {
+                        boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 255, 255, 0.6), 0 0 40px rgba(0, 255, 255, 0.4)'
+                      } : {}}
+                    >
                     {instance.icon ? (
                       <img
                         src={`${distributionBaseUrl}/${instance.icon}`}
@@ -166,7 +208,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
           
           {/* Tooltip for remote instances - rendered outside overflow container */}
@@ -202,30 +245,45 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 {/* Local instances list */}
                 {localInstances.length > 0 && (
-                  <div className="space-y-2">
-                    {visibleLocalInstances.map((localInstance) => {
+                  <div className="flex flex-col gap-2 relative">
+                    {visibleLocalInstances.map((localInstance, index) => {
                       const isCreating = creatingInstanceId === localInstance.id;
+                      const isSelected = selectedInstance === localInstance.id;
+                      
+                      const selectedIndexInSorted = selectedInstance ? sortedLocalInstances.findIndex(li => li.id === selectedInstance) : -1;
+                      const currentIndexInSorted = sortedLocalInstances.findIndex(li => li.id === localInstance.id);
+                      
+                      let translateY = 0;
+                      if (selectedIndexInSorted !== -1 && selectedIndexInSorted !== 0 && selectedIndexInSorted !== currentIndexInSorted) {
+                        if (isSelected) {
+                          translateY = -selectedIndexInSorted * (80 + 8);
+                        } else if (currentIndexInSorted < selectedIndexInSorted) {
+                          translateY = (80 + 8);
+                        }
+                      }
                       
                       return (
                         <Tooltip key={localInstance.id} content={localInstance.name} side="right">
                           <div
                             onClick={() => !isCreating && onInstanceSelect(localInstance.id)}
                             onContextMenu={(e) => !isCreating && handleContextMenu(e, localInstance.id)}
-                            className={`w-full aspect-square transition-all duration-300 ease-out relative select-none ${
-                              isCreating ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'
-                            } ${
-                              selectedInstance === localInstance.id && !isCreating
-                                ? 'scale-105'
-                                : ''
+                            className={`w-full aspect-square relative select-none ${
+                              isCreating ? 'cursor-not-allowed' : 'cursor-pointer'
                             }`}
+                            style={{
+                              order: isSelected ? -1 : index + 1,
+                              transform: `translateY(${translateY}px) ${isSelected ? 'scale(1.05)' : 'scale(1)'}`,
+                              transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), scale 0.3s ease-out',
+                              zIndex: isSelected ? 10 : 1,
+                            }}
                           >
                             <div 
-                              className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ${
-                                selectedInstance === localInstance.id && !isCreating
+                              className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-500 ease-in-out ${
+                                isSelected && !isCreating
                                   ? 'ring-2 ring-[#FFD700]'
                                   : 'ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50'
                               }`}
-                              style={selectedInstance === localInstance.id && !isCreating ? {
+                              style={isSelected && !isCreating ? {
                                 boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.4)'
                               } : {}}
                             >
@@ -252,11 +310,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                       );
                     })}
 
-                    {/* Show all instances modal button */}
+                    {/* Show all instances button */}
                     {hasMoreLocalInstances && (
                       <Tooltip content={`Ver todas las instancias (${localInstances.length})`} side="right">
                         <div
-                          onClick={() => setShowAllInstancesModal(true)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onInstanceSelect('local-instances-view');
+                          }}
                           className="w-full aspect-square cursor-pointer transition-all duration-300 ease-out hover:scale-105 flex items-center justify-center"
                         >
                           <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50 bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center">
@@ -377,7 +438,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={handleDeleteInstance}
             className="w-full px-3 py-2 text-left text-red-400 hover:bg-red-500/20 transition-all duration-200 flex items-center gap-2 text-sm"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
             Eliminar
@@ -385,15 +446,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
 
-      <AllInstancesModal
-        isOpen={showAllInstancesModal}
-        onClose={() => setShowAllInstancesModal(false)}
-        localInstances={localInstances}
-        remoteInstances={instances}
-        selectedInstance={selectedInstance}
-        onInstanceSelect={onInstanceSelect}
-        distributionBaseUrl={distributionBaseUrl}
-      />
     </>
   );
 };

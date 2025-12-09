@@ -447,6 +447,7 @@ pub fn run() {
             get_local_instances,
             sync_mods_from_remote,
             open_instance_folder,
+            rename_local_instance,
             launch_local_instance,
             delete_local_instance,
             // Forge and NeoForge

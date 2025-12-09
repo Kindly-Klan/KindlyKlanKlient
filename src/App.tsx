@@ -11,6 +11,7 @@ import Sidebar from "@/components/Sidebar";
 import UserProfile from "@/components/UserProfile";
 import SettingsView from "@/components/SettingsView";
 import InstanceView from "@/components/InstanceView";
+import LocalInstancesView from "@/components/LocalInstancesView";
 import DownloadProgressToast from "@/components/DownloadProgressToast";
 import UpdateReadyToast from "@/components/UpdateReadyToast";
 import { SkinManager } from "@/components/skin/SkinManager";
@@ -379,6 +380,7 @@ function App() {
   const [modrinthInstanceId, setModrinthInstanceId] = useState<string | null>(null);
   const [copyFoldersModalOpen, setCopyFoldersModalOpen] = useState(false);
   const [copyFoldersInstanceId, setCopyFoldersInstanceId] = useState<string | null>(null);
+  const [showLocalInstancesView, setShowLocalInstancesView] = useState(false);
 
   useEffect(() => {
     void logger.info('Aplicación iniciada', 'APP');
@@ -657,7 +659,16 @@ function App() {
   const handleInstanceSelect = (instanceId: string) => {
     setSkinViewOpen(false);
     setSettingsOpen(false);
-    setSelectedInstance(instanceId);
+    if (instanceId === 'local-instances-view') {
+      setShowLocalInstancesView(true);
+      setSelectedInstance(null);
+    } else {
+      setShowLocalInstancesView(false);
+      setSelectedInstance(instanceId);
+      if (localInstances.some(li => li.id === instanceId)) {
+        localStorage.setItem(`last_played_${instanceId}`, Date.now().toString());
+      }
+    }
   };
 
   const handleAddAccount = async () => {
@@ -807,6 +818,8 @@ function App() {
     }
   };
 
+  const loadLocalInstancesRef = useRef<(() => Promise<void>) | null>(null);
+  
   const loadLocalInstances = async () => {
     if (!isAdmin) {
       setLocalInstances([]);
@@ -821,6 +834,8 @@ function App() {
       addToast('Error al cargar instancias locales', 'error');
     }
   };
+  
+  loadLocalInstancesRef.current = loadLocalInstances;
   
   const handleCreateLocalInstance = (instance: LocalInstance) => {
     setCreatingInstanceId(instance.id);    
@@ -903,8 +918,8 @@ function App() {
       if (progress.stage === 'completed') {
         addToast(progress.message, 'success');
         setTimeout(() => {
-          if (!isUnmounted) {
-            loadLocalInstances();
+          if (!isUnmounted && loadLocalInstancesRef.current) {
+            loadLocalInstancesRef.current();
           }
         }, 500);
       }
@@ -1185,6 +1200,23 @@ function App() {
                 <div className="flex items-center justify-center h-full">
                   <Loader text="Cargando distribución..." variant="orbital" showReloadAfter={30} />
             </div>
+               ) : showLocalInstancesView ? (
+                 <div className="h-full">
+                   <LocalInstancesView
+                     localInstances={localInstances}
+                     selectedInstance={selectedInstance}
+                     onInstanceSelect={(instanceId) => {
+                       setShowLocalInstancesView(false);
+                       setSelectedInstance(instanceId);
+                       localStorage.setItem(`last_played_${instanceId}`, Date.now().toString());
+                       window.dispatchEvent(new CustomEvent('last_played_updated', { detail: { instanceId } }));
+                     }}
+                     onLocalInstanceDeleted={handleLocalInstanceDeleted}
+                     onOpenFolder={handleOpenFolder}
+                     onInstanceRenamed={() => loadLocalInstances()}
+                     addToast={addToast}
+                   />
+                 </div>
                ) : !selectedInstance ? (
                  <div className="relative h-full w-full overflow-hidden">
                    

@@ -135,6 +135,8 @@ const LaunchButton: React.FC<LaunchButtonProps> = ({
 			setState('playing');
 			setPlayTime(0);
 			launchStateCache.set(instanceId, { state: 'playing', startTime: playStartTime });
+			localStorage.setItem(`last_played_${instanceId}`, playStartTime.toString());
+			window.dispatchEvent(new CustomEvent('last_played_updated', { detail: { instanceId } }));
 		} catch (error) {
 			void logger.error(`Error during launch for instance ${instanceId}`, error, 'LaunchButton');
 			setState('idle');

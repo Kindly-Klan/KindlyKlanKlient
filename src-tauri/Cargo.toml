@@ -1,6 +1,6 @@
 [package]
 name = "kindlyklanklient"
-version = "0.1.89"
+version = "0.1.90"
 description = "Client for Kindly Klan's events."
 authors = ["Kindly Klan"]
 edition = "2024"

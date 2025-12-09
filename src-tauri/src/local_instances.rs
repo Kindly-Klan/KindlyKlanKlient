@@ -464,6 +464,41 @@ pub async fn open_instance_folder(instance_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn rename_local_instance(instance_id: String, new_name: String) -> Result<(), String> {
+    let local_instances_dir = get_local_instances_dir()?;
+    let instance_dir = local_instances_dir.join(&instance_id);
+    
+    if !instance_dir.exists() {
+        return Err(format!("Instance directory does not exist: {}", instance_dir.display()));
+    }
+    
+    let metadata_path = instance_dir.join("instance_local.json");
+    if !metadata_path.exists() {
+        return Err("Instance metadata file does not exist".to_string());
+    }
+    
+    let metadata_content = tokio::fs::read_to_string(&metadata_path)
+        .await
+        .map_err(|e| format!("Failed to read instance metadata: {}", e))?;
+    
+    let mut metadata: LocalInstanceMetadata = serde_json::from_str(&metadata_content)
+        .map_err(|e| format!("Failed to parse instance metadata: {}", e))?;
+    
+    metadata.name = new_name.clone();
+    
+    let metadata_json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    
+    tokio::fs::write(&metadata_path, metadata_json)
+        .await
+        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+    
+    log::info!("Renamed local instance {} to {}", instance_id, new_name);
+    
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn launch_local_instance(
     instance_id: String,
     access_token: String,
