@@ -664,7 +664,7 @@ function App() {
       setSelectedInstance(null);
     } else {
       setShowLocalInstancesView(false);
-      setSelectedInstance(instanceId);
+    setSelectedInstance(instanceId);
       if (localInstances.some(li => li.id === instanceId)) {
         localStorage.setItem(`last_played_${instanceId}`, Date.now().toString());
       }
@@ -819,7 +819,7 @@ function App() {
   };
 
   const loadLocalInstancesRef = useRef<(() => Promise<void>) | null>(null);
-  
+
   const loadLocalInstances = async () => {
     if (!isAdmin) {
       setLocalInstances([]);
@@ -1218,42 +1218,42 @@ function App() {
                    />
                  </div>
                ) : !selectedInstance ? (
-                 <div className="relative h-full w-full overflow-hidden">
-                   
-                   {/* Background - More subtle gradient */}
-                   <div className="absolute inset-0 z-0">
-                     <div
-                       className="w-full h-full"
-                       style={{
-                         background: 'linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%)'
-                       }}
-                     />
-                   </div>
+                   <div className="relative h-full w-full overflow-hidden">
+                     
+                     {/* Background - More subtle gradient */}
+                     <div className="absolute inset-0 z-0">
+                       <div
+                         className="w-full h-full"
+                         style={{
+                           background: 'linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%)'
+                         }}
+                       />
+                     </div>
 
-                   {/* Subtle neon accents in background */}
-                   <div className="absolute inset-0 z-5 opacity-10">
-                     <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00ffff] rounded-full blur-3xl"></div>
-                     <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff00ff] rounded-full blur-3xl"></div>
-                   </div>
+                     {/* Subtle neon accents in background */}
+                     <div className="absolute inset-0 z-5 opacity-10">
+                       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#00ffff] rounded-full blur-3xl"></div>
+                       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#ff00ff] rounded-full blur-3xl"></div>
+                     </div>
 
-                   {/* Overlay */}
-                   <div className="absolute inset-0 bg-black/60 z-10" />
+                     {/* Overlay */}
+                     <div className="absolute inset-0 bg-black/60 z-10" />
 
-                   {/* Content */}
-                   <div className="relative z-20 h-full flex flex-col">
-                     <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-500 ease-out delay-200 ${logoVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
-                       <div className="text-center group animate-scale-in">
-                         <div className="p-16 inline-block">
-                           <img 
-                             src={kindlyklanLogo} 
-                             alt="KindlyKlan" 
-                             className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_50px_rgba(0,255,255,0.5)] group-hover:scale-105"
-                           />
+                     {/* Content */}
+                     <div className="relative z-20 h-full flex flex-col">
+                       <div className={`flex-1 flex items-center justify-center p-8 transition-all duration-500 ease-out delay-200 ${logoVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95'}`}>
+                         <div className="text-center group animate-scale-in">
+                           <div className="p-16 inline-block">
+                             <img 
+                               src={kindlyklanLogo} 
+                               alt="KindlyKlan" 
+                               className="w-64 h-64 mx-auto transition-all duration-500 group-hover:brightness-110 group-hover:contrast-110 group-hover:drop-shadow-[0_0_50px_rgba(0,255,255,0.5)] group-hover:scale-105"
+                             />
+                           </div>
                          </div>
                        </div>
                      </div>
                    </div>
-                 </div>
                ) : (
                  <div className="h-full">
                    <InstanceView

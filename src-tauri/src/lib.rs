@@ -25,6 +25,7 @@ mod commands;
 mod admins;
 mod local_instances;
 mod modrinth;
+mod http_client;
 pub use models::*;
 pub use versions::*;
 pub use whitelist::*;

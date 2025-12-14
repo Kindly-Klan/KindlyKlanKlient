@@ -138,32 +138,16 @@ const Sidebar: React.FC<SidebarProps> = ({
     <>
 
       <div className="fixed left-0 top-0 h-full w-20 glass border-r border-white/10 z-40">
-        <div className="h-full flex flex-col">
-          <div className="flex flex-col gap-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="h-full flex flex-col relative">
+        <div className="flex flex-col gap-2 overflow-y-auto flex-1 custom-scrollbar p-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: isAdmin && localInstances.length > 0 ? '400px' : '200px' }}>
             {/* Remote instances */}
-            {instances.map((instance, index) => {
+            {instances.map((instance) => {
               const isSelected = selectedInstance === instance.id;
-              const selectedOriginalIndex = selectedInstance ? instances.findIndex(i => i.id === selectedInstance) : -1;
-              
-              let translateY = 0;
-              if (selectedOriginalIndex !== -1 && selectedOriginalIndex !== 0 && selectedOriginalIndex !== index) {
-                if (isSelected) {
-                  translateY = -selectedOriginalIndex * (80 + 8);
-                } else if (index < selectedOriginalIndex) {
-                  translateY = (80 + 8);
-                }
-              }
               
               return (
                 <div 
                   key={instance.id} 
                   className="relative group w-full"
-                  style={{
-                    order: isSelected ? -1 : index,
-                    transform: `translateY(${translateY}px) ${isSelected ? 'scale(1.05)' : 'scale(1)'}`,
-                    transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), scale 0.3s ease-out',
-                    zIndex: isSelected ? 10 : 1,
-                  }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     setHoveredInstance({ id: instance.id, top: rect.top + rect.height / 2 });
@@ -172,12 +156,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div
                     onClick={() => onInstanceSelect(instance.id)}
-                    className={`w-full aspect-square cursor-pointer relative select-none ${
-                      isSelected ? '' : 'hover:scale-105'
+                    className={`w-full aspect-square cursor-pointer relative select-none transition-transform duration-300 ease-out ${
+                      isSelected ? 'scale-105' : 'hover:scale-105'
                     }`}
-                    style={{
-                      transition: 'transform 0.3s ease-out',
-                    }}
                   >
                     <div 
                       className={`w-full h-full rounded-2xl overflow-hidden transition-all duration-500 ease-in-out ${
@@ -229,17 +210,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Settings Button at bottom - Only Icon */}
-          <div className="flex-shrink-0 space-y-3 px-2 pb-2">
+          <div className="absolute bottom-0 left-0 right-0 space-y-3 px-2 pb-2">
             {/* Local instances section (only if admin) - positioned above the + button */}
             {isAdmin && (
               <>
                 {/* Separator above local instances */}
                 {localInstances.length > 0 && (
-                  <div className="relative my-3">
-                    <div className="h-[2px] bg-gradient-to-r from-transparent via-[#FFD700]/80 to-transparent shadow-[0_0_8px_rgba(255,215,0,0.5)]" />
-                    <div className="absolute left-1/2 -top-2 -translate-x-1/2 px-1.5">
-                      <span className="text-[#FFD700] text-[10px] font-bold tracking-wide drop-shadow-[0_0_4px_rgba(255,215,0,0.8)]">LOCAL</span>
-                    </div>
+                  <div className="relative my-4">
+                    <div className="h-px bg-gradient-to-r from-transparent via-[#FFD700]/60 to-transparent" />
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#FFD700] shadow-[0_0_8px_rgba(255,215,0,0.8)]" />
                   </div>
                 )}
 
@@ -322,7 +301,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         >
                           <div className="w-full h-full rounded-2xl overflow-hidden transition-all duration-300 ease-out ring-2 ring-[#FFD700]/30 hover:ring-[#FFD700]/50 bg-gradient-to-br from-[#FFD700]/10 to-[#FF8C00]/10 flex items-center justify-center">
                             <span className="text-[#FFD700] font-bold text-2xl">
-                              +{localInstances.length - MAX_VISIBLE_LOCAL_INSTANCES}
+                              +{localInstances.length - visibleLocalInstances.length}
                             </span>
                           </div>
                         </div>

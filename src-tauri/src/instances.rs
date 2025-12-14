@@ -804,8 +804,8 @@ fn ensure_launcher_profile(instance_dir: &Path) -> Result<(), String> {
 
 // Stubs expected to be defined elsewhere in codebase (existing functions)
 async fn get_fabric_installer_info() -> Result<crate::models::FabricInstallerMeta, String> {
-    let client = reqwest::Client::new();
-    let response = client
+    use crate::http_client::HTTP_CLIENT;
+    let response = HTTP_CLIENT
         .get("https://meta.fabricmc.net/v2/versions/installer")
         .send()
         .await
@@ -829,13 +829,13 @@ async fn get_fabric_installer_info() -> Result<crate::models::FabricInstallerMet
 }
 
 async fn get_fabric_profile_json(minecraft_version: &str, fabric_version: &str) -> Result<crate::models::FabricProfileJson, String> {
-    let client = reqwest::Client::new();
+    use crate::http_client::HTTP_CLIENT;
     let url = format!(
         "https://meta.fabricmc.net/v2/versions/loader/{}/{}/profile/json",
         minecraft_version, fabric_version
     );
 
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .send()
         .await

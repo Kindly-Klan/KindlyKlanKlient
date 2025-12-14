@@ -2490,7 +2490,7 @@ dependencies = [
 
 [[package]]
 name = "kindlyklanklient"
-version = "0.1.90"
+version = "0.1.91"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2503,6 +2503,7 @@ dependencies = [
  "log",
  "md5",
  "num_cpus",
+ "once_cell",
  "open",
  "rand 0.8.5",
  "reqwest 0.11.27",

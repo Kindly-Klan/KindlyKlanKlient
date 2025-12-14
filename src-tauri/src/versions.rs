@@ -137,11 +137,11 @@ pub async fn get_minecraft_versions() -> Result<Vec<crate::models::MinecraftVers
 
 #[tauri::command]
 pub async fn get_fabric_loader_versions(minecraft_version: String) -> Result<Vec<crate::models::FabricLoaderVersion>, String> {
+    use crate::http_client::HTTP_CLIENT;
     
-    let client = reqwest::Client::new();
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{}", minecraft_version);
     
-    let response = client
+    let response = HTTP_CLIENT
         .get(&url)
         .send()
         .await
