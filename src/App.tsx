@@ -29,6 +29,24 @@ import type { LocalInstance } from "@/types/local-instances";
 import kindlyklanLogo from "@/assets/kindlyklan.png";
 import microsoftIcon from "@/assets/icons/microsoft.svg";
 import { logger } from "@/utils/logger";
+
+// Función para actualizar Discord presence
+const updateDiscordPresence = async (state: string, details: string) => {
+  try {
+    // Primero verificar si Discord RPC está habilitado
+    const config = await invoke<{ enabled: boolean }>('load_discord_rpc_config');
+    if (!config.enabled) return;
+
+    // Verificar si está inicializado
+    const isEnabled = await invoke<boolean>('is_discord_rpc_enabled');
+    if (!isEnabled) return;
+
+    await invoke('update_discord_presence', { state, details: details || '' });
+  } catch (error) {
+    // Silenciar errores de Discord RPC para no molestar al usuario
+    void logger.debug('Discord RPC update failed (may not be enabled)', 'updateDiscordPresence');
+  }
+};
 type AssetDownloadProgress = {
   current: number;
   total: number;
@@ -390,7 +408,7 @@ function App() {
         await getCurrentWindow().setTheme('dark');
       } catch {}
     })();
-    
+
     (async () => {
       try {
         await register('CommandOrControl+Shift+D', async () => {
@@ -401,6 +419,18 @@ function App() {
           }
         });
       } catch (error) {
+      }
+    })();
+
+    (async () => {
+      try {
+        const config = await invoke<{ enabled: boolean }>('load_discord_rpc_config');
+        if (config.enabled) {
+          await invoke('initialize_discord_rpc');
+          await updateDiscordPresence('En el cliente', '');
+        }
+      } catch (error) {
+        void logger.debug('Discord RPC initialization failed', 'App');
       }
     })();
   }, []);
@@ -609,6 +639,23 @@ function App() {
       if (unlistenUpdateComplete) unlistenUpdateComplete();
     };
   }, [accounts.length, isLoginVisible]);
+
+  // Actualizar Discord presence cuando cambie la vista
+  useEffect(() => {
+    const updatePresence = async () => {
+      if (selectedInstance) {
+        // Buscar el nombre de la instancia
+        const instance = [...(filteredInstances || []), ...(localInstances || [])]
+          .find(inst => inst.id === selectedInstance);
+        const instanceName = instance ? instance.name : 'Instancia desconocida';
+        await updateDiscordPresence(`Jugando ${instanceName}`, '');
+      } else {
+        await updateDiscordPresence('En el cliente', '');
+      }
+    };
+
+    updatePresence();
+  }, [selectedInstance, currentAccount]);
 
   useEffect(() => {
     if (accounts.length === 0) return;

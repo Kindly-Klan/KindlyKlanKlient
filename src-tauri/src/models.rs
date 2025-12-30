@@ -394,4 +394,18 @@ impl Default for AdvancedConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordRpcConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+impl Default for DiscordRpcConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+        }
+    }
+}
+
 

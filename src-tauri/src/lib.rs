@@ -26,6 +26,7 @@ mod admins;
 mod local_instances;
 mod modrinth;
 mod http_client;
+mod discord_rpc;
 pub use models::*;
 pub use versions::*;
 pub use whitelist::*;
@@ -480,7 +481,15 @@ pub fn run() {
             // Copy folders
             copy_instance_folders,
             list_minecraft_worlds,
-            list_installed_mods
+            list_installed_mods,
+            // Discord RPC
+            initialize_discord_rpc,
+            update_discord_presence,
+            clear_discord_presence,
+            shutdown_discord_rpc,
+            is_discord_rpc_enabled,
+            load_discord_rpc_config,
+            save_discord_rpc_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running kindly klan klient");

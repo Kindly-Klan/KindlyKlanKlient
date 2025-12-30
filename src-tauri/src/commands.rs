@@ -2317,3 +2317,76 @@ async fn copy_directory_recursive_impl(
     Ok(())
 }
 
+// ========== Discord RPC Commands ==========
+
+#[tauri::command]
+pub async fn initialize_discord_rpc() -> Result<String, String> {
+    crate::discord_rpc::initialize_discord_rpc()
+        .map(|_| "Discord RPC initialized successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn update_discord_presence(state: String, details: String) -> Result<String, String> {
+    crate::discord_rpc::update_discord_presence(&state, &details)
+        .map(|_| "Discord presence updated successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn clear_discord_presence() -> Result<String, String> {
+    crate::discord_rpc::clear_discord_presence()
+        .map(|_| "Discord presence cleared successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn shutdown_discord_rpc() -> Result<String, String> {
+    crate::discord_rpc::shutdown_discord_rpc()
+        .map(|_| "Discord RPC shut down successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn is_discord_rpc_enabled() -> Result<bool, String> {
+    Ok(crate::discord_rpc::is_discord_rpc_enabled())
+}
+
+#[tauri::command]
+pub async fn load_discord_rpc_config() -> Result<crate::DiscordRpcConfig, String> {
+    let config_path = dirs::config_dir()
+        .ok_or("No se pudo obtener el directorio de configuración")?
+        .join("kindlyklanklient")
+        .join("discord_rpc.json");
+
+    if config_path.exists() {
+        let content = tokio::fs::read_to_string(&config_path)
+            .await
+            .map_err(|e| format!("Error leyendo configuración: {}", e))?;
+
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Error parseando configuración: {}", e))
+    } else {
+        Ok(crate::DiscordRpcConfig::default())
+    }
+}
+
+#[tauri::command]
+pub async fn save_discord_rpc_config(enabled: bool) -> Result<String, String> {
+    let config = crate::DiscordRpcConfig { enabled };
+
+    let config_dir = dirs::config_dir()
+        .ok_or("No se pudo obtener el directorio de configuración")?
+        .join("kindlyklanklient");
+
+    tokio::fs::create_dir_all(&config_dir)
+        .await
+        .map_err(|e| format!("Error creando directorio: {}", e))?;
+
+    let config_path = config_dir.join("discord_rpc.json");
+    let content = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Error serializando configuración: {}", e))?;
+
+    tokio::fs::write(&config_path, content)
+        .await
+        .map_err(|e| format!("Error guardando configuración: {}", e))?;
+
+    Ok("Configuración guardada correctamente".to_string())
+}
+
