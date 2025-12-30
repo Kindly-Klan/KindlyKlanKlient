@@ -150,8 +150,11 @@ pub fn get_local_file_path(instance_dir: &Path, file_path: &str) -> Result<PathB
 pub async fn download_file(url: &str, file_path: &Path) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("KindlyKlanKlient/1.0")
-        .connect_timeout(std::time::Duration::from_secs(20))
-        .timeout(std::time::Duration::from_secs(86400))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(300))
+        .pool_max_idle_per_host(20)
+        .pool_idle_timeout(std::time::Duration::from_secs(30))
+        .tcp_nodelay(true)
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     download_file_with_client(&client, url, file_path).await
@@ -181,16 +184,12 @@ pub async fn download_file_with_client(client: &reqwest::Client, url: &str, file
         .await
         .map_err(|e| format!("Failed to create temp file {}: {}", tmp_path.display(), e))?;
 
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|e| format!("Failed to read response chunk from {}: {}", url, e))?
-    {
-        tmp_file
-            .write_all(&chunk)
-            .await
-            .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
-    }
+    // Download completo de una vez (mucho más rápido que chunked)
+    let bytes = response.bytes().await
+        .map_err(|e| format!("Failed to read response bytes from {}: {}", url, e))?;
+
+    tmp_file.write_all(&bytes).await
+        .map_err(|e| format!("Failed to write bytes to {}: {}", tmp_path.display(), e))?;
 
     tmp_file
         .flush()
@@ -480,16 +479,59 @@ pub async fn ensure_version_libraries(instance_dir: &Path, mc_version: &str) -> 
     struct VersionJson { libraries: Vec<crate::versions::Library> }
     let vj: VersionJson = serde_json::from_str(&version_data).map_err(|e| e.to_string())?;
     let os_name = if cfg!(target_os = "windows") { "windows" } else { "linux" };
+
+    // Preparar lista de libraries para descargar en paralelo
+    let mut libraries_to_download: Vec<(String, std::path::PathBuf)> = Vec::new();
+
     for lib in vj.libraries.iter() {
         if !crate::versions::is_library_allowed(lib, os_name) { continue; }
-        if let Some(downloads) = &lib.downloads { if let Some(artifact) = &downloads.artifact {
-            let lib_path = instance_dir.join("libraries").join(&artifact.path);
-            if let Some(parent) = lib_path.parent() { tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?; }
-            if !lib_path.exists() {
-                download_file_with_retry(&artifact.url, &lib_path).await?;
+        if let Some(downloads) = &lib.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                let lib_path = instance_dir.join("libraries").join(&artifact.path);
+                if let Some(parent) = lib_path.parent() {
+                    tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+                }
+                if !lib_path.exists() {
+                    libraries_to_download.push((artifact.url.clone(), lib_path));
+                }
             }
-        }}
+        }
     }
+
+    // Descargar libraries en paralelo
+    if !libraries_to_download.is_empty() {
+        use futures_util::stream::{self, StreamExt};
+        let parallel = num_cpus::get().saturating_mul(6).max(30).min(libraries_to_download.len());
+
+        let client = std::sync::Arc::new(reqwest::Client::builder()
+            .user_agent("KindlyKlanKlient/1.0")
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(40)
+            .pool_idle_timeout(std::time::Duration::from_secs(60))
+            .tcp_nodelay(true)
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {}", e))?);
+
+        let results: Vec<Result<(), String>> = stream::iter(libraries_to_download.into_iter())
+            .map(|(url, path)| {
+                let client = client.clone();
+                async move {
+                    download_file_with_retry_and_client(&client, &url, &path).await
+                }
+            })
+            .buffer_unordered(parallel)
+            .collect()
+            .await;
+
+        // Log errors but don't fail completely
+        for result in results {
+            if let Err(e) = result {
+                log::warn!("Error downloading library: {}", e);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -515,22 +557,59 @@ pub async fn ensure_mod_loader_libraries(instance_dir: &Path, version_id: &str) 
     let vj: VersionJson = serde_json::from_str(&version_data).map_err(|e| e.to_string())?;
     let os_name = if cfg!(target_os = "windows") { "windows" } else { "linux" };
     
+    // Preparar lista de mod loader libraries para descargar en paralelo
+    let mut mod_loader_libraries_to_download: Vec<(String, std::path::PathBuf)> = Vec::new();
+
     for lib in vj.libraries.iter() {
         if !crate::versions::is_library_allowed(lib, os_name) {
             continue;
         }
-        
+
         if let Some(downloads) = &lib.downloads {
             if let Some(artifact) = &downloads.artifact {
                 let lib_path = instance_dir.join("libraries").join(&artifact.path);
-                
+
                 if let Some(parent) = lib_path.parent() {
                     tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
                 }
-                
+
                 if !lib_path.exists() {
-                    download_file_with_retry(&artifact.url, &lib_path).await?;
+                    mod_loader_libraries_to_download.push((artifact.url.clone(), lib_path));
                 }
+            }
+        }
+    }
+
+    // Descargar mod loader libraries en paralelo
+    if !mod_loader_libraries_to_download.is_empty() {
+        use futures_util::stream::{self, StreamExt};
+        let parallel = num_cpus::get().saturating_mul(6).max(30).min(mod_loader_libraries_to_download.len());
+
+        let client = std::sync::Arc::new(reqwest::Client::builder()
+            .user_agent("KindlyKlanKlient/1.0")
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(40)
+            .pool_idle_timeout(std::time::Duration::from_secs(60))
+            .tcp_nodelay(true)
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {}", e))?);
+
+        let results: Vec<Result<(), String>> = stream::iter(mod_loader_libraries_to_download.into_iter())
+            .map(|(url, path)| {
+                let client = client.clone();
+                async move {
+                    download_file_with_retry_and_client(&client, &url, &path).await
+                }
+            })
+            .buffer_unordered(parallel)
+            .collect()
+            .await;
+
+        // Log errors but don't fail completely
+        for result in results {
+            if let Err(e) = result {
+                log::warn!("Error downloading mod loader library: {}", e);
             }
         }
     }
@@ -1033,16 +1112,29 @@ pub async fn ensure_assets_present_with_progress(
         if !obj_path.exists() { pending.push((prefix, obj.hash)); }
     }
     if pending.is_empty() { return Ok(ai.id); }
-    let parallel = num_cpus::get().saturating_mul(8).max(50);
+    let parallel = num_cpus::get().saturating_mul(12).max(100);
     use futures_util::stream::{self, StreamExt};
+
+    // Cliente HTTP optimizado con pool de conexiones grande
+    let client = std::sync::Arc::new(reqwest::Client::builder()
+        .user_agent("KindlyKlanKlient/1.0")
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(120))
+        .pool_max_idle_per_host(50)
+        .pool_idle_timeout(std::time::Duration::from_secs(60))
+        .tcp_nodelay(true)
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?);
+
     let results: Vec<Result<(), String>> = stream::iter(pending.into_iter().map(|(prefix, hash)| {
         let objects_dir = objects_dir.clone();
         let app_handle = app_handle.clone();
         let combined = combined.clone();
+        let client = client.clone();
         async move {
             let url = format!("https://resources.download.minecraft.net/{}/{}", prefix, hash);
             let obj_path = objects_dir.join(&prefix).join(&hash);
-            download_file_with_retry(&url, &obj_path).await?;
+            download_file_with_retry_and_client(&client, &url, &obj_path).await?;
             if let Some((counter, total)) = &combined {
                 let cur = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 let _ = app_handle.emit("asset-download-progress", serde_json::json!({
