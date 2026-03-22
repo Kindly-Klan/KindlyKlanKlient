@@ -380,12 +380,7 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
     
     // Refrescar avatares inmediatamente
     refreshAvatars();
-    
-    // Mostrar toast de que se aplicó (solo uno, no duplicar)
     addToast?.('Skin aplicada', 'success');
-
-    // 2. Intentar subir a Mojang en segundo plano (opcional, no bloquea)
-    // NO mostrar toast adicional aquí para evitar duplicados
     setIsUploading(true);
     
     // Rate limiting: esperar si la última subida fue hace menos de MIN_UPLOAD_INTERVAL
@@ -450,10 +445,8 @@ export const SkinManager: React.FC<SkinManagerProps> = ({ currentUser, addToast 
             }
           }
         } catch (err) {
-          // Ignorar errores al obtener perfil
         }
 
-        // No mostrar toast aquí - ya se mostró al activar localmente
       } catch (uploadError: any) {
         // Manejar errores específicos de la API
         if (uploadError?.message?.includes('429') || uploadError?.message?.includes('rate limit')) {

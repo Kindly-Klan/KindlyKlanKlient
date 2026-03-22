@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { UpdaterService, UpdateInfo } from '@/services/updater';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '@/utils/logger';
+import { toast } from 'vibe-toast';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -51,24 +52,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     try {
       const result = await UpdaterService.installUpdate();
       if (result.success) {
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-green-500/20 border border-green-500/30 text-green-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = '✓ Actualización instalada. Reiniciando...';
-        document.body.appendChild(toast);
+        toast.success('Actualización instalada. Reiniciando...', { duration: 8000 });
       } else {
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-        toast.textContent = `✗ Error al instalar actualización: ${result.message}`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        toast.error(`Error al instalar actualización: ${result.message}`);
       }
     } catch (error) {
       void logger.error('Error installing update', error, 'handleInstallUpdate');
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-red-500/20 border border-red-500/30 text-red-300 px-6 py-3 rounded-lg shadow-lg z-50';
-      toast.textContent = '✗ Error al instalar la actualización';
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      toast.error('Error al instalar la actualización');
     }
     setIsInstalling(false);
   };

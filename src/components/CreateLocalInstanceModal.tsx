@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Loader2 } from 'lucide-react';
 import type { MinecraftVersionInfo, FabricLoaderVersion, ForgeVersion, NeoForgeVersion, LocalInstance } from '@/types/local-instances';
 import { logger } from '@/utils/logger';
-import fabricIcon from '@/assets/icons/fabricmc.svg';
-import neoforgeIcon from '@/assets/icons/neoforge.svg';
+import { modLoaderIconInvertFilter, modLoaderIconSrc } from '@/utils/modLoaderIcon';
 
 interface CreateLocalInstanceModalProps {
   isOpen: boolean;
@@ -12,6 +12,35 @@ interface CreateLocalInstanceModalProps {
 }
 
 type ModLoaderType = 'vanilla' | 'fabric' | 'forge' | 'neoforge';
+
+function loaderChoiceIconClass(loader: ModLoaderType) {
+  const base = 'h-12 w-12 max-w-full mb-2 shrink-0 object-contain object-center';
+  return modLoaderIconInvertFilter(loader) ? `${base} brightness-0 invert opacity-95` : base;
+}
+
+function StepLoader({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-5 py-16">
+      <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center">
+        <span
+          className="absolute inset-[-6px] rounded-full border-2 border-[#00ffff]/20"
+          aria-hidden
+        />
+        <span
+          className="absolute inset-0 animate-ping rounded-full bg-[#00ffff]/15 [animation-duration:1.75s]"
+          aria-hidden
+        />
+        <Loader2
+          className="relative h-11 w-11 animate-spin text-[#00ffff] [animation-duration:0.7s]"
+          strokeWidth={2.5}
+          style={{ filter: 'drop-shadow(0 0 12px rgba(0,255,255,0.45))' }}
+          aria-hidden
+        />
+      </div>
+      <p className="max-w-xs text-center text-sm font-medium tracking-wide text-white/80">{message}</p>
+    </div>
+  );
+}
 
 const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
   isOpen,
@@ -282,9 +311,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                   Versión de Minecraft
                 </label>
                 {isLoadingVersions ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00ffff]"></div>
-                  </div>
+                  <StepLoader message="Obteniendo versiones de Minecraft…" />
                 ) : (
                   <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                     {minecraftVersions.map((version) => (
@@ -330,7 +357,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <div className="text-4xl mb-2">🎮</div>
+                      <img src={modLoaderIconSrc('vanilla')} alt="" className={loaderChoiceIconClass('vanilla')} />
                       <span className="text-white font-medium">Vanilla</span>
                     </div>
                   </button>
@@ -344,7 +371,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <img src={fabricIcon} alt="Fabric" className="w-12 h-12 mb-2" />
+                      <img src={modLoaderIconSrc('fabric')} alt="" className={loaderChoiceIconClass('fabric')} />
                       <span className="text-white font-medium">Fabric</span>
                     </div>
                   </button>
@@ -358,7 +385,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <div className="text-4xl mb-2">⚒️</div>
+                      <img src={modLoaderIconSrc('forge')} alt="" className={loaderChoiceIconClass('forge')} />
                       <span className="text-white font-medium">Forge</span>
                     </div>
                   </button>
@@ -372,7 +399,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                     }`}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <img src={neoforgeIcon} alt="NeoForge" className="w-12 h-12 mb-2" />
+                      <img src={modLoaderIconSrc('neoforge')} alt="" className={loaderChoiceIconClass('neoforge')} />
                       <span className="text-white font-medium">NeoForge</span>
                     </div>
                   </button>
@@ -391,9 +418,15 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                   Para Minecraft {selectedMinecraftVersion}
                 </p>
                 {isLoadingVersions ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00ffff]"></div>
-                  </div>
+                  <StepLoader
+                    message={
+                      modLoaderType === 'fabric'
+                        ? 'Cargando versiones de Fabric…'
+                        : modLoaderType === 'forge'
+                          ? 'Cargando versiones de Forge…'
+                          : 'Cargando versiones de NeoForge…'
+                    }
+                  />
                 ) : (
                   <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                     {getModLoaderVersions().length === 0 ? (
@@ -436,7 +469,7 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
           )}
 
           {step === 5 && (
-            <div className="space-y-6 animate-fade-in-up">
+            <div className={`space-y-6 animate-fade-in-up ${isCreating ? 'pointer-events-none opacity-60' : ''}`}>
               <div className="space-y-4">
                 <h3 className="text-xl font-bold text-white mb-4">Resumen de la instancia</h3>
                 
@@ -452,12 +485,23 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
                 
                 <div className="p-4 rounded-xl bg-white/5 border border-white/10">
                   <p className="text-white/60 text-sm mb-1">Mod Loader:</p>
-                  <p className="text-white font-medium">
-                    {modLoaderType === 'vanilla' ? 'Vanilla (Sin mods)' : 
-                     modLoaderType === 'fabric' ? 'Fabric' : 
-                     modLoaderType === 'forge' ? 'Forge' : 'NeoForge'}
-                    {modLoaderType !== 'vanilla' && ` ${selectedModLoaderVersion}`}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={modLoaderIconSrc(modLoaderType)}
+                      alt=""
+                      className={
+                        modLoaderIconInvertFilter(modLoaderType)
+                          ? 'h-10 w-10 max-w-[min(100%,10rem)] shrink-0 object-contain brightness-0 invert opacity-90'
+                          : 'h-10 w-10 max-w-[min(100%,10rem)] shrink-0 object-contain'
+                      }
+                    />
+                    <p className="text-white font-medium">
+                      {modLoaderType === 'vanilla' ? 'Vanilla (sin mods)' : 
+                       modLoaderType === 'fabric' ? 'Fabric' : 
+                       modLoaderType === 'forge' ? 'Forge' : 'NeoForge'}
+                      {modLoaderType !== 'vanilla' && ` ${selectedModLoaderVersion}`}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -509,12 +553,21 @@ const CreateLocalInstanceModal: React.FC<CreateLocalInstanceModalProps> = ({
               <button
                 onClick={handleCreate}
                 disabled={isCreating}
-                className="px-8 py-3 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff] text-white hover:bg-[#00ffff]/30 transition-all duration-200 neon-glow-cyan-hover disabled:opacity-50 disabled:cursor-not-allowed font-bold flex items-center gap-2"
+                className="min-w-[200px] justify-center px-8 py-3 rounded-xl bg-[#00ffff]/20 border-2 border-[#00ffff] text-white hover:bg-[#00ffff]/30 transition-all duration-200 neon-glow-cyan-hover disabled:opacity-90 disabled:cursor-not-allowed font-bold inline-flex items-center gap-3"
               >
                 {isCreating ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
-                    Creando...
+                    <span className="relative flex h-6 w-6 items-center justify-center">
+                      <span
+                        className="absolute inset-0 rounded-full border-2 border-white/30"
+                        aria-hidden
+                      />
+                      <Loader2 className="relative h-5 w-5 animate-spin text-white" strokeWidth={2.5} aria-hidden />
+                    </span>
+                    <span className="flex flex-col items-start text-left leading-tight">
+                      <span>Creando instancia</span>
+                      <span className="text-xs font-normal text-white/70">Descargando archivos…</span>
+                    </span>
                   </>
                 ) : (
                   'Crear Instancia'

@@ -6,7 +6,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/Loader";
-import ToastContainer from "@/components/ToastContainer";
+import { Toaster } from "vibe-toast";
+import { addAppToast } from "@/utils/appToast";
 import Sidebar from "@/components/Sidebar";
 import UserProfile from "@/components/UserProfile";
 import SettingsView from "@/components/SettingsView";
@@ -322,13 +323,6 @@ interface Account {
 }
 
 
-interface ToastItem {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  duration?: number;
-}
-
 interface DistributionManifest {
   distribution: {
     name: string;
@@ -367,7 +361,6 @@ function App() {
   const [loaderText, setLoaderText] = useState("Iniciando sesión...");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoginVisible, setIsLoginVisible] = useState(true);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scrollToUpdates, setScrollToUpdates] = useState(false);
   const [distributionLoaded, setDistributionLoaded] = useState(false);
@@ -381,7 +374,6 @@ function App() {
   const [filteredInstances, setFilteredInstances] = useState<any[]>([]);
   const initialized = useRef(false);
   
-  // Estados para toasts de actualización
   const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number | null>(null);
   const [updateDownloadVersion, setUpdateDownloadVersion] = useState<string | null>(null);
   const [updateReadyVersion, setUpdateReadyVersion] = useState<string | null>(null);
@@ -434,8 +426,6 @@ function App() {
       }
     })();
   }, []);
-  
-  useEffect(() => {}, [distributionLoaded]);
   
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -694,14 +684,7 @@ function App() {
   }, [accounts, currentAccount]);
 
 
-  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 5000) => {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setToasts(prev => [...prev, { id, message, type, duration }]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
+  const addToast = addAppToast;
 
   const handleInstanceSelect = (instanceId: string) => {
     setSkinViewOpen(false);
@@ -1382,38 +1365,41 @@ function App() {
         </div>
       )}
 
-      <ToastContainer toasts={toasts} onRemove={removeToast}>
-        {downloadProgress && (
-          <DownloadProgressToast
-            message={downloadProgress.status === 'Completed' ? 'Assets descargados' : 'Descargando assets de instancia'}
-            percentage={downloadProgress.percentage}
-            onClose={() => setDownloadProgress(null)}
-          />
-        )}
-        {updateDownloadProgress !== null && updateDownloadVersion && (
-          <DownloadProgressToast
-            message="Descargando nueva actualización"
-            percentage={updateDownloadProgress}
-            onClose={() => {
-              setUpdateDownloadProgress(null);
-              setUpdateDownloadVersion(null);
-            }}
-          />
-        )}
-        {updateReadyVersion && (
-          <UpdateReadyToast
-            message="Nueva actualización lista para instalar"
-            version={updateReadyVersion}
-            onClose={() => setUpdateReadyVersion(null)}
-            onClick={() => {
-              setScrollToUpdates(true);
-              setSettingsOpen(true);
-              setSelectedInstance(null);
-              setSkinViewOpen(false);
-            }}
-          />
-        )}
-      </ToastContainer>
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[10000] flex flex-col gap-2">
+        <div className="pointer-events-auto flex flex-col gap-2">
+          {downloadProgress && (
+            <DownloadProgressToast
+              message={downloadProgress.status === 'Completed' ? 'Assets descargados' : 'Descargando assets de instancia'}
+              percentage={downloadProgress.percentage}
+              onClose={() => setDownloadProgress(null)}
+            />
+          )}
+          {updateDownloadProgress !== null && updateDownloadVersion && (
+            <DownloadProgressToast
+              message="Descargando nueva actualización"
+              percentage={updateDownloadProgress}
+              onClose={() => {
+                setUpdateDownloadProgress(null);
+                setUpdateDownloadVersion(null);
+              }}
+            />
+          )}
+          {updateReadyVersion && (
+            <UpdateReadyToast
+              message="Nueva actualización lista para instalar"
+              version={updateReadyVersion}
+              onClose={() => setUpdateReadyVersion(null)}
+              onClick={() => {
+                setScrollToUpdates(true);
+                setSettingsOpen(true);
+                setSelectedInstance(null);
+                setSkinViewOpen(false);
+              }}
+            />
+          )}
+        </div>
+      </div>
+      <Toaster position="bottom-right" theme="dark" duration={5000} />
 
       {/* Update Dialog */}
       {updateDialogOpen && updateDialogState && (

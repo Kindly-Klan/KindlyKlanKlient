@@ -6,8 +6,7 @@ import { logger } from '@/utils/logger';
 
 
 import minecraftIcon from '@/assets/icons/minecraft.svg';
-import fabricmcIcon from '@/assets/icons/fabricmc.svg';
-import neoforgeIcon from '@/assets/icons/neoforge.svg';
+import { modLoaderIconInvertFilter, modLoaderIconSrc } from '@/utils/modLoaderIcon';
 import Tooltip from './ui/Tooltip';
 
 interface DistributionManifest {
@@ -84,9 +83,9 @@ const InstanceView: React.FC<InstanceViewProps> = ({
         background_video: null,
         last_updated: localInstance.created_at,
         instance_url: "",
-        mod_loader: {
-          type: "fabric",
-          version: localInstance.fabric_version
+        mod_loader: localInstance.mod_loader ?? {
+          type: 'fabric',
+          version: localInstance.fabric_version,
         }
       }
     : distribution.instances.find(inst => inst.id === instanceId);
@@ -312,9 +311,13 @@ const InstanceView: React.FC<InstanceViewProps> = ({
                 }}
               >
                 <img
-                  src={instance.mod_loader.type === 'fabric' ? fabricmcIcon : neoforgeIcon}
-                  alt={instance.mod_loader.type}
-                  className="w-4 h-4"
+                  src={modLoaderIconSrc(instance.mod_loader.type)}
+                  alt=""
+                  className={
+                    modLoaderIconInvertFilter(instance.mod_loader.type)
+                      ? 'h-7 w-16 max-w-[6.5rem] shrink-0 object-contain object-left brightness-0 invert'
+                      : 'h-7 w-16 max-w-[6.5rem] shrink-0 object-contain object-left'
+                  }
                 />
                 <span className="text-white font-semibold text-sm">{instance.mod_loader.version}</span>
               </span>

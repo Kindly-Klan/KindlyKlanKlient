@@ -176,20 +176,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
     setIsScrolled(scrollTop > 20);
   };
 
-  // Update handlers
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdates(true);
     try {
       const result = await UpdaterService.checkForUpdates();
-      // Refresh update state siempre
       const newState = await UpdaterService.getUpdateState();
       setUpdateState(newState);
-      
-      // Solo mostrar toast si hay actualización disponible usando el sistema universal
       if (result.available && addToast) {
         addToast(`Actualización ${result.version} disponible`, 'info');
       }
-      // Si no hay actualizaciones, NO mostrar toast (más limpio)
     } catch (error) {
       void logger.error('Error checking for updates', error, 'SettingsView');
       if (addToast) {
@@ -204,18 +199,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
     setIsDownloadingUpdate(true);
     setDownloadProgress(null);
     try {
-      // Descarga MANUAL desde Settings (pasar true)
       const result = await UpdaterService.downloadUpdateSilent(true);
       if (result.success) {
-        // Refresh update state
         const newState = await UpdaterService.getUpdateState();
         setUpdateState(newState);
-        // Mostrar notificación de descarga completada usando el sistema universal
         if (addToast) {
           addToast('Actualización descargada. Lista para instalar.', 'success');
         }
       } else {
-        // Mostrar error en la descarga usando el sistema universal
         if (addToast) {
           addToast('Error al descargar la actualización', 'error');
         }
@@ -234,8 +225,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
 
   const handleInstallUpdate = async () => {
     if (!updateState?.download_ready) return;
-    
-    // Mostrar diálogo de confirmación personalizado en lugar de window.confirm
     setInstallConfirmOpen(true);
   };
 
@@ -245,13 +234,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ addToast, scrollToUpdates =
       try {
         const result = await UpdaterService.installUpdate();
         if (result.success) {
-          // Mostrar notificación de instalación exitosa usando el sistema universal
           if (addToast) {
             addToast('Actualización instalada. Reiniciando...', 'success');
           }
-          // The app will restart automatically
         } else {
-          // Mostrar error en la instalación usando el sistema universal
           if (addToast) {
             addToast('Error al instalar la actualización', 'error');
           }

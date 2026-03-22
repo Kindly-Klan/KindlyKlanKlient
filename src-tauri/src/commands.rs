@@ -1324,11 +1324,9 @@ pub async fn get_forge_versions(minecraft_version: String) -> Result<Vec<ForgeVe
     
     let client = reqwest::Client::new();
     
-    let url = format!(
-        "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
-    );
+    let url = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
     
-    match client.get(&url).send().await {
+    match client.get(url).send().await {
         Ok(response) => {
             if response.status().is_success() {
                 let xml_text = response.text().await.map_err(|e| e.to_string())?;
@@ -1377,11 +1375,12 @@ fn parse_forge_versions_from_xml(xml: &str, mc_version: &str) -> Result<Vec<Forg
             if let Some(version_str) = extract_xml_tag_content(line, "version") {
                 // Las versiones de Forge siguen el formato: {mc_version}-{forge_version}
                 // Ej: 1.20.1-47.2.0
-                if version_str.starts_with(mc_version) {
+                let mc_prefix = format!("{}-", mc_version);
+                if version_str.starts_with(&mc_prefix) || version_str == mc_version {
                     versions.push(ForgeVersion {
                         version: version_str.clone(),
                         minecraft_version: mc_version.to_string(),
-                        recommended: false, // Por ahora, marcaremos la primera como recomendada después
+                        recommended: false,
                     });
                 }
             }

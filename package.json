@@ -19,13 +19,15 @@
     "@tauri-apps/plugin-shell": "^2.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.544.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-dropzone": "^14.3.8",
     "react-skinview3d": "^7.0.0",
     "skinview3d": "^3.4.1",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "vibe-toast": "^0.1.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.13",
