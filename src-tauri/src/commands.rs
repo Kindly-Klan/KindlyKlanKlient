@@ -1196,16 +1196,7 @@ pub async fn get_minecraft_profile_safe(access_token: String) -> Result<ProfileR
 }
 
 pub fn get_required_java_version(minecraft_version: &str) -> String {
-    let version_parts: Vec<&str> = minecraft_version.split('.').collect();
-    let minor_version = version_parts.get(1).unwrap_or(&"8").parse::<u32>().unwrap_or(8);
-    match minor_version {
-        21..=u32::MAX => "21".to_string(),
-        20..=20 => "17".to_string(),
-        18..=19 => "17".to_string(),
-        17..=17 => "16".to_string(),
-        8..=16 => "8".to_string(),
-        _ => "8".to_string(),
-    }
+    crate::launcher::get_required_java_version_for_minecraft(minecraft_version).to_string()
 }
 
 #[tauri::command]

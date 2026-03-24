@@ -57,19 +57,6 @@ type AssetDownloadProgress = {
 };
 
 
-const getRequiredJavaVersion = (minecraftVersion: string): string => {
-  const version = minecraftVersion.split('.')[1]; 
-
-  if (parseInt(version) >= 21) return '21';
-  if (parseInt(version) >= 20) return '17';
-  if (parseInt(version) >= 18) return '17';
-  if (parseInt(version) >= 17) return '16';
-  if (parseInt(version) >= 8) return '8';
-
-  return '8'; 
-};
-
-
 const checkJavaInstalled = async (javaVersion: string): Promise<boolean> => {
   try {
     const result = await invoke<string>('check_java_version', { version: javaVersion });
@@ -85,7 +72,9 @@ const ensureJavaInstalled = async (
   minecraftVersion: string,
   setJavaProgress?: (progress: number) => void
 ): Promise<string> => {
-  const javaVersion = getRequiredJavaVersion(minecraftVersion);
+  const javaVersion = await invoke<string>('get_required_java_version_command', {
+    minecraftVersion,
+  });
 
   const isInstalled = await checkJavaInstalled(javaVersion);
   if (isInstalled) {

@@ -46,6 +46,8 @@ impl MinecraftLauncher {
             "C:\\Program Files\\Java\\jdk-8\\bin\\java.exe",
             "C:\\Program Files\\Java\\jdk-11\\bin\\java.exe",
             "C:\\Program Files\\Java\\jdk-17\\bin\\java.exe",
+            "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+            "C:\\Program Files\\Java\\jdk-25\\bin\\java.exe",
         ];
         for path in common_paths {
             if Path::new(path).exists() {
@@ -380,6 +382,11 @@ pub fn get_required_java_version_for_minecraft(mc_version: &str) -> u8 {
     let major = version_parts.get(0).and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
     let minor = version_parts.get(1).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
     let patch = version_parts.get(2).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+
+    // Minecraft 26+ 
+    if major >= 26 || (major == 1 && minor >= 26) {
+        return 25;
+    }
     
     if major == 1 && (minor > 20 || (minor == 20 && patch >= 5)) {
         return 21;
